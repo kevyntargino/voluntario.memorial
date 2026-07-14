@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "nodemon index.js",
+    "build": "prisma generate",
     "start": "node index.js",
     "seed": "node prisma/seed.js",
     "test": "echo \"Error: no test specified\" && exit 1"
