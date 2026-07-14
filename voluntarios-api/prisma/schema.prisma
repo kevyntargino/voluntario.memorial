@@ -1,0 +1,226 @@
+// ==========================================
+// CONFIGURAÇÕES BASE
+// ==========================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ==========================================
+// ENUMS
+// ==========================================
+
+enum Permissao {
+  ADMINISTRADOR
+  LIDER_EQUIPE
+  VOLUNTARIO
+}
+
+enum Sexo {
+  MASCULINO
+  FEMININO
+  OUTRO
+  PREFIRO_NAO_INFORMAR
+}
+
+enum TipoEscala {
+  RECORRENTE
+  ESPORADICA
+}
+
+enum StatusEscala {
+  PENDENTE
+  CONFIRMADA
+  PEDIU_SUBSTITUICAO
+}
+
+enum AcaoAuditoria {
+  LOGIN
+  LOGOUT
+  REDEFINICAO_SENHA
+  ALTERACAO_PERMISSAO
+  EDICAO_SISTEMA
+  OUTRO
+}
+
+enum TipoAviso {
+  GLOBAL
+  EQUIPE
+  INDIVIDUAL
+}
+
+// ==========================================
+// MODELS PRINCIPAIS E SEGURANÇA
+// ==========================================
+
+model Usuario {
+  id             String      @id @default(uuid()) @db.Uuid
+  nomeCompleto   String      @map("nome_completo")
+  email          String      @unique
+  senhaHash      String      @map("senha_hash")
+  telefone       String?
+  urlFoto        String?     @map("url_foto")
+  dataNascimento DateTime?   @map("data_nascimento") @db.Date
+  sexo           Sexo?
+  
+  // Um usuário pode ter múltiplas permissões ao mesmo tempo
+  permissoes     Permissao[] @default([VOLUNTARIO])
+
+  criadoEm       DateTime    @default(now()) @map("criado_em")
+  atualizadoEm   DateTime    @updatedAt @map("atualizado_em")
+
+  // Relacionamentos
+  equipes           Equipe[]                @relation("UsuarioEquipes")
+  escalas           VoluntarioEscala[]      @relation("EscalasDoVoluntario")
+  escalasAtribuidas VoluntarioEscala[]      @relation("AtribuidorEscala")
+  ordensCriadas     OrdemCulto[]            @relation("CriadorOrdemCulto")
+  avisosCriados     Aviso[]                 @relation("CriadorAviso")
+  logsAtividade     LogAuditoria[]          @relation("UsuarioAuditoria")
+  tokensSenha       TokenRedefinicaoSenha[]
+
+  @@map("usuarios")
+}
+
+model TokenRedefinicaoSenha {
+  id         String    @id @default(uuid()) @db.Uuid
+  usuarioId  String    @map("usuario_id") @db.Uuid
+  usuario    Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  tokenHash  String    @map("token_hash")
+  expiraEm   DateTime  @map("expira_em")
+  usadoEm    DateTime? @map("usado_em")
+
+  @@map("tokens_redefinicao_senha")
+}
+
+// ==========================================
+// EQUIPES E LOGÍSTICA DE ESCALAS
+// ==========================================
+
+model Equipe {
+  id          String    @id @default(uuid()) @db.Uuid
+  nome        String    @unique 
+  
+  // Relacionamentos
+  voluntarios Usuario[] @relation("UsuarioEquipes")
+  escalas     Escala[]
+  manuais     Manual[]  @relation("EquipeManuais")
+  avisos      Aviso[]   @relation("EquipeAvisos")
+
+  @@map("equipes")
+}
+
+model Escala {
+  id          String     @id @default(uuid()) @db.Uuid
+  titulo      String?    // Ex: "Culto de Domingo - Manhã", "Conferência Jovem"
+  tipo        TipoEscala
+  
+  diaSemana   Int?       @map("dia_semana") // Ex: 0 = Domingo, 1 = Segunda
+  dataHora    DateTime?  @map("data_hora") 
+  
+  equipeId    String     @map("equipe_id") @db.Uuid
+  equipe      Equipe     @relation(fields: [equipeId], references: [id], onDelete: Cascade)
+
+  voluntarios VoluntarioEscala[]
+
+  criadoEm    DateTime   @default(now()) @map("criado_em")
+  atualizadoEm DateTime  @updatedAt @map("atualizado_em")
+
+  @@map("escalas")
+}
+
+// Tabela Pivô (Relacionamento N:M entre Usuário e Escala)
+model VoluntarioEscala {
+  id             String       @id @default(uuid()) @db.Uuid
+  status         StatusEscala @default(PENDENTE)
+  
+  usuarioId      String       @map("usuario_id") @db.Uuid
+  usuario        Usuario      @relation("EscalasDoVoluntario", fields: [usuarioId], references: [id], onDelete: Cascade)
+  
+  escalaId       String       @map("escala_id") @db.Uuid
+  escala         Escala       @relation(fields: [escalaId], references: [id], onDelete: Cascade)
+
+  // Auditoria de atribuição
+  atribuidoPorId String?      @map("atribuido_por_id") @db.Uuid
+  atribuidoPor   Usuario?     @relation("AtribuidorEscala", fields: [atribuidoPorId], references: [id], onDelete: SetNull)
+
+  criadoEm       DateTime     @default(now()) @map("criado_em")
+  atualizadoEm   DateTime     @updatedAt @map("atualizado_em")
+
+  @@unique([usuarioId, escalaId]) 
+  
+  @@map("voluntarios_escalas")
+}
+
+// ==========================================
+// MÓDULOS DE CONTEÚDO E COMUNICAÇÃO
+// ==========================================
+
+model OrdemCulto {
+  id           String    @id @default(uuid()) @db.Uuid
+  titulo       String    
+  dataCulto    DateTime  @map("data_culto") @db.Date
+  conteudoText String?   @map("conteudo_text") @db.Text 
+  anexoUrl     String?   @map("anexo_url") 
+  
+  criadorId    String?   @map("criador_id") @db.Uuid
+  criador      Usuario?  @relation("CriadorOrdemCulto", fields: [criadorId], references: [id], onDelete: SetNull)
+
+  criadoEm     DateTime  @default(now()) @map("criado_em")
+  atualizadoEm DateTime  @updatedAt @map("atualizado_em")
+
+  @@map("ordens_culto")
+}
+
+model Manual {
+  id           String    @id @default(uuid()) @db.Uuid
+  titulo       String
+  descricao    String?   @db.Text
+  arquivoUrl   String    @map("arquivo_url") 
+  
+  equipeId     String    @map("equipe_id") @db.Uuid
+  equipe       Equipe    @relation("EquipeManuais", fields: [equipeId], references: [id], onDelete: Cascade)
+
+  criadoEm     DateTime  @default(now()) @map("criado_em")
+  atualizadoEm DateTime  @updatedAt @map("atualizado_em")
+
+  @@map("manuais")
+}
+
+model Aviso {
+  id           String    @id @default(uuid()) @db.Uuid
+  titulo       String
+  mensagem     String    @db.Text
+  tipo         TipoAviso @default(GLOBAL)
+  
+  equipeId     String?   @map("equipe_id") @db.Uuid
+  equipe       Equipe?   @relation("EquipeAvisos", fields: [equipeId], references: [id], onDelete: Cascade)
+
+  criadorId    String?   @map("criador_id") @db.Uuid
+  criador      Usuario?  @relation("CriadorAviso", fields: [criadorId], references: [id], onDelete: SetNull)
+
+  criadoEm     DateTime  @default(now()) @map("criado_em")
+
+  @@map("avisos")
+}
+
+// ==========================================
+// OBSERVABILIDADE / DASHBOARD
+// ==========================================
+
+model LogAuditoria {
+  id           String        @id @default(uuid()) @db.Uuid
+  acao         AcaoAuditoria
+  descricao    String?       @db.Text 
+  ipOrigem     String?       @map("ip_origem") 
+  
+  usuarioId    String?       @map("usuario_id") @db.Uuid
+  usuario      Usuario?      @relation("UsuarioAuditoria", fields: [usuarioId], references: [id], onDelete: SetNull)
+
+  criadoEm     DateTime      @default(now()) @map("criado_em")
+
+  @@map("logs_auditoria")
+}
