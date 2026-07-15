@@ -159,6 +159,7 @@ export default function AdminEscalas() {
   const [formRecorrentes, setFormRecorrentes] = useState({});
   const [formEscala, setFormEscala] = useState(formEscalaInicial);
   const [formAviso, setFormAviso] = useState(formAvisoInicial);
+  const [avisosAdmin, setAvisosAdmin] = useState([]);
   const [formNovoVoluntario, setFormNovoVoluntario] = useState(formNovoVoluntarioInicial);
   const [manuais, setManuais] = useState([]);
   const [formManual, setFormManual] = useState(formManualInicial);
@@ -196,7 +197,7 @@ export default function AdminEscalas() {
     setCarregando(true);
 
     try {
-      const [respostaDashboard, respostaEscalas, respostaManuais] = await Promise.all([
+      const [respostaDashboard, respostaEscalas, respostaManuais, respostaAvisos] = await Promise.all([
         fetch(buildApiUrl('/api/admin/dashboard'), {
           headers: { Authorization: `Bearer ${token}` },
         }),
@@ -206,19 +207,23 @@ export default function AdminEscalas() {
         fetch(buildApiUrl('/api/manuais/admin'), {
           headers: { Authorization: `Bearer ${token}` },
         }),
+        fetch(buildApiUrl('/api/avisos/admin/opcoes'), {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
       ]);
       const dadosDashboard = await respostaDashboard.json();
       const dadosEscalas = await respostaEscalas.json();
       const dadosManuais = await respostaManuais.json();
+      const dadosAvisos = await respostaAvisos.json();
 
-      if (!respostaDashboard.ok || !respostaEscalas.ok || !respostaManuais.ok) {
-        if (respostaDashboard.status === 401 || respostaEscalas.status === 401 || respostaManuais.status === 401) {
+      if (!respostaDashboard.ok || !respostaEscalas.ok || !respostaManuais.ok || !respostaAvisos.ok) {
+        if (respostaDashboard.status === 401 || respostaEscalas.status === 401 || respostaManuais.status === 401 || respostaAvisos.status === 401) {
           logout();
           navigate('/login', { replace: true });
           return;
         }
 
-        throw new Error(dadosDashboard.erro || dadosEscalas.erro || dadosManuais.erro || 'Não foi possível carregar o painel administrativo.');
+        throw new Error(dadosDashboard.erro || dadosEscalas.erro || dadosManuais.erro || dadosAvisos.erro || 'Não foi possível carregar o painel administrativo.');
       }
 
       setDashboard(dadosDashboard);
@@ -227,6 +232,7 @@ export default function AdminEscalas() {
       setRecorrentes(dadosEscalas.recorrentes || []);
       setEsporadicas(dadosEscalas.esporadicas || []);
       setManuais(dadosManuais.manuais || []);
+      setAvisosAdmin(dadosAvisos.avisos || []);
       setFormsUsuarios(Object.fromEntries((dadosDashboard.usuarios || []).map((item) => [item.id, criarFormUsuario(item)])));
       setFormRecorrentes(Object.fromEntries((dadosEscalas.recorrentes || []).map((escala) => [
         escala.id,
@@ -406,6 +412,7 @@ export default function AdminEscalas() {
       if (!resposta.ok) throw new Error(dados.erro || 'Não foi possível excluir o usuário.');
       setSucesso(dados.mensagem || 'Usuário excluído.');
       await carregarDados();
+      setUsuarioModal(null);
     } catch (error) {
       setErro(error.message || 'Não foi possível excluir o usuário.');
     } finally {
@@ -618,8 +625,54 @@ export default function AdminEscalas() {
       if (!resposta.ok) throw new Error(dados.erro || 'Não foi possível enviar a notificação.');
       setSucesso(dados.mensagem || 'Notificação enviada.');
       setFormAviso(formAvisoInicial);
+      await carregarDados();
     } catch (error) {
       setErro(error.message || 'Não foi possível enviar a notificação.');
+    } finally {
+      setSalvandoId(null);
+    }
+  };
+
+  const alternarOcultoAviso = async (aviso) => {
+    setErro('');
+    setSucesso('');
+    setSalvandoId(`aviso-oculto-${aviso.id}`);
+
+    try {
+      const resposta = await fetch(buildApiUrl(`/api/avisos/admin/${aviso.id}/ocultar`), {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oculto: !aviso.oculto }),
+      });
+      const dados = await resposta.json();
+      if (!resposta.ok) throw new Error(dados.erro || 'Não foi possível atualizar o aviso.');
+      setSucesso(dados.mensagem || 'Aviso atualizado.');
+      await carregarDados();
+    } catch (error) {
+      setErro(error.message || 'Não foi possível atualizar o aviso.');
+    } finally {
+      setSalvandoId(null);
+    }
+  };
+
+  const excluirAviso = async (avisoId) => {
+    if (!window.confirm('Deseja excluir este aviso definitivamente?')) return;
+
+    setErro('');
+    setSucesso('');
+    setSalvandoId(`aviso-excluir-${avisoId}`);
+
+    try {
+      const resposta = await fetch(buildApiUrl(`/api/avisos/admin/${avisoId}`), {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const dados = await resposta.json();
+      if (!resposta.ok) throw new Error(dados.erro || 'Não foi possível excluir o aviso.');
+      setSucesso(dados.mensagem || 'Aviso excluído.');
+      await carregarDados();
+    } catch (error) {
+      setErro(error.message || 'Não foi possível excluir o aviso.');
     } finally {
       setSalvandoId(null);
     }
@@ -868,7 +921,6 @@ export default function AdminEscalas() {
                 onAlternarEquipe={alternarEquipeUsuario}
                 onAlternarLiderEquipe={alternarLiderEquipeUsuario}
                 onSalvar={salvarUsuario}
-                onExcluir={excluirUsuario}
                 editandoUsuarioId={editandoUsuarioId}
                 onEditar={setEditandoUsuarioId}
                 onAbrirUsuario={setUsuarioModal}
@@ -902,6 +954,7 @@ export default function AdminEscalas() {
               <PainelNotificacao
                 equipes={equipes}
                 usuarios={usuarios}
+                avisos={avisosAdmin}
                 formAviso={formAviso}
                 salvandoId={salvandoId}
                 onSubmit={criarAviso}
@@ -909,6 +962,8 @@ export default function AdminEscalas() {
                 onAlternarEquipe={(equipeId) => alternarEquipe('aviso', equipeId)}
                 onAlternarUsuario={alternarUsuarioAviso}
                 onAbrirUsuario={setUsuarioModal}
+                onAlternarOcultoAviso={alternarOcultoAviso}
+                onExcluirAviso={excluirAviso}
               />
             )}
 
@@ -964,7 +1019,13 @@ export default function AdminEscalas() {
           </>
         )}
       </main>
-      <UsuarioModal usuario={usuarioModal} onClose={() => setUsuarioModal(null)} />
+      <UsuarioModal
+        usuario={usuarioModal}
+        onClose={() => setUsuarioModal(null)}
+        podeExcluir={Boolean(usuarioModal && usuarioModal.id !== usuario?.id)}
+        onExcluir={excluirUsuario}
+        excluindo={Boolean(usuarioModal && salvandoId === usuarioModal.id)}
+      />
       <Footer />
     </div>
   );
@@ -1052,7 +1113,6 @@ function PainelUsuarios({
   onAlternarEquipe,
   onAlternarLiderEquipe,
   onSalvar,
-  onExcluir,
   onAbrirUsuario,
   permiteCadastrar = false,
   mostrarCadastro = false,
@@ -1223,10 +1283,6 @@ function PainelUsuarios({
                 <div className="flex flex-wrap gap-2">
                   <button type="button" onClick={() => onEditar(editando ? null : usuario.id)} className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">
                     {editando ? 'Fechar edição' : 'Editar'}
-                  </button>
-                  <button type="button" disabled={salvandoId === usuario.id} onClick={() => onExcluir(usuario.id)} className="inline-flex items-center justify-center gap-2 rounded-md border border-red-100 bg-white px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-60">
-                    <Trash2 size={15} />
-                    Excluir
                   </button>
                 </div>
               </div>
@@ -1493,7 +1549,20 @@ function Contato({ pessoa, onAbrirUsuario, acaoExtra = null }) {
   );
 }
 
-function PainelNotificacao({ equipes, usuarios, formAviso, salvandoId, onSubmit, onChange, onAlternarEquipe, onAlternarUsuario, onAbrirUsuario }) {
+function PainelNotificacao({
+  equipes,
+  usuarios,
+  avisos,
+  formAviso,
+  salvandoId,
+  onSubmit,
+  onChange,
+  onAlternarEquipe,
+  onAlternarUsuario,
+  onAbrirUsuario,
+  onAlternarOcultoAviso,
+  onExcluirAviso,
+}) {
   return (
     <section className="mt-5 rounded-2xl border border-gray-200 bg-white shadow-sm">
       <div className="border-b border-gray-100 px-5 py-4">
@@ -1545,6 +1614,63 @@ function PainelNotificacao({ equipes, usuarios, formAviso, salvandoId, onSubmit,
           </button>
         </div>
       </form>
+
+      <div className="border-t border-gray-100 p-5">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h3 className="text-sm font-bold uppercase tracking-[0.16em] text-gray-500">Avisos enviados</h3>
+            <p className="mt-1 text-sm text-gray-500">Oculte avisos sem apagar o histórico ou exclua definitivamente quando necessário.</p>
+          </div>
+          <span className="w-fit rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.14em] text-gray-500">
+            {avisos.length} aviso{avisos.length === 1 ? '' : 's'}
+          </span>
+        </div>
+
+        <div className="mt-4 space-y-3">
+          {avisos.length === 0 ? (
+            <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-6 text-sm text-gray-500">
+              Nenhum aviso enviado ainda.
+            </div>
+          ) : avisos.map((aviso) => (
+            <article key={aviso.id} className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h4 className="text-base font-bold text-gray-950">{aviso.titulo}</h4>
+                    <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.14em] ${
+                      aviso.oculto ? 'bg-gray-200 text-gray-600' : 'bg-gray-950 text-white'
+                    }`}>
+                      {aviso.oculto ? 'Oculto' : 'Visível'}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs font-semibold text-gray-500">{formatarData(aviso.dataAviso)}</p>
+                  <p className="mt-2 line-clamp-2 text-sm leading-6 text-gray-600">{aviso.mensagem}</p>
+                </div>
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={salvandoId === `aviso-oculto-${aviso.id}`}
+                    onClick={() => onAlternarOcultoAviso(aviso)}
+                    className="inline-flex items-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700 transition hover:bg-gray-100 disabled:opacity-60"
+                  >
+                    {salvandoId === `aviso-oculto-${aviso.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : aviso.oculto ? <Eye size={15} /> : <EyeOff size={15} />}
+                    {aviso.oculto ? 'Exibir' : 'Ocultar'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={salvandoId === `aviso-excluir-${aviso.id}`}
+                    onClick={() => onExcluirAviso(aviso.id)}
+                    className="inline-flex items-center gap-2 rounded-md border border-red-100 bg-white px-3 py-2 text-xs font-bold text-red-600 transition hover:bg-red-50 disabled:opacity-60"
+                  >
+                    {salvandoId === `aviso-excluir-${aviso.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 size={15} />}
+                    Excluir
+                  </button>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+      </div>
     </section>
   );
 }

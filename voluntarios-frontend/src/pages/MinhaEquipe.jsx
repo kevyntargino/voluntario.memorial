@@ -6,7 +6,6 @@ import {
   Clock3,
   Loader2,
   Save,
-  Trash2,
   UserPlus,
   UsersRound,
   RefreshCcw,
@@ -24,6 +23,11 @@ const formEscalaInicial = {
   titulo: '',
   voluntarioIds: [],
   substitutoIds: [],
+};
+const formNovoVoluntarioInicial = {
+  nomeCompleto: '',
+  email: '',
+  telefone: '',
 };
 
 const filtrosRecorrentes = [0, 6].flatMap((diaSemana) => (
@@ -67,6 +71,8 @@ export default function MinhaEquipe() {
   const [filtroEscala, setFiltroEscala] = useState(filtrosRecorrentes[0].chave);
   const [usuarioModal, setUsuarioModal] = useState(null);
   const [mostrarAtribuirVoluntarios, setMostrarAtribuirVoluntarios] = useState(false);
+  const [mostrarCadastroVoluntario, setMostrarCadastroVoluntario] = useState(false);
+  const [formNovoVoluntario, setFormNovoVoluntario] = useState(formNovoVoluntarioInicial);
 
   const carregarEquipes = useCallback(async () => {
     setErro('');
@@ -179,22 +185,6 @@ export default function MinhaEquipe() {
     return dados;
   };
 
-  const removerVoluntario = async (voluntarioId) => {
-    setErro('');
-    setSucesso('');
-    setSalvando(true);
-
-    try {
-      await requestEquipe(`/api/equipes/${equipeId}/voluntarios/${voluntarioId}`, {
-        method: 'DELETE',
-      });
-    } catch (error) {
-      setErro(error.message);
-    } finally {
-      setSalvando(false);
-    }
-  };
-
   const salvarEscala = async (event) => {
     event.preventDefault();
 
@@ -257,6 +247,29 @@ export default function MinhaEquipe() {
         delete proximos[pedidoId];
         return proximos;
       });
+    } catch (error) {
+      setErro(error.message);
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  const cadastrarVoluntario = async (event) => {
+    event.preventDefault();
+
+    setErro('');
+    setSucesso('');
+    setSalvando(true);
+
+    try {
+      const dados = await requestEquipe(`/api/equipes/${equipeId}/voluntarios`, {
+        method: 'POST',
+        body: JSON.stringify(formNovoVoluntario),
+      });
+
+      setFormNovoVoluntario(formNovoVoluntarioInicial);
+      setMostrarCadastroVoluntario(false);
+      setSucesso(`${dados.mensagem || 'Voluntário cadastrado na equipe.'} Senha inicial: ${dados.senhaTemporaria}`);
     } catch (error) {
       setErro(error.message);
     } finally {
@@ -473,9 +486,63 @@ export default function MinhaEquipe() {
                 <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="text-sm font-semibold text-gray-700">{equipeSelecionada.voluntarios.length} voluntário(s) cadastrado(s)</p>
-                    <p className="mt-1 text-xs text-gray-500">Consulte os dados dos voluntários da equipe.</p>
+                    <p className="mt-1 text-xs text-gray-500">Consulte os dados ou cadastre um novo voluntário já vinculado a esta equipe.</p>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => setMostrarCadastroVoluntario((atual) => !atual)}
+                    className="inline-flex items-center justify-center gap-2 rounded-md bg-gray-950 px-3 py-2 text-sm font-semibold text-white transition hover:bg-gray-800"
+                  >
+                    <UserPlus size={15} />
+                    {mostrarCadastroVoluntario ? 'Fechar cadastro' : 'Cadastrar voluntário'}
+                  </button>
                 </div>
+                {mostrarCadastroVoluntario && (
+                  <form onSubmit={cadastrarVoluntario} className="mb-4 grid gap-3 rounded-xl border border-gray-200 bg-white p-4">
+                    <div className="grid gap-3 md:grid-cols-3">
+                      <label className="block">
+                        <span className="text-xs font-bold uppercase tracking-[0.14em] text-gray-400">Nome completo</span>
+                        <input
+                          value={formNovoVoluntario.nomeCompleto}
+                          onChange={(event) => setFormNovoVoluntario((atual) => ({ ...atual, nomeCompleto: event.target.value }))}
+                          className="mt-1 block w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
+                          placeholder="Nome do voluntário"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="text-xs font-bold uppercase tracking-[0.14em] text-gray-400">E-mail</span>
+                        <input
+                          type="email"
+                          value={formNovoVoluntario.email}
+                          onChange={(event) => setFormNovoVoluntario((atual) => ({ ...atual, email: event.target.value }))}
+                          className="mt-1 block w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
+                          placeholder="email@exemplo.com"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="text-xs font-bold uppercase tracking-[0.14em] text-gray-400">Telefone</span>
+                        <input
+                          value={formNovoVoluntario.telefone}
+                          onChange={(event) => setFormNovoVoluntario((atual) => ({ ...atual, telefone: event.target.value }))}
+                          className="mt-1 block w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
+                          placeholder="Contato"
+                        />
+                      </label>
+                    </div>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-xs font-semibold text-gray-500">
+                        A senha inicial será gerada automaticamente como NomeDoVoluntario123.
+                      </p>
+                      <button
+                        disabled={salvando}
+                        className="inline-flex w-fit items-center justify-center gap-2 rounded-md bg-gray-950 px-3 py-2 text-sm font-semibold text-white transition hover:bg-gray-800 disabled:opacity-60"
+                      >
+                        {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus size={15} />}
+                        Salvar voluntário
+                      </button>
+                    </div>
+                  </form>
+                )}
                 <div className="space-y-2">
                   {equipeSelecionada.voluntarios.map((voluntario) => (
                     <div key={voluntario.id} className="flex items-center justify-between gap-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-3">
@@ -491,15 +558,6 @@ export default function MinhaEquipe() {
                           <p className="truncate text-xs text-gray-500">{voluntario.email}</p>
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        disabled={salvando}
-                        onClick={() => removerVoluntario(voluntario.id)}
-                        className="rounded-md border border-red-100 bg-white p-2 text-red-600 transition hover:bg-red-50 disabled:opacity-50"
-                        title="Remover da equipe"
-                      >
-                        <Trash2 size={16} />
-                      </button>
                     </div>
                   ))}
                 </div>

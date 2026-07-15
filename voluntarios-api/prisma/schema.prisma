@@ -89,6 +89,7 @@ model Usuario {
   ordensCriadas     OrdemCulto[]            @relation("CriadorOrdemCulto")
   avisosCriados     Aviso[]                 @relation("CriadorAviso")
   avisosRecebidos   AvisoDestinatario[]
+  avisosVisualizados AvisoVisualizacao[]
   notificacoes      Notificacao[]
   logsAtividade     LogAuditoria[]          @relation("UsuarioAuditoria")
   tokensSenha       TokenRedefinicaoSenha[]
@@ -227,6 +228,8 @@ model Aviso {
   criadorId    String?   @map("criador_id") @db.Uuid
   criador      Usuario?  @relation("CriadorAviso", fields: [criadorId], references: [id], onDelete: SetNull)
   destinatarios AvisoDestinatario[]
+  visualizacoes AvisoVisualizacao[]
+  oculto       Boolean   @default(false)
 
   criadoEm     DateTime  @default(now()) @map("criado_em")
 
@@ -242,6 +245,19 @@ model AvisoDestinatario {
 
   @@unique([avisoId, usuarioId])
   @@map("avisos_destinatarios")
+}
+
+model AvisoVisualizacao {
+  id            String   @id @default(uuid()) @db.Uuid
+  avisoId       String   @map("aviso_id") @db.Uuid
+  aviso         Aviso    @relation(fields: [avisoId], references: [id], onDelete: Cascade)
+  usuarioId     String   @map("usuario_id") @db.Uuid
+  usuario       Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  visualizadoEm DateTime @default(now()) @map("visualizado_em")
+
+  @@unique([avisoId, usuarioId])
+  @@index([usuarioId, visualizadoEm])
+  @@map("avisos_visualizacoes")
 }
 
 model Notificacao {

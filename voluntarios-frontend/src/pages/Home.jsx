@@ -5,6 +5,7 @@ import { Footer } from '../components/Footer';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
 import { buildApiUrl } from '../lib/api';
+import logo from '../assets/logo.png';
 
 export default function Home() {
   const { token, usuario, logout } = useAuth();
@@ -34,7 +35,7 @@ export default function Home() {
         return;
       }
 
-      setTotalAvisos((dados.avisos || []).length);
+      setTotalAvisos(dados.totalNaoVisualizados ?? (dados.avisos || []).length);
     } catch {
       setTotalAvisos(null);
     }
@@ -54,11 +55,11 @@ export default function Home() {
       path: '/escalas',
     },
     {
-      title: 'Avisos recentes',
+      title: 'Avisos não visualizados',
       value: totalAvisos === null ? '-' : String(totalAvisos),
       description: totalAvisos === 0
-        ? 'Nenhum aviso disponível para você no momento.'
-        : 'Confira os comunicados enviados para você e suas equipes.',
+        ? 'Você já visualizou todos os avisos disponíveis.'
+        : 'Há comunicados aguardando sua leitura.',
       icon: Bell,
       action: 'Ver avisos',
       path: '/avisos',
@@ -82,6 +83,7 @@ export default function Home() {
           <div className="grid gap-10 px-6 py-8 lg:grid-cols-[1.3fr_0.9fr] lg:px-10 lg:py-12">
             <div>
               <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-gray-700">
+                <img src={logo} alt="MCom" className="mr-2 h-5 w-5 object-contain" />
                 Portal do voluntário
               </span>
 

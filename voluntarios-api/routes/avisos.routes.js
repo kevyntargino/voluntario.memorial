@@ -58,6 +58,8 @@ function exigirAdmin(req, res, next) {
 }
 
 function formatarAviso(aviso) {
+  const visualizacao = aviso.visualizacoes?.[0];
+
   return {
     id: aviso.id,
     titulo: aviso.titulo,
@@ -66,6 +68,9 @@ function formatarAviso(aviso) {
     tipo: aviso.tipo,
     equipe: aviso.equipe,
     criador: aviso.criador,
+    oculto: Boolean(aviso.oculto),
+    visualizado: Boolean(visualizacao),
+    visualizadoEm: visualizacao?.visualizadoEm || null,
     destinatarios: aviso.destinatarios?.map((item) => item.usuario) || [],
     criadoEm: aviso.criadoEm,
   };
@@ -129,6 +134,7 @@ async function carregarDestinatarios({ publico, equipeIds = [], usuarioIds = [] 
 
 router.get('/', autenticar, async (req, res) => {
   try {
+    const incluirVisualizados = ['todos', 'true', '1'].includes(String(req.query.visualizados || '').toLowerCase());
     const usuario = await prisma.usuario.findUnique({
       where: {
         id: req.usuarioAutenticado.id,
@@ -143,14 +149,107 @@ router.get('/', autenticar, async (req, res) => {
     });
 
     const equipeIds = usuario?.equipes.map((equipe) => equipe.id) || [];
-    const avisos = await prisma.aviso.findMany({
+    const filtroDestinatario = {
+      OR: [
+        { tipo: 'GLOBAL' },
+        {
+          tipo: 'EQUIPE',
+          equipeId: {
+            in: equipeIds,
+          },
+        },
+        {
+          destinatarios: {
+            some: {
+              usuarioId: req.usuarioAutenticado.id,
+            },
+          },
+        },
+      ],
+    };
+    const whereBase = {
+      oculto: false,
+      ...filtroDestinatario,
+    };
+    const [avisos, totalNaoVisualizados] = await Promise.all([
+      prisma.aviso.findMany({
+        where: {
+          ...whereBase,
+          ...(incluirVisualizados
+            ? {}
+            : {
+                visualizacoes: {
+                  none: {
+                    usuarioId: req.usuarioAutenticado.id,
+                  },
+                },
+              }),
+        },
+        include: {
+          equipe: {
+            select: {
+              id: true,
+              nome: true,
+            },
+          },
+          criador: {
+            select: {
+              id: true,
+              nomeCompleto: true,
+            },
+          },
+          visualizacoes: {
+            where: {
+              usuarioId: req.usuarioAutenticado.id,
+            },
+            select: {
+              visualizadoEm: true,
+            },
+          },
+        },
+        orderBy: [
+          { dataAviso: 'desc' },
+          { criadoEm: 'desc' },
+        ],
+      }),
+      prisma.aviso.count({
+        where: {
+          ...whereBase,
+          visualizacoes: {
+            none: {
+              usuarioId: req.usuarioAutenticado.id,
+            },
+          },
+        },
+      }),
+    ]);
+
+    return res.status(200).json({
+      avisos: avisos.map(formatarAviso),
+      totalNaoVisualizados,
+    });
+  } catch (erro) {
+    console.error('[ERRO LOG] GET /api/avisos:', erro);
+    return res.status(500).json({ erro: 'Erro interno no servidor. Tente novamente mais tarde.' });
+  }
+});
+
+router.patch('/:id/visualizar', autenticar, async (req, res) => {
+  try {
+    const aviso = await prisma.aviso.findFirst({
       where: {
+        id: req.params.id,
+        oculto: false,
         OR: [
           { tipo: 'GLOBAL' },
           {
             tipo: 'EQUIPE',
-            equipeId: {
-              in: equipeIds,
+            equipe: {
+              voluntarios: {
+                some: {
+                  id: req.usuarioAutenticado.id,
+                },
+              },
             },
           },
           {
@@ -162,31 +261,31 @@ router.get('/', autenticar, async (req, res) => {
           },
         ],
       },
-      include: {
-        equipe: {
-          select: {
-            id: true,
-            nome: true,
-          },
-        },
-        criador: {
-          select: {
-            id: true,
-            nomeCompleto: true,
-          },
-        },
-      },
-      orderBy: [
-        { dataAviso: 'desc' },
-        { criadoEm: 'desc' },
-      ],
     });
 
-    return res.status(200).json({
-      avisos: avisos.map(formatarAviso),
+    if (!aviso) {
+      return res.status(404).json({ erro: 'Aviso não encontrado.' });
+    }
+
+    await prisma.avisoVisualizacao.upsert({
+      where: {
+        avisoId_usuarioId: {
+          avisoId: aviso.id,
+          usuarioId: req.usuarioAutenticado.id,
+        },
+      },
+      update: {
+        visualizadoEm: new Date(),
+      },
+      create: {
+        avisoId: aviso.id,
+        usuarioId: req.usuarioAutenticado.id,
+      },
     });
+
+    return res.status(200).json({ mensagem: 'Aviso marcado como visualizado.' });
   } catch (erro) {
-    console.error('[ERRO LOG] GET /api/avisos:', erro);
+    console.error('[ERRO LOG] PATCH /api/avisos/:id/visualizar:', erro);
     return res.status(500).json({ erro: 'Erro interno no servidor. Tente novamente mais tarde.' });
   }
 });
@@ -219,7 +318,7 @@ router.get('/admin/opcoes', autenticar, exigirAdmin, async (req, res) => {
     ]);
 
     const avisos = await prisma.aviso.findMany({
-      take: 8,
+      take: 20,
       include: {
         equipe: {
           select: {
@@ -236,6 +335,12 @@ router.get('/admin/opcoes', autenticar, exigirAdmin, async (req, res) => {
                 email: true,
               },
             },
+          },
+        },
+        visualizacoes: {
+          select: {
+            usuarioId: true,
+            visualizadoEm: true,
           },
         },
       },
@@ -334,6 +439,51 @@ router.post('/admin', autenticar, exigirAdmin, async (req, res) => {
     });
   } catch (erro) {
     console.error('[ERRO LOG] POST /api/avisos/admin:', erro);
+    return res.status(500).json({ erro: 'Erro interno no servidor. Tente novamente mais tarde.' });
+  }
+});
+
+router.patch('/admin/:id/ocultar', autenticar, exigirAdmin, async (req, res) => {
+  try {
+    const { oculto } = req.body ?? {};
+    const aviso = await prisma.aviso.update({
+      where: {
+        id: req.params.id,
+      },
+      data: {
+        oculto: Boolean(oculto),
+      },
+    });
+
+    return res.status(200).json({
+      mensagem: aviso.oculto ? 'Aviso ocultado com sucesso.' : 'Aviso exibido com sucesso.',
+      aviso: formatarAviso(aviso),
+    });
+  } catch (erro) {
+    if (erro.code === 'P2025') {
+      return res.status(404).json({ erro: 'Aviso não encontrado.' });
+    }
+
+    console.error('[ERRO LOG] PATCH /api/avisos/admin/:id/ocultar:', erro);
+    return res.status(500).json({ erro: 'Erro interno no servidor. Tente novamente mais tarde.' });
+  }
+});
+
+router.delete('/admin/:id', autenticar, exigirAdmin, async (req, res) => {
+  try {
+    await prisma.aviso.delete({
+      where: {
+        id: req.params.id,
+      },
+    });
+
+    return res.status(200).json({ mensagem: 'Aviso excluído com sucesso.' });
+  } catch (erro) {
+    if (erro.code === 'P2025') {
+      return res.status(404).json({ erro: 'Aviso não encontrado.' });
+    }
+
+    console.error('[ERRO LOG] DELETE /api/avisos/admin/:id:', erro);
     return res.status(500).json({ erro: 'Erro interno no servidor. Tente novamente mais tarde.' });
   }
 });

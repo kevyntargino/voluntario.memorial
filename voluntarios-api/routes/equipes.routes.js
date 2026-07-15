@@ -368,22 +368,24 @@ router.post('/:equipeId/voluntarios', autenticar, async (req, res) => {
       return res.status(403).json({ erro: 'Você não pode gerenciar esta equipe.' });
     }
 
-    const { nomeCompleto, email, telefone, senha } = req.body ?? {};
+    const { nomeCompleto, email, telefone } = req.body ?? {};
     const emailNormalizado = typeof email === 'string' ? email.trim().toLowerCase() : '';
+    const nomeLimpo = typeof nomeCompleto === 'string' ? nomeCompleto.trim() : '';
 
-    if (typeof nomeCompleto !== 'string' || nomeCompleto.trim().length < 3 || !emailNormalizado) {
+    if (nomeLimpo.length < 3 || !emailNormalizado) {
       return res.status(400).json({ erro: 'Nome completo e e-mail são obrigatórios.' });
     }
 
-    const senhaHash = await bcrypt.hash(senha || 'Mcom@123', 10);
+    const senhaTemporaria = `${nomeLimpo.replace(/\s+/g, '')}123`;
+    const senhaHash = await bcrypt.hash(senhaTemporaria, 10);
     const voluntario = await prisma.usuario.upsert({
       where: { email: emailNormalizado },
       update: {
-        nomeCompleto: nomeCompleto.trim(),
+        nomeCompleto: nomeLimpo,
         telefone: typeof telefone === 'string' && telefone.trim() ? telefone.trim() : undefined,
       },
       create: {
-        nomeCompleto: nomeCompleto.trim(),
+        nomeCompleto: nomeLimpo,
         email: emailNormalizado,
         telefone: typeof telefone === 'string' && telefone.trim() ? telefone.trim() : null,
         senhaHash,
@@ -405,7 +407,7 @@ router.post('/:equipeId/voluntarios', autenticar, async (req, res) => {
     return res.status(201).json({
       mensagem: 'Voluntário cadastrado na equipe.',
       equipe,
-      senhaTemporaria: senha || 'Mcom@123',
+      senhaTemporaria,
     });
   } catch (erro) {
     console.error('[ERRO LOG] POST /api/equipes/:equipeId/voluntarios:', erro);
@@ -417,8 +419,8 @@ router.delete('/:equipeId/voluntarios/:usuarioId', autenticar, async (req, res) 
   try {
     const usuario = await getUsuarioComEquipes(req.usuarioAutenticado.id);
 
-    if (!podeGerenciar(usuario, req.params.equipeId)) {
-      return res.status(403).json({ erro: 'Você não pode gerenciar esta equipe.' });
+    if (!usuario?.permissoes.includes('ADMINISTRADOR')) {
+      return res.status(403).json({ erro: 'Apenas administradores podem remover voluntários de equipes.' });
     }
 
     await prisma.equipe.update({
