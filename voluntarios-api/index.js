@@ -1,6 +1,7 @@
 import 'dotenv/config'; // ISSO DEVE SER A PRIMEIRA LINHA DO ARQUIVO!
 import express from 'express';
 import cors from 'cors';
+import jwt from 'jsonwebtoken';
 import authRoutes from './routes/auth.routes.js';
 import escalasRoutes from './routes/escalas.routes.js';
 import equipesRoutes from './routes/equipes.routes.js';
@@ -9,20 +10,47 @@ import adminRoutes from './routes/admin.routes.js';
 
 const app = express();
 
+function getJwtSecret() {
+  if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
+    throw new Error('JWT_SECRET e obrigatorio em producao.');
+  }
+
+  return process.env.JWT_SECRET || 'chave_temporaria_dev';
+}
+
+function protegerApi(req, res, next) {
+  const rotaPublica = req.method === 'POST' && req.path === '/auth/login';
+
+  if (rotaPublica) {
+    return next();
+  }
+
+  const authorization = req.headers.authorization || '';
+  const [tipo, token] = authorization.split(' ');
+
+  if (tipo !== 'Bearer' || !token) {
+    return res.status(401).json({ erro: 'Token de autenticação não informado.' });
+  }
+
+  try {
+    jwt.verify(token, getJwtSecret());
+    return next();
+  } catch {
+    return res.status(401).json({ erro: 'Sessão inválida ou expirada.' });
+  }
+}
+
 // ==========================================
 // MIDDLEWARES GLOBAIS
 // ==========================================
 app.use(cors()); 
 app.use(express.json()); 
 
-// ... O resto do seu código continua exatamente igual (app.use, app.get e app.listen)
-// Ensina o Express a ler corpos de requisição em JSON
-app.use(express.json()); 
-
 // ==========================================
 // REGISTRO DE ROTAS
 // ==========================================
 // Exposição da rota de login
+app.use('/api', protegerApi);
 app.use('/api/auth', authRoutes);
 app.use('/api/escalas', escalasRoutes);
 app.use('/api/equipes', equipesRoutes);

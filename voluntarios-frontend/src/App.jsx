@@ -8,6 +8,7 @@ import Escalas from './pages/Escalas';
 import MinhaEquipe from './pages/MinhaEquipe';
 import AdminEscalas from './pages/AdminEscalas';
 import Avisos from './pages/Avisos';
+import Manuais from './pages/Manuais';
 import { Redirect } from './components/Redirect';
 
 function App() {
@@ -82,12 +83,16 @@ function AppRouter() {
     return <MinhaEquipe />;
   }
 
-  if (pathname === '/admin/escalas') {
+  if (pathname === '/admin' || pathname.startsWith('/admin/')) {
     return <AdminEscalas />;
   }
 
   if (pathname === '/avisos') {
     return <Avisos />;
+  }
+
+  if (pathname === '/manuais') {
+    return <Manuais />;
   }
 
   return <Home />;

@@ -15,6 +15,10 @@ const prisma = new PrismaClient({
 const router = Router();
 
 function getJwtSecret() {
+  if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
+    throw new Error('JWT_SECRET e obrigatorio em producao.');
+  }
+
   return process.env.JWT_SECRET || 'chave_temporaria_dev';
 }
 
@@ -43,7 +47,16 @@ async function autenticar(req, res, next) {
 
   try {
     const payload = jwt.verify(token, getJwtSecret());
-    req.usuarioAutenticado = payload;
+    const usuario = await prisma.usuario.findUnique({
+      where: { id: payload.id },
+      select: { id: true, permissoes: true },
+    });
+
+    if (!usuario) {
+      return res.status(401).json({ erro: 'Sessão inválida ou expirada.' });
+    }
+
+    req.usuarioAutenticado = usuario;
     return next();
   } catch {
     return res.status(401).json({ erro: 'Sessão inválida ou expirada.' });

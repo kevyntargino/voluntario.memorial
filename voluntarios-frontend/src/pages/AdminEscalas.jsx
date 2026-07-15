@@ -59,7 +59,7 @@ function criarFormUsuario(usuario) {
 
 export default function AdminEscalas() {
   const { token, usuario, logout } = useAuth();
-  const { navigate } = useNavigation();
+  const { navigate, pathname } = useNavigation();
   const [dashboard, setDashboard] = useState(null);
   const [equipes, setEquipes] = useState([]);
   const [usuarios, setUsuarios] = useState([]);
@@ -69,7 +69,14 @@ export default function AdminEscalas() {
   const [formRecorrentes, setFormRecorrentes] = useState({});
   const [formEsporadica, setFormEsporadica] = useState(formEsporadicaInicial);
   const [formAviso, setFormAviso] = useState(formAvisoInicial);
-  const [painelAberto, setPainelAberto] = useState('visao');
+  const getPainelPelaRota = useCallback(() => {
+    if (pathname === '/admin/voluntarios') return 'voluntarios';
+    if (pathname === '/admin/lideres') return 'lideres';
+    if (pathname === '/admin/notificacoes') return 'notificacao';
+    if (pathname === '/admin/escalas') return 'escalas';
+    return 'visao';
+  }, [pathname]);
+  const [painelAberto, setPainelAberto] = useState(() => getPainelPelaRota());
   const [erro, setErro] = useState('');
   const [sucesso, setSucesso] = useState('');
   const [carregando, setCarregando] = useState(true);
@@ -127,6 +134,15 @@ export default function AdminEscalas() {
   useEffect(() => {
     if (isAdmin) carregarDados();
   }, [carregarDados, isAdmin]);
+
+  useEffect(() => {
+    setPainelAberto(getPainelPelaRota());
+  }, [getPainelPelaRota]);
+
+  const abrirPainel = (painel, rota) => {
+    setPainelAberto(painel);
+    navigate(rota);
+  };
 
   const lideres = useMemo(() => usuarios.filter((item) => item.permissoes?.includes('LIDER_EQUIPE')), [usuarios]);
   const usuariosDoPainel = painelAberto === 'lideres' ? lideres : usuarios;
@@ -323,7 +339,7 @@ export default function AdminEscalas() {
                 Acompanhe equipes, voluntários, ausências e gerencie acessos, escalas e notificações.
               </p>
             </div>
-            <button onClick={() => setPainelAberto('notificacao')} className="inline-flex items-center gap-2 rounded-md bg-gray-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-gray-800">
+            <button onClick={() => abrirPainel('notificacao', '/admin/notificacoes')} className="inline-flex items-center gap-2 rounded-md bg-gray-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-gray-800">
               <Bell size={16} />
               Enviar notificação
             </button>
@@ -352,10 +368,10 @@ export default function AdminEscalas() {
               <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
                 <h2 className="text-lg font-bold text-gray-950">Ações rápidas</h2>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  <BotaoPainel ativo={painelAberto === 'voluntarios'} icon={UsersRound} label="Ver voluntários" onClick={() => setPainelAberto('voluntarios')} />
-                  <BotaoPainel ativo={painelAberto === 'lideres'} icon={UserCog} label="Ver líderes de equipe" onClick={() => setPainelAberto('lideres')} />
-                  <BotaoPainel ativo={painelAberto === 'notificacao'} icon={Megaphone} label="Enviar notificação" onClick={() => setPainelAberto('notificacao')} />
-                  <BotaoPainel ativo={painelAberto === 'escalas'} icon={CalendarClock} label="Gerenciar escalas" onClick={() => setPainelAberto('escalas')} />
+                  <BotaoPainel ativo={painelAberto === 'voluntarios'} icon={UsersRound} label="Ver voluntários" onClick={() => abrirPainel('voluntarios', '/admin/voluntarios')} />
+                  <BotaoPainel ativo={painelAberto === 'lideres'} icon={UserCog} label="Ver líderes de equipe" onClick={() => abrirPainel('lideres', '/admin/lideres')} />
+                  <BotaoPainel ativo={painelAberto === 'notificacao'} icon={Megaphone} label="Enviar notificação" onClick={() => abrirPainel('notificacao', '/admin/notificacoes')} />
+                  <BotaoPainel ativo={painelAberto === 'escalas'} icon={CalendarClock} label="Gerenciar escalas" onClick={() => abrirPainel('escalas', '/admin/escalas')} />
                 </div>
               </div>
             </section>

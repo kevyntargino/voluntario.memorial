@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Menu, X, LogOut, User, UsersRound, ShieldCheck } from 'lucide-react';
+import { Menu, X, LogOut, User } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
 
@@ -38,22 +38,23 @@ export default function Navbar() {
               Início
             </button>
             <button type="button" onClick={() => irPara('/escalas')} className="font-sans text-gray-600 hover:text-dourado-600 transition-colors font-medium">
-              Minhas Escalas
+              Escalas
             </button>
             {podeGerenciarEquipe && (
-              <button type="button" onClick={() => irPara('/minha-equipe')} className="flex items-center gap-2 font-sans text-gray-600 hover:text-dourado-600 transition-colors font-medium">
-                <UsersRound size={18} />
-                Minha equipe
+              <button type="button" onClick={() => irPara('/minha-equipe')} className="font-sans text-gray-600 hover:text-dourado-600 transition-colors font-medium">
+                Equipe
               </button>
             )}
             {isAdmin && (
-              <button type="button" onClick={() => irPara('/admin/escalas')} className="flex items-center gap-2 font-sans text-gray-600 hover:text-dourado-600 transition-colors font-medium">
-                <ShieldCheck size={18} />
-                Admin escalas
+              <button type="button" onClick={() => irPara('/admin')} className="font-sans text-gray-600 hover:text-dourado-600 transition-colors font-medium">
+                Admin
               </button>
             )}
             <button type="button" onClick={() => irPara('/avisos')} className="font-sans text-gray-600 hover:text-dourado-600 transition-colors font-medium">
               Avisos
+            </button>
+            <button type="button" onClick={() => irPara('/manuais')} className="font-sans text-gray-600 hover:text-dourado-600 transition-colors font-medium">
+              Manuais
             </button>
           </div>
 
@@ -95,22 +96,23 @@ export default function Navbar() {
               Perfil
             </button>
             <button type="button" onClick={() => irPara('/escalas')} className="block w-full px-3 py-2 rounded-md text-left text-base font-medium text-gray-700 hover:text-dourado-600 hover:bg-dourado-50">
-              Minhas Escalas
+              Escalas
             </button>
             {podeGerenciarEquipe && (
-              <button type="button" onClick={() => irPara('/minha-equipe')} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-base font-medium text-gray-700 hover:text-dourado-600 hover:bg-dourado-50">
-                <UsersRound size={18} />
-                Minha equipe
+              <button type="button" onClick={() => irPara('/minha-equipe')} className="block w-full rounded-md px-3 py-2 text-left text-base font-medium text-gray-700 hover:text-dourado-600 hover:bg-dourado-50">
+                Equipe
               </button>
             )}
             {isAdmin && (
-              <button type="button" onClick={() => irPara('/admin/escalas')} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-base font-medium text-gray-700 hover:text-dourado-600 hover:bg-dourado-50">
-                <ShieldCheck size={18} />
-                Admin escalas
+              <button type="button" onClick={() => irPara('/admin')} className="block w-full rounded-md px-3 py-2 text-left text-base font-medium text-gray-700 hover:text-dourado-600 hover:bg-dourado-50">
+                Admin
               </button>
             )}
             <button type="button" onClick={() => irPara('/avisos')} className="block w-full px-3 py-2 rounded-md text-left text-base font-medium text-gray-700 hover:text-dourado-600 hover:bg-dourado-50">
               Avisos
+            </button>
+            <button type="button" onClick={() => irPara('/manuais')} className="block w-full px-3 py-2 rounded-md text-left text-base font-medium text-gray-700 hover:text-dourado-600 hover:bg-dourado-50">
+              Manuais
             </button>
             <button 
               onClick={handleLogout}
