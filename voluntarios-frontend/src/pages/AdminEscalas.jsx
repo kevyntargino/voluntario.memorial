@@ -97,10 +97,39 @@ function criarFormUsuario(usuario) {
 function readAsDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
+    const timeout = window.setTimeout(() => {
+      reader.abort();
+      reject(new Error('A leitura do PDF demorou demais. Tente um arquivo menor.'));
+    }, 20000);
+
     reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(new Error('Não foi possível ler o arquivo.'));
+    reader.onerror = () => {
+      window.clearTimeout(timeout);
+      reject(new Error('Não foi possível ler o arquivo.'));
+    };
+    reader.onloadend = () => window.clearTimeout(timeout);
     reader.readAsDataURL(file);
   });
+}
+
+async function fetchComTimeout(url, options = {}, timeoutMs = 60000) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      throw new Error('O envio demorou demais. Verifique sua conexão ou tente um PDF menor.');
+    }
+
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
 }
 
 async function prepararArquivoPdf(file) {
@@ -638,11 +667,19 @@ export default function AdminEscalas() {
     event.preventDefault();
     setErro('');
     setSucesso('');
-    setSalvandoId(manualEditandoId || 'novo-manual');
 
     try {
+      if (formManual.titulo.trim().length < 3) {
+        throw new Error('Informe o título do manual.');
+      }
+
+      if (!manualEditandoId && !formManual.arquivo) {
+        throw new Error('Selecione um arquivo PDF para cadastrar o manual.');
+      }
+
+      setSalvandoId(manualEditandoId || 'novo-manual');
       const arquivo = await prepararArquivoPdf(formManual.arquivo);
-      const resposta = await fetch(buildApiUrl(manualEditandoId ? `/api/manuais/admin/${manualEditandoId}` : '/api/manuais/admin'), {
+      const resposta = await fetchComTimeout(buildApiUrl(manualEditandoId ? `/api/manuais/admin/${manualEditandoId}` : '/api/manuais/admin'), {
         method: manualEditandoId ? 'PATCH' : 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -652,8 +689,8 @@ export default function AdminEscalas() {
           oculto: formManual.oculto,
           arquivo,
         }),
-      });
-      const dados = await resposta.json();
+      }, 90000);
+      const dados = await resposta.json().catch(() => ({}));
 
       if (!resposta.ok) throw new Error(dados.erro || 'Não foi possível salvar o manual.');
 
@@ -1981,6 +2018,7 @@ function PainelManuais({
 }) {
   const [busca, setBusca] = useState('');
   const [filtro, setFiltro] = useState('TODOS');
+  const salvandoManual = salvandoId === 'novo-manual' || (Boolean(manualEditandoId) && salvandoId === manualEditandoId);
   const manuaisFiltrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
 
@@ -2063,10 +2101,10 @@ function PainelManuais({
 
           <div className="mt-5 flex flex-wrap gap-2 border-t border-gray-100 pt-4">
             <button
-              disabled={salvandoId === 'novo-manual' || salvandoId === manualEditandoId}
+              disabled={salvandoManual}
               className="inline-flex items-center justify-center gap-2 rounded-md bg-gray-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-gray-800 disabled:opacity-60"
             >
-              {(salvandoId === 'novo-manual' || salvandoId === manualEditandoId) ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save size={16} />}
+              {salvandoManual ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save size={16} />}
               {manualEditandoId ? 'Salvar manual' : 'Cadastrar manual'}
             </button>
             <button

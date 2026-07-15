@@ -12,11 +12,17 @@ import Manuais from './pages/Manuais';
 import { Redirect } from './components/Redirect';
 
 function App() {
-  const [pathname, setPathname] = useState(() => window.location.pathname || '/');
+  const [location, setLocation] = useState(() => ({
+    pathname: window.location.pathname || '/',
+    search: window.location.search || '',
+  }));
 
   useEffect(() => {
     const handlePopState = () => {
-      setPathname(window.location.pathname || '/');
+      setLocation({
+        pathname: window.location.pathname || '/',
+        search: window.location.search || '',
+      });
     };
 
     window.addEventListener('popstate', handlePopState);
@@ -24,10 +30,11 @@ function App() {
   }, []);
 
   const navigate = (to, { replace = false } = {}) => {
-    const nextPath = to.startsWith('/') ? to : `/${to}`;
+    const nextUrl = new URL(to.startsWith('/') ? to : `/${to}`, window.location.origin);
+    const nextPath = `${nextUrl.pathname}${nextUrl.search}`;
 
-    if (window.location.pathname === nextPath) {
-      setPathname(nextPath);
+    if (`${window.location.pathname}${window.location.search}` === nextPath) {
+      setLocation({ pathname: nextUrl.pathname, search: nextUrl.search });
       return;
     }
 
@@ -37,11 +44,11 @@ function App() {
       window.history.pushState({}, '', nextPath);
     }
 
-    setPathname(nextPath);
+    setLocation({ pathname: nextUrl.pathname, search: nextUrl.search });
   };
 
   return (
-    <NavigationProvider value={{ pathname, navigate }}>
+    <NavigationProvider value={{ ...location, navigate }}>
       <AuthProvider>
         <AppRouter />
       </AuthProvider>

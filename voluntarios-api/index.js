@@ -7,9 +7,20 @@ import escalasRoutes from './routes/escalas.routes.js';
 import equipesRoutes from './routes/equipes.routes.js';
 import avisosRoutes from './routes/avisos.routes.js';
 import manuaisRoutes from './routes/manuais.routes.js';
+import notificacoesRoutes from './routes/notificacoes.routes.js';
 import adminRoutes from './routes/admin.routes.js';
+import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { Pool } from 'pg';
+import { gerarNotificacoesAutomaticas } from './services/notificacoes.service.js';
 
 const app = express();
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
+const prisma = new PrismaClient({
+  adapter: new PrismaPg(pool),
+});
 
 function getJwtSecret() {
   if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
@@ -58,6 +69,7 @@ app.use('/api/escalas', escalasRoutes);
 app.use('/api/equipes', equipesRoutes);
 app.use('/api/avisos', avisosRoutes);
 app.use('/api/manuais', manuaisRoutes);
+app.use('/api/notificacoes', notificacoesRoutes);
 app.use('/api/admin', adminRoutes);
 
 // Rota de Health Check para verificar se o servidor está online
@@ -74,3 +86,15 @@ app.listen(PORT, () => {
   console.log(`[Servidor] API rodando com sucesso na porta ${PORT}`);
   console.log(`[Servidor] Rota de login exposta em: http://localhost:${PORT}/api/auth/login`);
 });
+
+if (process.env.NODE_ENV !== 'test') {
+  gerarNotificacoesAutomaticas(prisma).catch((erro) => {
+    console.warn('[WARN] Falha ao gerar notificações iniciais:', erro.message);
+  });
+
+  setInterval(() => {
+    gerarNotificacoesAutomaticas(prisma).catch((erro) => {
+      console.warn('[WARN] Falha ao gerar notificações automáticas:', erro.message);
+    });
+  }, 60 * 60 * 1000);
+}

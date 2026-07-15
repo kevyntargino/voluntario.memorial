@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
+import { notificarSubstituto } from '../services/notificacoes.service.js';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -506,7 +507,7 @@ router.post('/:equipeId/substituicoes/:participacaoId/atribuir', autenticar, asy
 
     const dataOcorrenciaSubstituicao = pedido.dataOcorrenciaSubstituicao || getProximaOcorrencia(pedido.escala);
 
-    await prisma.$transaction([
+    const [, participacaoSubstituto] = await prisma.$transaction([
       prisma.voluntarioEscala.update({
         where: {
           id: req.params.participacaoId,
@@ -537,8 +538,24 @@ router.post('/:equipeId/substituicoes/:participacaoId/atribuir', autenticar, asy
           dataOcorrenciaSubstituicao,
           atribuidoPorId: req.usuarioAutenticado.id,
         },
+        include: {
+          escala: {
+            include: {
+              equipe: {
+                select: { id: true, nome: true },
+              },
+            },
+          },
+        },
       }),
     ]);
+
+    await notificarSubstituto(prisma, {
+      participacao: participacaoSubstituto,
+      dataOcorrencia: dataOcorrenciaSubstituicao,
+    }).catch((notificationError) => {
+      console.warn('[WARN] Falha ao notificar substituto:', notificationError.message);
+    });
 
     const equipe = await carregarEquipe(req.params.equipeId, usuario);
 
@@ -600,7 +617,7 @@ router.patch('/:equipeId/escalas/:escalaId', autenticar, async (req, res) => {
     });
 
     for (const usuarioId of voluntarioIdsValidos) {
-      await prisma.voluntarioEscala.upsert({
+      const participacao = await prisma.voluntarioEscala.upsert({
         where: {
           usuarioId_escalaId: {
             usuarioId,
@@ -616,7 +633,22 @@ router.patch('/:equipeId/escalas/:escalaId', autenticar, async (req, res) => {
           substituto: substitutoIdsValidos.includes(usuarioId),
           atribuidoPorId: req.usuarioAutenticado.id,
         },
+        include: {
+          escala: {
+            include: {
+              equipe: {
+                select: { id: true, nome: true },
+              },
+            },
+          },
+        },
       });
+
+      if (substitutoIdsValidos.includes(usuarioId)) {
+        await notificarSubstituto(prisma, { participacao }).catch((notificationError) => {
+          console.warn('[WARN] Falha ao notificar substituto:', notificationError.message);
+        });
+      }
     }
 
     const equipe = await carregarEquipe(req.params.equipeId, usuario);

@@ -680,6 +680,25 @@ router.patch('/:id/status', autenticar, async (req, res) => {
       },
     });
 
+    if (status === 'CONFIRMADA') {
+      await prisma.notificacao.updateMany({
+        where: {
+          usuarioId: req.usuarioAutenticado.id,
+          tipo: 'CONFIRMACAO_ESCALA',
+          visualizada: false,
+          chave: {
+            contains: `:${escalaExistente.id}:`,
+          },
+        },
+        data: {
+          visualizada: true,
+          lidaEm: new Date(),
+        },
+      }).catch((notificationError) => {
+        console.warn('[WARN] Falha ao marcar notificações de confirmação como visualizadas:', notificationError.message);
+      });
+    }
+
     return res.status(200).json({
       mensagem: 'Status da escala atualizado com sucesso.',
       escala: formatarEscala(escalaAtualizada),

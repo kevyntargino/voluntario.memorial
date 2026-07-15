@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
+import { notificarAviso } from '../services/notificacoes.service.js';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -314,6 +315,16 @@ router.post('/admin', autenticar, exigirAdmin, async (req, res) => {
               })),
             },
       },
+    });
+    const destinatariosNotificacao = publico === 'TODOS'
+      ? (await prisma.usuario.findMany({ select: { id: true } })).map((usuario) => usuario.id)
+      : destinatariosUnicos;
+
+    await notificarAviso(prisma, {
+      aviso,
+      usuarioIds: destinatariosNotificacao,
+    }).catch((notificationError) => {
+      console.warn('[WARN] Falha ao criar notificações do aviso:', notificationError.message);
     });
 
     return res.status(201).json({

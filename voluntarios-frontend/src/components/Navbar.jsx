@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { BadgeCheck, Loader2, LogOut, Menu, Pencil, Save, Trash2, User, X } from 'lucide-react';
+import { BadgeCheck, Bell, CheckCheck, Loader2, LogOut, Menu, Pencil, Save, Trash2, User, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
 import { buildApiUrl } from '../lib/api';
 import { uploadFotoUsuario } from '../lib/uploadFoto';
+import logo from '../assets/logo.png';
 
 const sexoOptions = [
   { value: '', label: 'Não informado' },
@@ -41,8 +42,17 @@ function getTemaInicial() {
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'escuro' : 'claro';
 }
 
+function formatarDataNotificacao(data) {
+  if (!data) return '';
+  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(data));
+}
+
 export default function Navbar() {
   const [menuAberto, setMenuAberto] = useState(false);
+  const [notificacoesAberto, setNotificacoesAberto] = useState(false);
+  const [notificacoes, setNotificacoes] = useState([]);
+  const [naoVisualizadas, setNaoVisualizadas] = useState(0);
+  const [carregandoNotificacoes, setCarregandoNotificacoes] = useState(false);
   const [tema, setTema] = useState(getTemaInicial);
   const [perfilAberto, setPerfilAberto] = useState(false);
   const [editandoPerfil, setEditandoPerfil] = useState(false);
@@ -68,6 +78,35 @@ export default function Navbar() {
     window.localStorage.setItem(THEME_KEY, tema);
   }, [tema]);
 
+  const carregarNotificacoes = async () => {
+    if (!token) return;
+
+    setCarregandoNotificacoes(true);
+
+    try {
+      const resposta = await fetch(buildApiUrl('/api/notificacoes'), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const dados = await resposta.json();
+
+      if (resposta.ok) {
+        setNotificacoes(dados.notificacoes || []);
+        setNaoVisualizadas(dados.naoVisualizadas || 0);
+      }
+    } catch {
+      // Notificações não devem bloquear a navegação.
+    } finally {
+      setCarregandoNotificacoes(false);
+    }
+  };
+
+  useEffect(() => {
+    carregarNotificacoes();
+    const interval = window.setInterval(carregarNotificacoes, 5 * 60 * 1000);
+
+    return () => window.clearInterval(interval);
+  }, [token]);
+
   const handleLogout = () => {
     logout();
     navigate('/login', { replace: true });
@@ -80,12 +119,53 @@ export default function Navbar() {
 
   const abrirPerfil = () => {
     setPerfilAberto((atual) => !atual);
+    setNotificacoesAberto(false);
     setMenuAberto(false);
     setEditandoPerfil(false);
     setErroPerfil('');
     setSucessoPerfil('');
     setFormSenha(senhaInicial);
     setFormPerfil(criarFormUsuario(usuario));
+  };
+
+  const abrirNotificacoes = () => {
+    setNotificacoesAberto((atual) => !atual);
+    setPerfilAberto(false);
+    setMenuAberto(false);
+    carregarNotificacoes();
+  };
+
+  const visualizarNotificacao = async (notificacao) => {
+    if (!notificacao.visualizada) {
+      setNotificacoes((atuais) => atuais.map((item) => (
+        item.id === notificacao.id ? { ...item, visualizada: true, lidaEm: new Date().toISOString() } : item
+      )));
+      setNaoVisualizadas((total) => Math.max(0, total - 1));
+
+      fetch(buildApiUrl(`/api/notificacoes/${notificacao.id}/visualizar`), {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => {});
+    }
+
+    if (notificacao.link) {
+      navigate(notificacao.link);
+      setNotificacoesAberto(false);
+    }
+  };
+
+  const visualizarTodas = async () => {
+    setNotificacoes((atuais) => atuais.map((item) => ({ ...item, visualizada: true, lidaEm: item.lidaEm || new Date().toISOString() })));
+    setNaoVisualizadas(0);
+
+    try {
+      await fetch(buildApiUrl('/api/notificacoes/visualizar-todas'), {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch {
+      carregarNotificacoes();
+    }
   };
 
   const salvarPerfil = async (event) => {
@@ -264,40 +344,55 @@ export default function Navbar() {
           
           {/* Logo / Título */}
           <div className="flex items-center">
-            <button type="button" onClick={() => navigate('/')} className="font-serif text-2xl font-bold text-dourado-600">
-              MCom
+            <button type="button" onClick={() => navigate('/')} className="flex items-center gap-2">
+              <img src={logo} alt="MCom" className="h-10 w-10 rounded-xl object-contain" />
+              <span className="font-serif text-2xl font-bold text-gray-950">MCom</span>
             </button>
           </div>
 
           {/* Links de Navegação - Desktop */}
           <div className="hidden md:flex md:items-center md:space-x-8">
-            <button type="button" onClick={() => irPara('/')} className="font-sans text-gray-600 hover:text-dourado-600 transition-colors font-medium">
+            <button type="button" onClick={() => irPara('/')} className="font-sans text-gray-600 hover:text-gray-950 transition-colors font-medium">
               Início
             </button>
-            <button type="button" onClick={() => irPara('/escalas')} className="font-sans text-gray-600 hover:text-dourado-600 transition-colors font-medium">
+            <button type="button" onClick={() => irPara('/escalas')} className="font-sans text-gray-600 hover:text-gray-950 transition-colors font-medium">
               Escalas
             </button>
+            <button type="button" onClick={() => irPara('/avisos')} className="font-sans text-gray-600 hover:text-gray-950 transition-colors font-medium">
+              Avisos
+            </button>
+            <button type="button" onClick={() => irPara('/manuais')} className="font-sans text-gray-600 hover:text-gray-950 transition-colors font-medium">
+              Manuais
+            </button>
             {podeGerenciarEquipe && (
-              <button type="button" onClick={() => irPara('/minha-equipe')} className="font-sans text-gray-600 hover:text-dourado-600 transition-colors font-medium">
+              <button type="button" onClick={() => irPara('/minha-equipe')} className="font-sans text-gray-600 hover:text-gray-950 transition-colors font-medium">
                 Equipe
               </button>
             )}
             {isAdmin && (
-              <button type="button" onClick={() => irPara('/admin')} className="font-sans text-gray-600 hover:text-dourado-600 transition-colors font-medium">
+              <button type="button" onClick={() => irPara('/admin')} className="font-sans text-gray-600 hover:text-gray-950 transition-colors font-medium">
                 Admin
               </button>
             )}
-            <button type="button" onClick={() => irPara('/avisos')} className="font-sans text-gray-600 hover:text-dourado-600 transition-colors font-medium">
-              Avisos
-            </button>
-            <button type="button" onClick={() => irPara('/manuais')} className="font-sans text-gray-600 hover:text-dourado-600 transition-colors font-medium">
-              Manuais
-            </button>
+            
           </div>
 
           {/* Ações do Usuário - Desktop */}
           <div className="hidden md:flex items-center space-x-4">
-            <button type="button" onClick={abrirPerfil} className="flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:border-dourado-200 hover:text-dourado-700 focus:outline-none focus:ring-2 focus:ring-dourado-500">
+            <button
+              type="button"
+              onClick={abrirNotificacoes}
+              className="relative grid h-10 w-10 place-items-center rounded-full border border-gray-200 bg-white text-gray-600 transition hover:border-gray-400 hover:text-gray-950"
+              aria-label="Abrir notificações"
+            >
+              <Bell size={18} />
+              {naoVisualizadas > 0 && (
+                <span className="absolute -right-1 -top-1 grid min-h-5 min-w-5 place-items-center rounded-full bg-gray-950 px-1 text-[10px] font-bold text-white">
+                  {naoVisualizadas > 9 ? '9+' : naoVisualizadas}
+                </span>
+              )}
+            </button>
+            <button type="button" onClick={abrirPerfil} className="flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-950 focus:outline-none focus:ring-2 focus:ring-gray-900">
               <span className="grid h-8 w-8 place-items-center overflow-hidden rounded-full bg-gray-100 text-gray-500">
                 {usuario?.urlFoto ? (
                   <img src={usuario.urlFoto} alt="" className="h-full w-full object-cover" />
@@ -310,7 +405,7 @@ export default function Navbar() {
             <select
               value={tema}
               onChange={(event) => setTema(event.target.value)}
-              className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 outline-none transition hover:border-dourado-200 focus:border-dourado-500 focus:ring-2 focus:ring-dourado-500/20 dark:bg-gray-800 dark:text-gray-100"
+              className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 outline-none transition hover:border-gray-400 focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10 dark:bg-gray-800 dark:text-gray-100"
               aria-label="Selecionar tema"
             >
               <option value="claro">Modo claro</option>
@@ -320,6 +415,19 @@ export default function Navbar() {
 
           {/* Botão Menu Mobile */}
           <div className="flex items-center md:hidden">
+            <button
+              type="button"
+              onClick={abrirNotificacoes}
+              className="relative mr-1 grid h-10 w-10 place-items-center rounded-full border border-gray-200 bg-white text-gray-500"
+              aria-label="Abrir notificações"
+            >
+              <Bell size={18} />
+              {naoVisualizadas > 0 && (
+                <span className="absolute -right-1 -top-1 grid min-h-5 min-w-5 place-items-center rounded-full bg-gray-950 px-1 text-[10px] font-bold text-white">
+                  {naoVisualizadas > 9 ? '9+' : naoVisualizadas}
+                </span>
+              )}
+            </button>
             <button
               type="button"
               onClick={abrirPerfil}
@@ -334,7 +442,7 @@ export default function Navbar() {
             </button>
             <button
               onClick={() => setMenuAberto(!menuAberto)}
-              className="text-gray-500 hover:text-dourado-600 focus:outline-none p-2"
+              className="text-gray-500 hover:text-gray-950 focus:outline-none p-2"
             >
               {menuAberto ? <X size={24} /> : <Menu size={24} />}
             </button>
@@ -346,26 +454,26 @@ export default function Navbar() {
       {menuAberto && (
         <div className="md:hidden border-t border-gray-100 bg-white">
           <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3">
-            <button type="button" onClick={() => irPara('/')} className="block w-full px-3 py-2 rounded-md text-left text-base font-medium text-gray-700 hover:text-dourado-600 hover:bg-dourado-50">
+            <button type="button" onClick={() => irPara('/')} className="block w-full px-3 py-2 rounded-md text-left text-base font-medium text-gray-700 hover:text-gray-950 hover:bg-gray-100">
               Início
             </button>
-            <button type="button" onClick={() => irPara('/escalas')} className="block w-full px-3 py-2 rounded-md text-left text-base font-medium text-gray-700 hover:text-dourado-600 hover:bg-dourado-50">
+            <button type="button" onClick={() => irPara('/escalas')} className="block w-full px-3 py-2 rounded-md text-left text-base font-medium text-gray-700 hover:text-gray-950 hover:bg-gray-100">
               Escalas
             </button>
             {podeGerenciarEquipe && (
-              <button type="button" onClick={() => irPara('/minha-equipe')} className="block w-full rounded-md px-3 py-2 text-left text-base font-medium text-gray-700 hover:text-dourado-600 hover:bg-dourado-50">
+              <button type="button" onClick={() => irPara('/minha-equipe')} className="block w-full rounded-md px-3 py-2 text-left text-base font-medium text-gray-700 hover:text-gray-950 hover:bg-gray-100">
                 Equipe
               </button>
             )}
             {isAdmin && (
-              <button type="button" onClick={() => irPara('/admin')} className="block w-full rounded-md px-3 py-2 text-left text-base font-medium text-gray-700 hover:text-dourado-600 hover:bg-dourado-50">
+              <button type="button" onClick={() => irPara('/admin')} className="block w-full rounded-md px-3 py-2 text-left text-base font-medium text-gray-700 hover:text-gray-950 hover:bg-gray-100">
                 Admin
               </button>
             )}
-            <button type="button" onClick={() => irPara('/avisos')} className="block w-full px-3 py-2 rounded-md text-left text-base font-medium text-gray-700 hover:text-dourado-600 hover:bg-dourado-50">
+            <button type="button" onClick={() => irPara('/avisos')} className="block w-full px-3 py-2 rounded-md text-left text-base font-medium text-gray-700 hover:text-gray-950 hover:bg-gray-100">
               Avisos
             </button>
-            <button type="button" onClick={() => irPara('/manuais')} className="block w-full px-3 py-2 rounded-md text-left text-base font-medium text-gray-700 hover:text-dourado-600 hover:bg-dourado-50">
+            <button type="button" onClick={() => irPara('/manuais')} className="block w-full px-3 py-2 rounded-md text-left text-base font-medium text-gray-700 hover:text-gray-950 hover:bg-gray-100">
               Manuais
             </button>
             <label className="mt-4 block px-3 text-xs font-bold uppercase tracking-[0.14em] text-gray-400">
@@ -374,11 +482,73 @@ export default function Navbar() {
             <select
               value={tema}
               onChange={(event) => setTema(event.target.value)}
-              className="mx-3 mt-2 block w-[calc(100%-1.5rem)] rounded-md border border-gray-200 bg-white px-3 py-2 text-base font-semibold text-gray-700 outline-none focus:border-dourado-500 focus:ring-2 focus:ring-dourado-500/20 dark:bg-gray-800 dark:text-gray-100"
+              className="mx-3 mt-2 block w-[calc(100%-1.5rem)] rounded-md border border-gray-200 bg-white px-3 py-2 text-base font-semibold text-gray-700 outline-none focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10 dark:bg-gray-800 dark:text-gray-100"
             >
               <option value="claro">Modo claro</option>
               <option value="escuro">Modo escuro</option>
             </select>
+          </div>
+        </div>
+      )}
+
+      {notificacoesAberto && (
+        <div className="absolute right-4 top-[4.5rem] z-50 w-[calc(100vw-2rem)] max-w-md overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl md:right-8">
+          <div className="flex items-start justify-between gap-3 border-b border-gray-100 px-5 py-4">
+            <div>
+              <h2 className="text-base font-bold text-gray-950">Notificações</h2>
+              <p className="mt-1 text-xs text-gray-500">
+                {naoVisualizadas > 0 ? `${naoVisualizadas} não visualizada(s)` : 'Tudo visualizado por aqui.'}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={visualizarTodas}
+                disabled={naoVisualizadas === 0}
+                className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
+              >
+                <CheckCheck size={14} />
+                Marcar todas
+              </button>
+              <button type="button" onClick={() => setNotificacoesAberto(false)} className="rounded-full border border-gray-200 bg-white p-2 text-gray-500 transition hover:bg-gray-50 hover:text-gray-900" aria-label="Fechar notificações">
+                <X size={16} />
+              </button>
+            </div>
+          </div>
+
+          <div className="max-h-[70vh] overflow-y-auto">
+            {carregandoNotificacoes && notificacoes.length === 0 ? (
+              <div className="flex items-center gap-2 px-5 py-8 text-sm text-gray-500">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Carregando notificações...
+              </div>
+            ) : notificacoes.length === 0 ? (
+              <div className="px-5 py-8 text-sm text-gray-500">
+                Nenhuma notificação por enquanto.
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-100">
+                {notificacoes.map((notificacao) => (
+                  <button
+                    key={notificacao.id}
+                    type="button"
+                    onClick={() => visualizarNotificacao(notificacao)}
+                    className={`block w-full px-5 py-4 text-left transition hover:bg-gray-50 ${
+                      notificacao.visualizada ? 'bg-white' : 'bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${notificacao.visualizada ? 'bg-gray-300' : 'bg-gray-950'}`} />
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-gray-950">{notificacao.titulo}</p>
+                        <p className="mt-1 text-sm leading-5 text-gray-600">{notificacao.mensagem}</p>
+                        <p className="mt-2 text-xs font-semibold text-gray-400">{formatarDataNotificacao(notificacao.criadoEm)}</p>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -412,7 +582,7 @@ export default function Navbar() {
                 <p className="truncate text-sm text-gray-500">{usuario?.email || '-'}</p>
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {(usuario?.permissoes || []).map((permissao) => (
-                    <span key={permissao} className="inline-flex items-center gap-1 rounded-md bg-dourado-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-dourado-700">
+                    <span key={permissao} className="inline-flex items-center gap-1 rounded-md bg-gray-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-gray-700">
                       <BadgeCheck size={11} />
                       {permissao.replaceAll('_', ' ')}
                     </span>

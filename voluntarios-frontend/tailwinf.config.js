@@ -8,16 +8,16 @@ export default {
     extend: {
       colors: {
         dourado: {
-          50: '#fbf8ea',
-          100: '#f6efc9',
-          200: '#f0e197',
-          300: '#e7ce5e',
-          400: '#dfba32',
-          500: '#d4af37', // Dourado principal exigido pelo design
-          600: '#b88d25',
-          700: '#946a1f',
-          800: '#7a541e',
-          900: '#66451d',
+          50: '#f8fafc',
+          100: '#f1f5f9',
+          200: '#e2e8f0',
+          300: '#cbd5e1',
+          400: '#94a3b8',
+          500: '#64748b',
+          600: '#475569',
+          700: '#334155',
+          800: '#1f2937',
+          900: '#111827',
         },
       },
       fontFamily: {
@@ -25,7 +25,7 @@ export default {
         serif: ['Fraunces', 'serif'],  // Títulos
       },
       boxShadow: {
-        'foco-dourado': '0 0 0 2px rgba(212, 175, 55, 0.4)',
+        'foco-dourado': '0 0 0 2px rgba(15, 23, 42, 0.18)',
       }
     },
   },

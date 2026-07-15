@@ -17,6 +17,7 @@ const router = Router();
 const R2_DEFAULT_ENDPOINT = 'https://a66b8eca7a1e0672558565df261c389a.r2.cloudflarestorage.com';
 const R2_DEFAULT_BUCKET = 'voluntarios';
 const MAX_PDF_SIZE = 15 * 1024 * 1024;
+let manuaisSchemaPromise = null;
 
 function getJwtSecret() {
   if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
@@ -146,6 +147,26 @@ function getManualArquivoUrl(req, id) {
   return `${getApiBaseUrl(req)}/api/manuais/${id}/arquivo`;
 }
 
+async function fetchComTimeout(url, options = {}, timeoutMs = 60000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      throw new Error('TIMEOUT_STORAGE');
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function formatarManual(manual, req) {
   return {
     id: manual.id,
@@ -158,6 +179,23 @@ function formatarManual(manual, req) {
     criadoEm: manual.criadoEm,
     atualizadoEm: manual.atualizadoEm,
   };
+}
+
+function garantirSchemaManuais() {
+  if (!manuaisSchemaPromise) {
+    manuaisSchemaPromise = pool.query(`
+      ALTER TABLE "manuais" ADD COLUMN IF NOT EXISTS "versao" TEXT NOT NULL DEFAULT '1.0';
+      ALTER TABLE "manuais" ADD COLUMN IF NOT EXISTS "data_manual" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
+      ALTER TABLE "manuais" ADD COLUMN IF NOT EXISTS "oculto" BOOLEAN NOT NULL DEFAULT false;
+      ALTER TABLE "manuais" ADD COLUMN IF NOT EXISTS "arquivo_key" TEXT;
+      ALTER TABLE "manuais" ALTER COLUMN "equipe_id" DROP NOT NULL;
+    `).catch((error) => {
+      manuaisSchemaPromise = null;
+      throw error;
+    });
+  }
+
+  return manuaisSchemaPromise;
 }
 
 function validarPdf(arquivo) {
@@ -197,13 +235,13 @@ async function uploadPdfManual({ manualId, arquivo }) {
   const random = crypto.randomBytes(8).toString('hex');
   const key = `manuais/${manualId}/${Date.now()}-${random}.pdf`;
   const uploadUrl = criarPresignedUrl({ key, method: 'PUT' });
-  const resposta = await fetch(uploadUrl, {
+  const resposta = await fetchComTimeout(uploadUrl, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/pdf',
     },
     body: validacao.buffer,
-  });
+  }, 60000);
 
   if (!resposta.ok) {
     const detalhe = await resposta.text().catch(() => '');
@@ -230,6 +268,8 @@ async function apagarArquivoStorage(key) {
 
 router.get('/', autenticar, async (req, res) => {
   try {
+    await garantirSchemaManuais();
+
     const manuais = await prisma.manual.findMany({
       where: { oculto: false },
       orderBy: { dataManual: 'desc' },
@@ -244,6 +284,8 @@ router.get('/', autenticar, async (req, res) => {
 
 router.get('/admin', autenticar, exigirAdmin, async (req, res) => {
   try {
+    await garantirSchemaManuais();
+
     const manuais = await prisma.manual.findMany({
       orderBy: { dataManual: 'desc' },
     });
@@ -257,6 +299,8 @@ router.get('/admin', autenticar, exigirAdmin, async (req, res) => {
 
 router.get('/:id/arquivo', autenticar, async (req, res) => {
   try {
+    await garantirSchemaManuais();
+
     const manual = await prisma.manual.findUnique({
       where: { id: req.params.id },
       select: {
@@ -277,7 +321,7 @@ router.get('/:id/arquivo', autenticar, async (req, res) => {
     }
 
     const signedUrl = criarPresignedUrl({ key: manual.arquivoKey, method: 'GET', expiresIn: 300 });
-    const resposta = await fetch(signedUrl);
+    const resposta = await fetchComTimeout(signedUrl, {}, 60000);
 
     if (!resposta.ok) {
       const detalhe = await resposta.text().catch(() => '');
@@ -293,6 +337,10 @@ router.get('/:id/arquivo', autenticar, async (req, res) => {
     res.setHeader('Cache-Control', 'private, max-age=300');
     return res.status(200).send(buffer);
   } catch (erro) {
+    if (erro.message === 'TIMEOUT_STORAGE') {
+      return res.status(504).json({ erro: 'O storage demorou demais para responder. Tente novamente em alguns instantes.' });
+    }
+
     if (erro.message === 'Credenciais R2 não configuradas.') {
       return res.status(500).json({ erro: 'Storage R2 não configurado no servidor.' });
     }
@@ -304,6 +352,8 @@ router.get('/:id/arquivo', autenticar, async (req, res) => {
 
 router.post('/admin', autenticar, exigirAdmin, async (req, res) => {
   try {
+    await garantirSchemaManuais();
+
     const { titulo, descricao, versao, oculto, arquivo } = req.body ?? {};
     const tituloLimpo = typeof titulo === 'string' ? titulo.trim() : '';
     const versaoLimpa = typeof versao === 'string' && versao.trim() ? versao.trim() : '1.0';
@@ -336,6 +386,10 @@ router.post('/admin', autenticar, exigirAdmin, async (req, res) => {
       manual: formatarManual(manual, req),
     });
   } catch (erro) {
+    if (erro.message === 'TIMEOUT_STORAGE') {
+      return res.status(504).json({ erro: 'O envio para o storage demorou demais. Tente novamente ou use um PDF menor.' });
+    }
+
     if (erro.message === 'Credenciais R2 não configuradas.') {
       return res.status(500).json({ erro: 'Storage R2 não configurado no servidor.' });
     }
@@ -347,6 +401,8 @@ router.post('/admin', autenticar, exigirAdmin, async (req, res) => {
 
 router.patch('/admin/:id', autenticar, exigirAdmin, async (req, res) => {
   try {
+    await garantirSchemaManuais();
+
     const { titulo, descricao, versao, oculto, arquivo } = req.body ?? {};
     const manualAtual = await prisma.manual.findUnique({
       where: { id: req.params.id },
@@ -399,6 +455,10 @@ router.patch('/admin/:id', autenticar, exigirAdmin, async (req, res) => {
       manual: formatarManual(manual, req),
     });
   } catch (erro) {
+    if (erro.message === 'TIMEOUT_STORAGE') {
+      return res.status(504).json({ erro: 'O envio para o storage demorou demais. Tente novamente ou use um PDF menor.' });
+    }
+
     if (erro.message === 'Credenciais R2 não configuradas.') {
       return res.status(500).json({ erro: 'Storage R2 não configurado no servidor.' });
     }
@@ -410,6 +470,8 @@ router.patch('/admin/:id', autenticar, exigirAdmin, async (req, res) => {
 
 router.delete('/admin/:id', autenticar, exigirAdmin, async (req, res) => {
   try {
+    await garantirSchemaManuais();
+
     const manual = await prisma.manual.findUnique({
       where: { id: req.params.id },
       select: { arquivoKey: true },

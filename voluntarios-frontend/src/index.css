@@ -3,7 +3,31 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+@theme {
+  --font-sans: "Inter", sans-serif;
+  --font-serif: "Fraunces", serif;
+
+  /* Mantemos o nome "dourado" por compatibilidade, mas a paleta visual agora e neutra. */
+  --color-dourado-50: #f8fafc;
+  --color-dourado-100: #f1f5f9;
+  --color-dourado-200: #e2e8f0;
+  --color-dourado-300: #cbd5e1;
+  --color-dourado-400: #94a3b8;
+  --color-dourado-500: #64748b;
+  --color-dourado-600: #475569;
+  --color-dourado-700: #334155;
+  --color-dourado-800: #1f2937;
+  --color-dourado-900: #111827;
+}
+
 @layer base {
+  html {
+    background: #f3f4f6;
+  }
+  html.dark {
+    color-scheme: dark;
+    background: #030712;
+  }
   body {
     @apply font-sans bg-gray-50 text-gray-900 antialiased;
   }
@@ -17,7 +41,7 @@
 
 @layer utilities {
   html.dark .min-h-screen {
-    background: linear-gradient(180deg, #111827 0%, #0f172a 100%) !important;
+    background: linear-gradient(180deg, #111827 0%, #030712 100%) !important;
     color: #f9fafb !important;
   }
   html.dark .bg-white,
@@ -26,8 +50,27 @@
   html.dark .bg-white\/90,
   html.dark .bg-gray-50,
   html.dark .bg-\[\#f7f4ed\],
-  html.dark .bg-\[\#f6f1e6\] {
+  html.dark .bg-\[\#f6f1e6\],
+  html.dark .bg-\[\#f7f4ed\],
+  html.dark .bg-\[\#f6f1e6\],
+  html.dark .bg-\[radial-gradient\(circle_at_top\,_rgba\(212\,175\,55\,0\.12\)\,_transparent_34\%\)\,linear-gradient\(180deg\,\#faf7f0_0\%\,\#f5efe1_100\%\)\] {
+    background: #111827 !important;
+    background-color: #111827 !important;
+  }
+  html.dark .bg-gray-100,
+  html.dark .bg-gray-50,
+  html.dark .bg-dourado-50,
+  html.dark .bg-dourado-50\/60,
+  html.dark .bg-dourado-50\/50 {
     background-color: #1f2937 !important;
+  }
+  html.dark .bg-gradient-to-br.from-white.to-gray-50,
+  html.dark .bg-gradient-to-br.from-white.to-dourado-50\/50 {
+    background: linear-gradient(135deg, #111827 0%, #1f2937 100%) !important;
+  }
+  html.dark .bg-gray-950,
+  html.dark .bg-black {
+    background-color: #030712 !important;
   }
   html.dark .text-gray-950,
   html.dark .text-gray-900,
@@ -38,12 +81,110 @@
   html.dark .text-gray-600,
   html.dark .text-gray-500,
   html.dark .text-gray-400 {
-    color: #d1d5db !important;
+    color: #cbd5e1 !important;
   }
   html.dark .border-gray-200,
   html.dark .border-gray-100,
-  html.dark .border-white\/60 {
+  html.dark .border-white\/60,
+  html.dark .border-white\/15,
+  html.dark .border-black\/5,
+  html.dark .border-dourado-100,
+  html.dark .border-dourado-200 {
     border-color: #374151 !important;
+  }
+  html.dark input,
+  html.dark select,
+  html.dark textarea {
+    background-color: #0f172a !important;
+    border-color: #374151 !important;
+    color: #f9fafb !important;
+  }
+  html.dark input::placeholder,
+  html.dark textarea::placeholder {
+    color: #94a3b8 !important;
+  }
+  html.dark input:disabled,
+  html.dark select:disabled,
+  html.dark textarea:disabled {
+    background-color: #111827 !important;
+    color: #94a3b8 !important;
+  }
+
+  /* Paleta neutra aplicada aos pontos que antes eram dourados. */
+  .text-dourado-200,
+  .text-dourado-600,
+  .text-dourado-700,
+  .text-dourado-800 {
+    color: #334155 !important;
+  }
+  .bg-dourado-50,
+  .bg-dourado-50\/50,
+  .bg-dourado-50\/60 {
+    background-color: #f8fafc !important;
+  }
+  .bg-dourado-700 {
+    background-color: #111827 !important;
+  }
+  .hover\:bg-dourado-800:hover {
+    background-color: #030712 !important;
+  }
+  .border-dourado-100,
+  .border-dourado-200 {
+    border-color: #e5e7eb !important;
+  }
+  .border-dourado-700 {
+    border-color: #111827 !important;
+  }
+  html.dark .text-dourado-200,
+  html.dark .text-dourado-600,
+  html.dark .text-dourado-700,
+  html.dark .text-dourado-800 {
+    color: #e5e7eb !important;
+  }
+  html.dark .bg-dourado-700 {
+    background-color: #f9fafb !important;
+    color: #030712 !important;
+  }
+
+  /* Estados semanticos com contraste controlado no dark mode. */
+  html.dark .bg-red-50,
+  html.dark .bg-amber-50,
+  html.dark .bg-emerald-50,
+  html.dark .bg-sky-50,
+  html.dark .bg-violet-50 {
+    background-color: rgba(31, 41, 55, 0.95) !important;
+  }
+  html.dark .text-red-600,
+  html.dark .text-red-700 {
+    color: #fca5a5 !important;
+  }
+  html.dark .text-amber-700,
+  html.dark .text-amber-800 {
+    color: #fcd34d !important;
+  }
+  html.dark .text-emerald-700,
+  html.dark .text-emerald-800 {
+    color: #86efac !important;
+  }
+  html.dark .text-sky-700,
+  html.dark .text-sky-800 {
+    color: #93c5fd !important;
+  }
+  html.dark .border-red-100,
+  html.dark .border-red-200 {
+    border-color: rgba(248, 113, 113, 0.35) !important;
+  }
+  html.dark .border-amber-100,
+  html.dark .border-amber-200 {
+    border-color: rgba(245, 158, 11, 0.35) !important;
+  }
+  html.dark .border-emerald-100,
+  html.dark .border-emerald-200 {
+    border-color: rgba(52, 211, 153, 0.35) !important;
+  }
+  html.dark .border-sky-100,
+  html.dark .border-sky-200 {
+    border-color: rgba(96, 165, 250, 0.35) !important;
   }
 }
 

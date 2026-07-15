@@ -104,14 +104,14 @@ export default function Manuais() {
       <Navbar />
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
         <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-          <div className="border-b border-gray-100 bg-gradient-to-br from-white to-dourado-50/50 p-6">
+          <div className="border-b border-gray-100 bg-gradient-to-br from-white to-gray-50 p-6">
             <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
               <div className="flex items-start gap-3">
-                <div className="rounded-xl bg-dourado-50 p-3 text-dourado-700">
+                <div className="rounded-xl bg-gray-100 p-3 text-gray-700">
                   <BookOpen className="h-6 w-6" />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold uppercase tracking-[0.2em] text-dourado-700">MCom</p>
+                  <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">MCom</p>
                   <h1 className="mt-2 text-3xl font-bold text-gray-950">Manuais</h1>
                   <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-600">
                     Consulte os documentos oficiais, versões atualizadas e instruções para as equipes.
@@ -150,7 +150,7 @@ export default function Manuais() {
               ) : manuaisFiltrados.map((manual) => (
                 <article key={manual.id} className="flex min-h-full flex-col rounded-2xl border border-gray-200 bg-gradient-to-br from-white to-gray-50 p-5 shadow-sm">
                   <div className="flex items-start gap-3">
-                    <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-red-50 text-red-600">
+                    <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-gray-100 text-gray-700">
                       <FileText size={22} />
                     </div>
                     <div className="min-w-0">
@@ -159,7 +159,7 @@ export default function Manuais() {
                         <span className="rounded border border-gray-200 bg-white px-2 py-0.5 text-[11px] font-bold uppercase tracking-[0.12em] text-gray-600">
                           v{manual.versao || '1.0'}
                         </span>
-                        <span className="rounded border border-dourado-200 bg-dourado-50 px-2 py-0.5 text-[11px] font-bold uppercase tracking-[0.12em] text-dourado-700">
+                        <span className="rounded border border-gray-200 bg-gray-50 px-2 py-0.5 text-[11px] font-bold uppercase tracking-[0.12em] text-gray-600">
                           {formatarData(manual.dataManual)}
                         </span>
                       </div>

@@ -94,8 +94,10 @@ function normalizar(texto) {
 
 export default function Escalas() {
   const { token, logout } = useAuth();
-  const { navigate } = useNavigation();
-  const [visao, setVisao] = useState('todas');
+  const { navigate, search } = useNavigation();
+  const filtroInicial = new URLSearchParams(search || '').get('filtro');
+  const [visao, setVisao] = useState(filtroInicial === 'confirmacoes' ? 'minhas' : 'todas');
+  const [filtroConfirmacoes, setFiltroConfirmacoes] = useState(filtroInicial === 'confirmacoes');
   const [diaSelecionado, setDiaSelecionado] = useState(0);
   const [semanaSelecionada, setSemanaSelecionada] = useState(1);
   const [busca, setBusca] = useState('');
@@ -140,6 +142,15 @@ export default function Escalas() {
   useEffect(() => {
     carregarEscalas();
   }, [carregarEscalas]);
+
+  useEffect(() => {
+    const filtro = new URLSearchParams(search || '').get('filtro');
+
+    if (filtro === 'confirmacoes') {
+      setVisao('minhas');
+      setFiltroConfirmacoes(true);
+    }
+  }, [search]);
 
   const atualizarStatus = async (participacaoId, status, justificativaSubstituicao = '', dataOcorrencia = '') => {
     setErro('');
@@ -208,6 +219,7 @@ export default function Escalas() {
       const isEsporadicaMinha = visao === 'minhas' && escala.tipo === 'ESPORADICA';
       const mesmaSemana = getSemanaDoMes(escala) === semanaSelecionada;
       const mesmoDia = getDiaSemana(escala) === diaSelecionado;
+      const correspondeConfirmacao = !filtroConfirmacoes || escala.minhaParticipacao?.status === 'PENDENTE';
       const texto = normalizar([
         escala.titulo,
         escala.local,
@@ -216,9 +228,13 @@ export default function Escalas() {
         escala.voluntarios?.map((item) => item.usuario?.nomeCompleto).join(' '),
       ].join(' '));
 
-      return (isEsporadicaMinha || (mesmaSemana && mesmoDia)) && (!termo || texto.includes(termo));
+      if (filtroConfirmacoes) {
+        return correspondeConfirmacao && (!termo || texto.includes(termo));
+      }
+
+      return correspondeConfirmacao && (isEsporadicaMinha || (mesmaSemana && mesmoDia)) && (!termo || texto.includes(termo));
     });
-  }, [busca, diaSelecionado, escalas, semanaSelecionada, visao]);
+  }, [busca, diaSelecionado, escalas, filtroConfirmacoes, semanaSelecionada, visao]);
 
   const escalasPorArea = useMemo(() => {
     const mapa = new Map(areas.map((area) => [area, []]));
@@ -242,9 +258,13 @@ export default function Escalas() {
           <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="text-sm font-semibold uppercase tracking-[0.2em] text-dourado-700">Escalas MCom</p>
-              <h1 className="mt-2 text-3xl font-bold text-gray-950">Escalas por área</h1>
+              <h1 className="mt-2 text-3xl font-bold text-gray-950">
+                {filtroConfirmacoes ? 'Confirmações pendentes' : 'Escalas por área'}
+              </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-600">
-                Veja os voluntários escalados para cada área nos sábados e domingos do 1º ao 4º fim de semana.
+                {filtroConfirmacoes
+                  ? 'Veja somente suas escalas que ainda aguardam confirmação.'
+                  : 'Veja os voluntários escalados para cada área nos sábados e domingos do 1º ao 4º fim de semana.'}
               </p>
             </div>
 
@@ -264,7 +284,13 @@ export default function Escalas() {
                 { value: 'minhas', label: 'Somente minhas' },
               ]}
               value={visao}
-              onChange={setVisao}
+              onChange={(valor) => {
+                setVisao(valor);
+                if (filtroConfirmacoes && valor !== 'minhas') {
+                  setFiltroConfirmacoes(false);
+                  navigate('/escalas', { replace: true });
+                }
+              }}
             />
 
             <Segmento
@@ -286,6 +312,18 @@ export default function Escalas() {
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2">
+            {filtroConfirmacoes && (
+              <button
+                type="button"
+                onClick={() => {
+                  setFiltroConfirmacoes(false);
+                  navigate('/escalas', { replace: true });
+                }}
+                className="rounded-md border border-gray-300 bg-gray-950 px-3 py-2 text-sm font-semibold text-white transition hover:bg-gray-800"
+              >
+                Mostrando apenas pendentes - limpar filtro
+              </button>
+            )}
             {semanas.map((semana) => (
               <button
                 key={semana}

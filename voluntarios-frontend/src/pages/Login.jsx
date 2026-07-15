@@ -4,6 +4,7 @@ import { Footer } from '../components/Footer';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
 import { buildApiUrl } from '../lib/api';
+import logo from '../assets/logo.png';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -76,9 +77,7 @@ export default function Login() {
       
       {/* Cabeçalho */}
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center mb-8">
-        <h2 className="text-4xl font-bold font-serif text-black tracking-tight">
-          MCom
-        </h2>
+        <img src={logo} alt="MCom" className="mx-auto h-24 w-24 object-contain" />
         <p className="mt-2 text-sm text-gray-500">
           Acesso ao Portal do Voluntário
         </p>
