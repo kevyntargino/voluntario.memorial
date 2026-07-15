@@ -469,7 +469,12 @@ function EscalaLinha({
                       {item.usuario?.nomeCompleto?.slice(0, 1) || '?'}
                     </span>
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-gray-800">{item.usuario?.nomeCompleto || 'Voluntário'}</p>
+                      <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+                        <p className="truncate text-sm font-semibold text-gray-800">{item.usuario?.nomeCompleto || 'Voluntário'}</p>
+                        {item.usuario?.telefone && (
+                          <span className="text-[11px] font-medium text-gray-400">{item.usuario.telefone}</span>
+                        )}
+                      </div>
                       <div className="mt-1 flex flex-wrap gap-1">
                         <p className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] font-semibold ${config.className}`}>
                           <Icon size={11} />

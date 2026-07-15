@@ -163,6 +163,7 @@ function formatarParticipacao(item, dataOcorrencia) {
       id: item.usuario.id,
       nomeCompleto: item.usuario.nomeCompleto,
       email: item.usuario.email,
+      telefone: item.usuario.telefone,
       urlFoto: item.usuario.urlFoto,
     },
   };
@@ -234,6 +235,7 @@ async function carregarEquipe(equipeId, usuario) {
                   id: true,
                   nomeCompleto: true,
                   email: true,
+                  telefone: true,
                   urlFoto: true,
                 },
               },
@@ -291,6 +293,7 @@ router.get('/minhas', autenticar, async (req, res) => {
                     id: true,
                     nomeCompleto: true,
                     email: true,
+                    telefone: true,
                     urlFoto: true,
                   },
                 },

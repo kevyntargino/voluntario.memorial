@@ -409,7 +409,7 @@ export default function MinhaEquipe() {
                               .filter((voluntario) => voluntario.id !== pedido.usuario.id)
                               .map((voluntario) => (
                                 <option key={voluntario.id} value={voluntario.id}>
-                                  {voluntario.nomeCompleto}
+                                  {voluntario.telefone ? `${voluntario.nomeCompleto} - ${voluntario.telefone}` : voluntario.nomeCompleto}
                                 </option>
                               ))}
                           </select>
@@ -467,9 +467,13 @@ export default function MinhaEquipe() {
                   {equipeSelecionada.voluntarios.map((voluntario) => (
                     <div key={voluntario.id} className="flex items-center justify-between gap-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-3">
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-bold text-gray-950">{voluntario.nomeCompleto}</p>
+                        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+                          <p className="truncate text-sm font-bold text-gray-950">{voluntario.nomeCompleto}</p>
+                          {voluntario.telefone && (
+                            <span className="text-[11px] font-medium text-gray-400">{voluntario.telefone}</span>
+                          )}
+                        </div>
                         <p className="truncate text-xs text-gray-500">{voluntario.email}</p>
-                        <p className="mt-1 text-xs text-gray-500">{voluntario.telefone || 'Sem telefone'}</p>
                       </div>
                       <button
                         type="button"
@@ -517,7 +521,12 @@ export default function MinhaEquipe() {
                             checked={formEscala.voluntarioIds.includes(voluntario.id)}
                             onChange={() => alternarVoluntarioNaEscala(voluntario.id)}
                           />
-                          {voluntario.nomeCompleto}
+                          <span className="min-w-0">
+                            <span className="block truncate">{voluntario.nomeCompleto}</span>
+                            {voluntario.telefone && (
+                              <span className="block text-[11px] font-medium text-gray-400">{voluntario.telefone}</span>
+                            )}
+                          </span>
                           {formEscala.substitutoIds.includes(voluntario.id) && (
                             <span className="ml-auto rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[11px] font-semibold text-violet-700">
                               Substituto
@@ -538,7 +547,12 @@ export default function MinhaEquipe() {
                             checked={formEscala.substitutoIds.includes(voluntario.id)}
                             onChange={() => alternarSubstituto(voluntario.id)}
                           />
-                          {voluntario.nomeCompleto}
+                          <span className="min-w-0">
+                            <span className="block truncate">{voluntario.nomeCompleto}</span>
+                            {voluntario.telefone && (
+                              <span className="block text-[11px] font-medium text-violet-500/70">{voluntario.telefone}</span>
+                            )}
+                          </span>
                         </label>
                       ))}
                     </div>
@@ -574,13 +588,30 @@ export default function MinhaEquipe() {
                               Esporádica
                             </span>
                           )}
-                          <p className="mt-2 text-xs text-gray-600">
-                            {escala.voluntarios.length} voluntário(s): {escala.voluntarios.map((item) => item.usuario.nomeCompleto).join(', ') || 'ninguém escalado'}
-                          </p>
+                          <div className="mt-2 flex flex-wrap gap-1.5 text-xs text-gray-600">
+                            {escala.voluntarios.length === 0 ? (
+                              <span>ninguém escalado</span>
+                            ) : escala.voluntarios.map((item) => (
+                              <span key={item.id} className="inline-flex items-baseline gap-1 rounded border border-gray-200 bg-white px-2 py-1">
+                                <strong className="font-semibold text-gray-700">{item.usuario.nomeCompleto}</strong>
+                                {item.usuario.telefone && (
+                                  <span className="text-[11px] font-medium text-gray-400">{item.usuario.telefone}</span>
+                                )}
+                              </span>
+                            ))}
+                          </div>
                           {escala.voluntarios.some((item) => item.substituto) && (
-                            <p className="mt-2 text-xs font-semibold text-violet-700">
-                              Substituto(s): {escala.voluntarios.filter((item) => item.substituto).map((item) => item.usuario.nomeCompleto).join(', ')}
-                            </p>
+                            <div className="mt-2 flex flex-wrap gap-1.5 text-xs font-semibold text-violet-700">
+                              <span>Substituto(s):</span>
+                              {escala.voluntarios.filter((item) => item.substituto).map((item) => (
+                                <span key={item.id} className="inline-flex items-baseline gap-1 rounded border border-violet-100 bg-white px-2 py-1">
+                                  {item.usuario.nomeCompleto}
+                                  {item.usuario.telefone && (
+                                    <span className="text-[11px] font-medium text-violet-500/70">{item.usuario.telefone}</span>
+                                  )}
+                                </span>
+                              ))}
+                            </div>
                           )}
                         </div>
                         <div className="flex gap-2">

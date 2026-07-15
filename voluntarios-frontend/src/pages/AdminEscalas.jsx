@@ -7,6 +7,7 @@ import {
   Clock3,
   Loader2,
   Megaphone,
+  Plus,
   RefreshCcw,
   Save,
   Send,
@@ -37,6 +38,7 @@ const statusConfig = {
 
 const formEsporadicaInicial = { titulo: '', dataHora: '', local: '', descricao: '', equipeIds: [] };
 const formAvisoInicial = { titulo: '', mensagem: '', dataAviso: '', publico: 'TODOS', equipeIds: [], usuarioIds: [] };
+const formEquipeInicial = { nome: '' };
 
 function formatarData(dataHora) {
   if (!dataHora) return 'Sem data';
@@ -72,6 +74,7 @@ export default function AdminEscalas() {
   const getPainelPelaRota = useCallback(() => {
     if (pathname === '/admin/voluntarios') return 'voluntarios';
     if (pathname === '/admin/lideres') return 'lideres';
+    if (pathname === '/admin/equipes') return 'equipes';
     if (pathname === '/admin/notificacoes') return 'notificacao';
     if (pathname === '/admin/escalas') return 'escalas';
     return 'visao';
@@ -79,6 +82,9 @@ export default function AdminEscalas() {
   const [painelAberto, setPainelAberto] = useState(() => getPainelPelaRota());
   const [erro, setErro] = useState('');
   const [sucesso, setSucesso] = useState('');
+  const [editandoUsuarioId, setEditandoUsuarioId] = useState(null);
+  const [equipeSelecionadaId, setEquipeSelecionadaId] = useState(null);
+  const [formEquipe, setFormEquipe] = useState(formEquipeInicial);
   const [carregando, setCarregando] = useState(true);
   const [salvandoId, setSalvandoId] = useState(null);
   const isAdmin = usuario?.permissoes?.includes('ADMINISTRADOR');
@@ -146,6 +152,10 @@ export default function AdminEscalas() {
 
   const lideres = useMemo(() => usuarios.filter((item) => item.permissoes?.includes('LIDER_EQUIPE')), [usuarios]);
   const usuariosDoPainel = painelAberto === 'lideres' ? lideres : usuarios;
+  const equipeSelecionada = useMemo(
+    () => equipes.find((equipe) => equipe.id === equipeSelecionadaId) || null,
+    [equipeSelecionadaId, equipes],
+  );
 
   const recorrentesPorEquipe = useMemo(() => {
     const mapa = new Map();
@@ -221,6 +231,52 @@ export default function AdminEscalas() {
       await carregarDados();
     } catch (error) {
       setErro(error.message || 'Não foi possível excluir o usuário.');
+    } finally {
+      setSalvandoId(null);
+    }
+  };
+
+  const criarEquipe = async (event) => {
+    event.preventDefault();
+    setErro('');
+    setSucesso('');
+    setSalvandoId('equipe');
+
+    try {
+      const resposta = await fetch(buildApiUrl('/api/admin/equipes'), {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(formEquipe),
+      });
+      const dados = await resposta.json();
+      if (!resposta.ok) throw new Error(dados.erro || 'Não foi possível criar a equipe.');
+      setSucesso(dados.mensagem || 'Equipe criada.');
+      setFormEquipe(formEquipeInicial);
+      await carregarDados();
+    } catch (error) {
+      setErro(error.message || 'Não foi possível criar a equipe.');
+    } finally {
+      setSalvandoId(null);
+    }
+  };
+
+  const excluirEquipe = async (equipeId) => {
+    setErro('');
+    setSucesso('');
+    setSalvandoId(equipeId);
+
+    try {
+      const resposta = await fetch(buildApiUrl(`/api/admin/equipes/${equipeId}`), {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const dados = await resposta.json();
+      if (!resposta.ok) throw new Error(dados.erro || 'Não foi possível excluir a equipe.');
+      setSucesso(dados.mensagem || 'Equipe excluída.');
+      setEquipeSelecionadaId(null);
+      await carregarDados();
+    } catch (error) {
+      setErro(error.message || 'Não foi possível excluir a equipe.');
     } finally {
       setSalvandoId(null);
     }
@@ -370,6 +426,7 @@ export default function AdminEscalas() {
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   <BotaoPainel ativo={painelAberto === 'voluntarios'} icon={UsersRound} label="Ver voluntários" onClick={() => abrirPainel('voluntarios', '/admin/voluntarios')} />
                   <BotaoPainel ativo={painelAberto === 'lideres'} icon={UserCog} label="Ver líderes de equipe" onClick={() => abrirPainel('lideres', '/admin/lideres')} />
+                  <BotaoPainel ativo={painelAberto === 'equipes'} icon={ShieldCheck} label="Ver equipes" onClick={() => abrirPainel('equipes', '/admin/equipes')} />
                   <BotaoPainel ativo={painelAberto === 'notificacao'} icon={Megaphone} label="Enviar notificação" onClick={() => abrirPainel('notificacao', '/admin/notificacoes')} />
                   <BotaoPainel ativo={painelAberto === 'escalas'} icon={CalendarClock} label="Gerenciar escalas" onClick={() => abrirPainel('escalas', '/admin/escalas')} />
                 </div>
@@ -388,6 +445,21 @@ export default function AdminEscalas() {
                 onAlternarEquipe={alternarEquipeUsuario}
                 onSalvar={salvarUsuario}
                 onExcluir={excluirUsuario}
+                editandoUsuarioId={editandoUsuarioId}
+                onEditar={setEditandoUsuarioId}
+              />
+            )}
+
+            {painelAberto === 'equipes' && (
+              <PainelEquipes
+                equipes={equipes}
+                equipeSelecionada={equipeSelecionada}
+                formEquipe={formEquipe}
+                salvandoId={salvandoId}
+                onChangeEquipe={setFormEquipe}
+                onCriarEquipe={criarEquipe}
+                onExcluirEquipe={excluirEquipe}
+                onSelecionarEquipe={setEquipeSelecionadaId}
               />
             )}
 
@@ -471,7 +543,12 @@ function ProximaEscala({ escala }) {
               const Icon = config.icon;
               return (
                 <div key={item.id} className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
-                  <p className="text-sm font-semibold text-gray-800">{item.usuario.nomeCompleto}</p>
+                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                    <p className="text-sm font-semibold text-gray-800">{item.usuario.nomeCompleto}</p>
+                    {item.usuario.telefone && (
+                      <span className="text-[11px] font-medium text-gray-400">{item.usuario.telefone}</span>
+                    )}
+                  </div>
                   <span className={`mt-1 inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] font-semibold ${config.className}`}>
                     <Icon size={11} />
                     {config.label}
@@ -486,7 +563,7 @@ function ProximaEscala({ escala }) {
   );
 }
 
-function PainelUsuarios({ titulo, usuarios, equipes, formsUsuarios, salvandoId, onAlterar, onAlternarPermissao, onAlternarEquipe, onSalvar, onExcluir }) {
+function PainelUsuarios({ titulo, usuarios, equipes, formsUsuarios, salvandoId, editandoUsuarioId, onEditar, onAlterar, onAlternarPermissao, onAlternarEquipe, onSalvar, onExcluir }) {
   return (
     <section className="mt-5 rounded-2xl border border-gray-200 bg-white shadow-sm">
       <div className="border-b border-gray-100 px-5 py-4">
@@ -495,48 +572,168 @@ function PainelUsuarios({ titulo, usuarios, equipes, formsUsuarios, salvandoId, 
       <div className="divide-y divide-gray-100">
         {usuarios.map((usuario) => {
           const form = formsUsuarios[usuario.id] || criarFormUsuario(usuario);
+          const editando = editandoUsuarioId === usuario.id;
+
           return (
-            <div key={usuario.id} className="grid gap-4 px-5 py-4 xl:grid-cols-[1fr_1fr_auto]">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Campo label="Nome" value={form.nomeCompleto} onChange={(value) => onAlterar(usuario.id, 'nomeCompleto', value)} />
-                <Campo label="Telefone" value={form.telefone} onChange={(value) => onAlterar(usuario.id, 'telefone', value)} />
-                <div className="sm:col-span-2">
-                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-400">{usuario.email}</p>
+            <div key={usuario.id} className="px-5 py-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                    <p className="text-base font-bold text-gray-950">{usuario.nomeCompleto}</p>
+                    {usuario.telefone && (
+                      <span className="text-xs font-medium text-gray-400">{usuario.telefone}</span>
+                    )}
+                  </div>
+                  <p className="mt-1 text-sm text-gray-500">{usuario.email}</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {(usuario.permissoes || []).map((permissao) => (
+                      <span key={permissao} className="rounded border border-dourado-200 bg-dourado-50 px-2 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-dourado-700">
+                        {permissao.replaceAll('_', ' ')}
+                      </span>
+                    ))}
+                    {(usuario.equipes || []).map((equipe) => (
+                      <span key={equipe.id} className="rounded border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-gray-600">
+                        {equipe.nome}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={() => onEditar(editando ? null : usuario.id)} className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">
+                    {editando ? 'Fechar edição' : 'Editar'}
+                  </button>
+                  <button type="button" disabled={salvandoId === usuario.id} onClick={() => onExcluir(usuario.id)} className="inline-flex items-center justify-center gap-2 rounded-md border border-red-100 bg-white px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-60">
+                    <Trash2 size={15} />
+                    Excluir
+                  </button>
                 </div>
               </div>
-              <div className="grid gap-3">
-                <GrupoChecks titulo="Acessos">
-                  {permissoesDisponiveis.map((permissao) => (
-                    <label key={permissao} className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-                      <input type="checkbox" checked={form.permissoes.includes(permissao)} onChange={() => onAlternarPermissao(usuario.id, permissao)} />
-                      {permissao.replaceAll('_', ' ')}
-                    </label>
-                  ))}
-                </GrupoChecks>
-                <GrupoChecks titulo="Equipes">
-                  {equipes.map((equipe) => (
-                    <label key={equipe.id} className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-                      <input type="checkbox" checked={form.equipeIds.includes(equipe.id)} onChange={() => onAlternarEquipe(usuario.id, equipe.id)} />
-                      {equipe.nome}
-                    </label>
-                  ))}
-                </GrupoChecks>
-              </div>
-              <div className="flex gap-2 xl:flex-col xl:justify-center">
-                <button type="button" disabled={salvandoId === usuario.id} onClick={() => onSalvar(usuario.id)} className="inline-flex items-center justify-center gap-2 rounded-md bg-gray-950 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">
-                  {salvandoId === usuario.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save size={15} />}
-                  Salvar
-                </button>
-                <button type="button" disabled={salvandoId === usuario.id} onClick={() => onExcluir(usuario.id)} className="inline-flex items-center justify-center gap-2 rounded-md border border-red-100 bg-white px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-60">
-                  <Trash2 size={15} />
-                  Excluir
-                </button>
-              </div>
+
+              {editando && (
+                <div className="mt-4 grid gap-4 rounded-xl border border-gray-200 bg-gray-50 p-4 xl:grid-cols-[1fr_1fr_auto]">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Campo label="Nome" value={form.nomeCompleto} onChange={(value) => onAlterar(usuario.id, 'nomeCompleto', value)} />
+                    <Campo label="Telefone" value={form.telefone} onChange={(value) => onAlterar(usuario.id, 'telefone', value)} />
+                  </div>
+                  <div className="grid gap-3">
+                    <GrupoChecks titulo="Acessos">
+                      {permissoesDisponiveis.map((permissao) => (
+                        <label key={permissao} className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                          <input type="checkbox" checked={form.permissoes.includes(permissao)} onChange={() => onAlternarPermissao(usuario.id, permissao)} />
+                          {permissao.replaceAll('_', ' ')}
+                        </label>
+                      ))}
+                    </GrupoChecks>
+                    <GrupoChecks titulo="Equipes">
+                      {equipes.map((equipe) => (
+                        <label key={equipe.id} className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                          <input type="checkbox" checked={form.equipeIds.includes(equipe.id)} onChange={() => onAlternarEquipe(usuario.id, equipe.id)} />
+                          {equipe.nome}
+                        </label>
+                      ))}
+                    </GrupoChecks>
+                  </div>
+                  <div className="flex items-end">
+                    <button type="button" disabled={salvandoId === usuario.id} onClick={() => onSalvar(usuario.id)} className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-gray-950 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">
+                      {salvandoId === usuario.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save size={15} />}
+                      Salvar edição
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           );
         })}
       </div>
     </section>
+  );
+}
+
+function PainelEquipes({ equipes, equipeSelecionada, formEquipe, salvandoId, onChangeEquipe, onCriarEquipe, onExcluirEquipe, onSelecionarEquipe }) {
+  return (
+    <section className="mt-5 grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
+      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <div className="border-b border-gray-100 px-5 py-4">
+          <h2 className="text-lg font-bold text-gray-950">Equipes cadastradas</h2>
+        </div>
+        <form onSubmit={onCriarEquipe} className="flex gap-2 border-b border-gray-100 p-5">
+          <input
+            value={formEquipe.nome}
+            onChange={(event) => onChangeEquipe((atual) => ({ ...atual, nome: event.target.value }))}
+            className="min-w-0 flex-1 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
+            placeholder="Nome da nova equipe"
+          />
+          <button disabled={salvandoId === 'equipe'} className="inline-flex items-center gap-2 rounded-md bg-gray-950 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">
+            {salvandoId === 'equipe' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus size={15} />}
+            Criar
+          </button>
+        </form>
+        <div className="divide-y divide-gray-100">
+          {equipes.map((equipe) => (
+            <div key={equipe.id} className="flex items-center justify-between gap-3 px-5 py-4">
+              <button type="button" onClick={() => onSelecionarEquipe(equipe.id)} className="min-w-0 text-left">
+                <p className="truncate text-sm font-bold text-gray-950">{equipe.nome}</p>
+                <p className="mt-1 text-xs text-gray-500">{equipe.voluntarios?.length || 0} voluntário(s)</p>
+              </button>
+              <button type="button" disabled={salvandoId === equipe.id} onClick={() => onExcluirEquipe(equipe.id)} className="rounded-md border border-red-100 bg-white p-2 text-red-600 hover:bg-red-50 disabled:opacity-60" title="Excluir equipe">
+                <Trash2 size={16} />
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
+        {!equipeSelecionada ? (
+          <div className="p-8 text-sm text-gray-500">
+            Clique em uma equipe para ver o líder e os voluntários cadastrados.
+          </div>
+        ) : (
+          <>
+            <div className="border-b border-gray-100 px-5 py-5">
+              <p className="text-sm font-semibold uppercase tracking-[0.18em] text-dourado-700">Equipe</p>
+              <h2 className="mt-1 text-2xl font-bold text-gray-950">{equipeSelecionada.nome}</h2>
+            </div>
+            <div className="grid gap-5 p-5 lg:grid-cols-2">
+              <div>
+                <h3 className="text-sm font-bold uppercase tracking-[0.14em] text-gray-500">Liderança</h3>
+                <div className="mt-3 space-y-2">
+                  {(equipeSelecionada.lideres || []).length === 0 ? (
+                    <p className="text-sm text-gray-500">Nenhum líder cadastrado nesta equipe.</p>
+                  ) : equipeSelecionada.lideres.map((lider) => (
+                    <Contato key={lider.id} pessoa={lider} />
+                  ))}
+                </div>
+              </div>
+              <div>
+                <h3 className="text-sm font-bold uppercase tracking-[0.14em] text-gray-500">Voluntários</h3>
+                <div className="mt-3 space-y-2">
+                  {(equipeSelecionada.voluntarios || []).length === 0 ? (
+                    <p className="text-sm text-gray-500">Nenhum voluntário cadastrado nesta equipe.</p>
+                  ) : equipeSelecionada.voluntarios.map((voluntario) => (
+                    <Contato key={voluntario.id} pessoa={voluntario} />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function Contato({ pessoa }) {
+  return (
+    <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        <p className="text-sm font-bold text-gray-950">{pessoa.nomeCompleto}</p>
+        {pessoa.telefone && (
+          <span className="text-[11px] font-medium text-gray-400">{pessoa.telefone}</span>
+        )}
+      </div>
+      <p className="mt-1 text-xs text-gray-500">{pessoa.email}</p>
+    </div>
   );
 }
 

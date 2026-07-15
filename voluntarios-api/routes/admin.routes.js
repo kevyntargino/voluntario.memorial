@@ -67,6 +67,18 @@ function formatarUsuario(usuario) {
   };
 }
 
+function formatarEquipe(equipe) {
+  const voluntarios = equipe.voluntarios || [];
+  const lideres = voluntarios.filter((usuario) => usuario.permissoes.includes('LIDER_EQUIPE'));
+
+  return {
+    id: equipe.id,
+    nome: equipe.nome,
+    lideres: lideres.map(formatarUsuario),
+    voluntarios: voluntarios.map(formatarUsuario),
+  };
+}
+
 function formatarParticipacao(participacao) {
   return {
     id: participacao.id,
@@ -76,6 +88,7 @@ function formatarParticipacao(participacao) {
       id: participacao.usuario.id,
       nomeCompleto: participacao.usuario.nomeCompleto,
       email: participacao.usuario.email,
+      telefone: participacao.usuario.telefone,
       urlFoto: participacao.usuario.urlFoto,
     },
   };
@@ -119,9 +132,18 @@ router.get('/dashboard', autenticar, exigirAdmin, async (req, res) => {
       prisma.equipe.count(),
       prisma.equipe.findMany({
         orderBy: { nome: 'asc' },
-        select: {
-          id: true,
-          nome: true,
+        include: {
+          voluntarios: {
+            orderBy: { nomeCompleto: 'asc' },
+            include: {
+              equipes: {
+                select: {
+                  id: true,
+                  nome: true,
+                },
+              },
+            },
+          },
         },
       }),
       prisma.usuario.findMany({
@@ -169,6 +191,7 @@ router.get('/dashboard', autenticar, exigirAdmin, async (req, res) => {
                   id: true,
                   nomeCompleto: true,
                   email: true,
+                  telefone: true,
                   urlFoto: true,
                 },
               },
@@ -192,13 +215,72 @@ router.get('/dashboard', autenticar, exigirAdmin, async (req, res) => {
         totalEquipes,
         ausenciasUltimas4,
       },
-      equipes,
+      equipes: equipes.map(formatarEquipe),
       usuarios: usuarios.map(formatarUsuario),
       lideres: usuarios.filter((usuario) => usuario.permissoes.includes('LIDER_EQUIPE')).map(formatarUsuario),
       proximaEscala: formatarEscala(proximaEscala),
     });
   } catch (erro) {
     console.error('[ERRO LOG] GET /api/admin/dashboard:', erro);
+    return res.status(500).json({ erro: 'Erro interno no servidor. Tente novamente mais tarde.' });
+  }
+});
+
+router.post('/equipes', autenticar, exigirAdmin, async (req, res) => {
+  try {
+    const { nome } = req.body ?? {};
+
+    if (typeof nome !== 'string' || nome.trim().length < 2) {
+      return res.status(400).json({ erro: 'Nome da equipe é obrigatório.' });
+    }
+
+    const equipe = await prisma.equipe.create({
+      data: {
+        nome: nome.trim(),
+      },
+      include: {
+        voluntarios: {
+          include: {
+            equipes: {
+              select: {
+                id: true,
+                nome: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return res.status(201).json({
+      mensagem: 'Equipe criada com sucesso.',
+      equipe: formatarEquipe(equipe),
+    });
+  } catch (erro) {
+    if (erro.code === 'P2002') {
+      return res.status(409).json({ erro: 'Já existe uma equipe com esse nome.' });
+    }
+
+    console.error('[ERRO LOG] POST /api/admin/equipes:', erro);
+    return res.status(500).json({ erro: 'Erro interno no servidor. Tente novamente mais tarde.' });
+  }
+});
+
+router.delete('/equipes/:id', autenticar, exigirAdmin, async (req, res) => {
+  try {
+    await prisma.equipe.delete({
+      where: {
+        id: req.params.id,
+      },
+    });
+
+    return res.status(200).json({ mensagem: 'Equipe excluída com sucesso.' });
+  } catch (erro) {
+    if (erro.code === 'P2025') {
+      return res.status(404).json({ erro: 'Equipe não encontrada.' });
+    }
+
+    console.error('[ERRO LOG] DELETE /api/admin/equipes/:id:', erro);
     return res.status(500).json({ erro: 'Erro interno no servidor. Tente novamente mais tarde.' });
   }
 });
