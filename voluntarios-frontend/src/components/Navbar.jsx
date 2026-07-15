@@ -27,9 +27,22 @@ const senhaInicial = {
   novaSenha: '',
   confirmarNovaSenha: '',
 };
+const THEME_KEY = 'mcom_tema';
+
+function getTemaInicial() {
+  if (typeof window === 'undefined') return 'claro';
+  const temaSalvo = window.localStorage.getItem(THEME_KEY);
+
+  if (['claro', 'escuro'].includes(temaSalvo)) {
+    return temaSalvo;
+  }
+
+  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'escuro' : 'claro';
+}
 
 export default function Navbar() {
   const [menuAberto, setMenuAberto] = useState(false);
+  const [tema, setTema] = useState(getTemaInicial);
   const [perfilAberto, setPerfilAberto] = useState(false);
   const [editandoPerfil, setEditandoPerfil] = useState(false);
   const [formPerfil, setFormPerfil] = useState(() => criarFormUsuario(null));
@@ -46,6 +59,11 @@ export default function Navbar() {
   useEffect(() => {
     setFormPerfil(criarFormUsuario(usuario));
   }, [usuario]);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', tema === 'escuro');
+    window.localStorage.setItem(THEME_KEY, tema);
+  }, [tema]);
 
   const handleLogout = () => {
     logout();
@@ -211,13 +229,15 @@ export default function Navbar() {
               </span>
               <span className="max-w-36 truncate">{usuario?.nomeCompleto || 'Perfil'}</span>
             </button>
-            <button 
-              onClick={handleLogout}
-              className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-white bg-gray-950 hover:bg-gray-800 rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-900"
+            <select
+              value={tema}
+              onChange={(event) => setTema(event.target.value)}
+              className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 outline-none transition hover:border-dourado-200 focus:border-dourado-500 focus:ring-2 focus:ring-dourado-500/20 dark:bg-gray-800 dark:text-gray-100"
+              aria-label="Selecionar tema"
             >
-              <LogOut size={16} />
-              <span>Sair</span>
-            </button>
+              <option value="claro">Modo claro</option>
+              <option value="escuro">Modo escuro</option>
+            </select>
           </div>
 
           {/* Botão Menu Mobile */}
@@ -270,13 +290,17 @@ export default function Navbar() {
             <button type="button" onClick={() => irPara('/manuais')} className="block w-full px-3 py-2 rounded-md text-left text-base font-medium text-gray-700 hover:text-dourado-600 hover:bg-dourado-50">
               Manuais
             </button>
-            <button 
-              onClick={handleLogout}
-              className="w-full text-left flex items-center space-x-2 px-3 py-2 mt-4 rounded-md text-base font-medium text-red-600 hover:bg-red-50"
+            <label className="mt-4 block px-3 text-xs font-bold uppercase tracking-[0.14em] text-gray-400">
+              Tema
+            </label>
+            <select
+              value={tema}
+              onChange={(event) => setTema(event.target.value)}
+              className="mx-3 mt-2 block w-[calc(100%-1.5rem)] rounded-md border border-gray-200 bg-white px-3 py-2 text-base font-semibold text-gray-700 outline-none focus:border-dourado-500 focus:ring-2 focus:ring-dourado-500/20 dark:bg-gray-800 dark:text-gray-100"
             >
-              <LogOut size={18} />
-              <span>Sair</span>
-            </button>
+              <option value="claro">Modo claro</option>
+              <option value="escuro">Modo escuro</option>
+            </select>
           </div>
         </div>
       )}
@@ -408,6 +432,17 @@ export default function Navbar() {
                 </button>
               </form>
             )}
+
+            <div className="mt-5 border-t border-gray-100 pt-4">
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-red-100 bg-white px-4 py-2.5 text-sm font-semibold text-red-600 transition hover:bg-red-50 dark:bg-gray-800"
+              >
+                <LogOut size={16} />
+                Sair da conta
+              </button>
+            </div>
           </div>
         </div>
       )}

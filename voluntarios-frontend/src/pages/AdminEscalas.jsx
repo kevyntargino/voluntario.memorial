@@ -1358,9 +1358,14 @@ function PainelEscalas({
   const eventosEsporadicos = eventos.filter((evento) => evento.tipo === 'ESPORADICA');
   const eventosRecorrentes = eventos.filter((evento) => evento.tipo === 'RECORRENTE');
   const eventosListagem = [...eventosEsporadicos, ...eventosRecorrentes];
+  const tituloListagem = tipoEscalas === 'ESPORADICA'
+    ? 'Escalas esporádicas'
+    : tipoEscalas === 'RECORRENTE'
+      ? 'Escalas recorrentes'
+      : 'Escalas esporádicas';
 
   return (
-    <section className={`mt-5 grid min-w-0 gap-5 ${mostrarFormEscala ? 'xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]' : ''}`}>
+    <section className="mt-5 grid min-w-0 gap-5">
       <div className="min-w-0 rounded-2xl border border-gray-200 bg-white shadow-sm">
         <div className="border-b border-gray-100 px-5 py-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
@@ -1403,6 +1408,120 @@ function PainelEscalas({
         </div>
 
         <div className="space-y-4 p-5">
+          {mostrarFormEscala && (
+            <div className="rounded-2xl border border-dourado-100 bg-dourado-50/60 p-4 shadow-sm">
+              <form onSubmit={onCriarEsporadica} className="space-y-4 rounded-xl border border-gray-200 bg-white p-4">
+                <div className="flex flex-col gap-3 border-b border-gray-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h2 className="text-lg font-bold text-gray-950">Nova Escala</h2>
+                    <p className="mt-1 text-sm text-gray-500">Escolha se a escala será recorrente ou esporádica e selecione as equipes envolvidas.</p>
+                  </div>
+                  <button
+                    disabled={salvandoId === 'nova-escala'}
+                    className="inline-flex items-center justify-center gap-2 rounded-md bg-dourado-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+                  >
+                    {salvandoId === 'nova-escala' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save size={16} />}
+                    Salvar escala
+                  </button>
+                </div>
+
+                <div>
+                  <span className="text-sm font-semibold text-gray-700">Tipo</span>
+                  <div className="mt-2 grid grid-cols-2 gap-2 rounded-lg border border-gray-200 bg-gray-50 p-1">
+                    {[
+                      { value: 'ESPORADICA', label: 'Esporádica' },
+                      { value: 'RECORRENTE', label: 'Recorrente' },
+                    ].map((opcao) => (
+                      <button
+                        key={opcao.value}
+                        type="button"
+                        onClick={() => onChangeEscala((atual) => ({ ...atual, tipo: opcao.value }))}
+                        className={`rounded-md px-3 py-2 text-sm font-bold transition ${
+                          formEscala.tipo === opcao.value ? 'bg-gray-950 text-white' : 'text-gray-600 hover:bg-white'
+                        }`}
+                      >
+                        {opcao.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <Campo label="Título" value={formEscala.titulo} onChange={(value) => onChangeEscala((atual) => ({ ...atual, titulo: value }))} />
+
+                {formEscala.tipo === 'ESPORADICA' ? (
+                  <div>
+                    <Campo label="Data" type="date" value={formEscala.data} onChange={(value) => onChangeEscala((atual) => ({ ...atual, data: value }))} />
+                    <div className="mt-4">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <span className="text-sm font-semibold text-gray-700">Horários</span>
+                        <button
+                          type="button"
+                          onClick={() => onChangeEscala((atual) => ({ ...atual, horarios: [...(atual.horarios || []), ''] }))}
+                          className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-bold text-gray-700 transition hover:bg-gray-50"
+                        >
+                          <Plus size={13} />
+                          Adicionar horário
+                        </button>
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                        {(formEscala.horarios || []).map((horario, index) => (
+                          <div key={`${index}-${horario}`} className="flex gap-2">
+                            <input
+                              type="time"
+                              value={horario}
+                              onChange={(event) => onChangeEscala((atual) => ({
+                                ...atual,
+                                horarios: (atual.horarios || []).map((item, itemIndex) => (itemIndex === index ? event.target.value : item)),
+                              }))}
+                              className="block min-w-0 flex-1 rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
+                            />
+                            {(formEscala.horarios || []).length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => onChangeEscala((atual) => ({
+                                  ...atual,
+                                  horarios: (atual.horarios || []).filter((_, itemIndex) => itemIndex !== index),
+                                }))}
+                                className="rounded-md border border-red-100 bg-white px-2.5 text-red-600 transition hover:bg-red-50"
+                                title="Remover horário"
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      <p className="mt-2 text-xs text-gray-500">Exemplo: adicione 09:00, 10:00, 17:00 e 19:00 para criar quatro escalas no mesmo dia.</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <Select label="Dia" value={formEscala.diaSemana} options={dias} onChange={(value) => onChangeEscala((atual) => ({ ...atual, diaSemana: Number(value) }))} />
+                    <Select label="Fim de semana" value={formEscala.semanaMes} options={semanas.map((semana) => ({ value: semana, label: `${semana}º` }))} onChange={(value) => onChangeEscala((atual) => ({ ...atual, semanaMes: Number(value) }))} />
+                    <Campo label="Horário" type="time" value={formEscala.horario} onChange={(value) => onChangeEscala((atual) => ({ ...atual, horario: value }))} />
+                  </div>
+                )}
+
+                <div className="grid gap-3 lg:grid-cols-2">
+                  <Campo label="Local" value={formEscala.local} onChange={(value) => onChangeEscala((atual) => ({ ...atual, local: value }))} />
+                  <CampoTexto label="Descrição" value={formEscala.descricao} onChange={(value) => onChangeEscala((atual) => ({ ...atual, descricao: value }))} />
+                </div>
+                <GrupoChecks titulo="Equipes solicitadas">
+                  {equipes.map((equipe) => (
+                    <label key={equipe.id} className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                      <input type="checkbox" checked={formEscala.equipeIds.includes(equipe.id)} onChange={() => onAlternarEquipe(equipe.id)} />
+                      {equipe.nome}
+                    </label>
+                  ))}
+                </GrupoChecks>
+                <button disabled={salvandoId === 'nova-escala'} className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-gray-950 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">
+                  {salvandoId === 'nova-escala' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send size={16} />}
+                  Salvar escala e enviar para líderes
+                </button>
+              </form>
+            </div>
+          )}
+
           {tipoEscalas === 'RECORRENTE' && (
             <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
               <p className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-gray-400">Filtrar recorrentes</p>
@@ -1510,11 +1629,13 @@ function PainelEscalas({
             ) : (
               <>
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.14em] text-amber-700">Escalas esporádicas</p>
+                  <p className={`text-xs font-bold uppercase tracking-[0.14em] ${tipoEscalas === 'RECORRENTE' ? 'text-gray-500' : 'text-amber-700'}`}>{tituloListagem}</p>
                   {eventosEsporadicos.length === 0 && (
+                    tipoEscalas !== 'RECORRENTE' && (
                     <p className="mt-2 rounded-lg border border-dashed border-amber-100 bg-amber-50 px-4 py-5 text-sm text-amber-700">
                       Nenhuma escala esporádica encontrada com os filtros atuais.
                     </p>
+                    )
                   )}
                 </div>
                 {eventosListagem.map((evento, index) => {
@@ -1655,119 +1776,6 @@ function PainelEscalas({
         </div>
       </div>
 
-      {mostrarFormEscala && (
-      <div className="min-w-0 space-y-5">
-        <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
-          <form onSubmit={onCriarEsporadica} className="space-y-4 p-5">
-            <div className="flex flex-col gap-3 border-b border-gray-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="text-lg font-bold text-gray-950">Nova Escala</h2>
-                <p className="mt-1 text-sm text-gray-500">Crie uma escala recorrente ou um evento esporádico para os líderes atribuírem voluntários.</p>
-              </div>
-              <button
-                disabled={salvandoId === 'nova-escala'}
-                className="inline-flex items-center justify-center gap-2 rounded-md bg-dourado-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
-              >
-                {salvandoId === 'nova-escala' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save size={16} />}
-                Salvar escala
-              </button>
-            </div>
-
-            <div>
-              <span className="text-sm font-semibold text-gray-700">Tipo</span>
-              <div className="mt-2 grid grid-cols-2 gap-2 rounded-lg border border-gray-200 bg-gray-50 p-1">
-                {[
-                  { value: 'ESPORADICA', label: 'Esporádica' },
-                  { value: 'RECORRENTE', label: 'Recorrente' },
-                ].map((opcao) => (
-                  <button
-                    key={opcao.value}
-                    type="button"
-                    onClick={() => onChangeEscala((atual) => ({ ...atual, tipo: opcao.value }))}
-                    className={`rounded-md px-3 py-2 text-sm font-bold transition ${
-                      formEscala.tipo === opcao.value ? 'bg-gray-950 text-white' : 'text-gray-600 hover:bg-white'
-                    }`}
-                  >
-                    {opcao.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <Campo label="Título" value={formEscala.titulo} onChange={(value) => onChangeEscala((atual) => ({ ...atual, titulo: value }))} />
-
-            {formEscala.tipo === 'ESPORADICA' ? (
-              <div>
-                <Campo label="Data" type="date" value={formEscala.data} onChange={(value) => onChangeEscala((atual) => ({ ...atual, data: value }))} />
-                <div className="mt-4">
-                  <div className="mb-2 flex items-center justify-between gap-2">
-                    <span className="text-sm font-semibold text-gray-700">Horários</span>
-                    <button
-                      type="button"
-                      onClick={() => onChangeEscala((atual) => ({ ...atual, horarios: [...(atual.horarios || []), ''] }))}
-                      className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-bold text-gray-700 transition hover:bg-gray-50"
-                    >
-                      <Plus size={13} />
-                      Adicionar horário
-                    </button>
-                  </div>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {(formEscala.horarios || []).map((horario, index) => (
-                      <div key={`${index}-${horario}`} className="flex gap-2">
-                        <input
-                          type="time"
-                          value={horario}
-                          onChange={(event) => onChangeEscala((atual) => ({
-                            ...atual,
-                            horarios: (atual.horarios || []).map((item, itemIndex) => (itemIndex === index ? event.target.value : item)),
-                          }))}
-                          className="block min-w-0 flex-1 rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
-                        />
-                        {(formEscala.horarios || []).length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => onChangeEscala((atual) => ({
-                              ...atual,
-                              horarios: (atual.horarios || []).filter((_, itemIndex) => itemIndex !== index),
-                            }))}
-                            className="rounded-md border border-red-100 bg-white px-2.5 text-red-600 transition hover:bg-red-50"
-                            title="Remover horário"
-                          >
-                            <Trash2 size={15} />
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                  <p className="mt-2 text-xs text-gray-500">Exemplo: adicione 09:00, 10:00, 17:00 e 19:00 para criar quatro escalas no mesmo dia.</p>
-                </div>
-              </div>
-            ) : (
-              <div className="grid gap-3 sm:grid-cols-3">
-                <Select label="Dia" value={formEscala.diaSemana} options={dias} onChange={(value) => onChangeEscala((atual) => ({ ...atual, diaSemana: Number(value) }))} />
-                <Select label="Fim de semana" value={formEscala.semanaMes} options={semanas.map((semana) => ({ value: semana, label: `${semana}º` }))} onChange={(value) => onChangeEscala((atual) => ({ ...atual, semanaMes: Number(value) }))} />
-                <Campo label="Horário" type="time" value={formEscala.horario} onChange={(value) => onChangeEscala((atual) => ({ ...atual, horario: value }))} />
-              </div>
-            )}
-
-            <Campo label="Local" value={formEscala.local} onChange={(value) => onChangeEscala((atual) => ({ ...atual, local: value }))} />
-            <CampoTexto label="Descrição" value={formEscala.descricao} onChange={(value) => onChangeEscala((atual) => ({ ...atual, descricao: value }))} />
-            <GrupoChecks titulo="Equipes solicitadas">
-              {equipes.map((equipe) => (
-                <label key={equipe.id} className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-                  <input type="checkbox" checked={formEscala.equipeIds.includes(equipe.id)} onChange={() => onAlternarEquipe(equipe.id)} />
-                  {equipe.nome}
-                </label>
-              ))}
-            </GrupoChecks>
-            <button disabled={salvandoId === 'nova-escala'} className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-gray-950 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">
-              {salvandoId === 'nova-escala' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send size={16} />}
-              Salvar escala e enviar para líderes
-            </button>
-          </form>
-        </div>
-      </div>
-      )}
     </section>
   );
 }
