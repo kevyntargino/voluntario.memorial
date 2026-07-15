@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import bcrypt from 'bcrypt';
+import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
@@ -13,6 +14,9 @@ const prisma = new PrismaClient({
   adapter: new PrismaPg(pool),
 });
 const router = Router();
+const R2_DEFAULT_PUBLIC_URL = 'https://a66b8eca7a1e0672558565df261c389a.r2.cloudflarestorage.com/voluntarios';
+const R2_DEFAULT_ENDPOINT = 'https://a66b8eca7a1e0672558565df261c389a.r2.cloudflarestorage.com';
+const R2_DEFAULT_BUCKET = 'voluntarios';
 
 function getJwtSecret() {
   if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
@@ -35,6 +39,83 @@ function sanitizeUsuario(usuario) {
     sexo: usuario.sexo,
     permissoes: usuario.permissoes,
   };
+}
+
+function getR2Config() {
+  return {
+    endpoint: process.env.R2_ENDPOINT || R2_DEFAULT_ENDPOINT,
+    bucket: process.env.R2_BUCKET || R2_DEFAULT_BUCKET,
+    publicUrl: (process.env.R2_PUBLIC_URL || R2_DEFAULT_PUBLIC_URL).replace(/\/$/, ''),
+    accessKeyId: process.env.R2_ACCESS_KEY_ID,
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+  };
+}
+
+function hmac(key, value, encoding) {
+  return crypto.createHmac('sha256', key).update(value).digest(encoding);
+}
+
+function hash(value) {
+  return crypto.createHash('sha256').update(value).digest('hex');
+}
+
+function encodeS3Path(path) {
+  return path.split('/').map((part) => encodeURIComponent(part)).join('/');
+}
+
+function getSigningKey(secretAccessKey, dateStamp, region, service) {
+  const kDate = hmac(`AWS4${secretAccessKey}`, dateStamp);
+  const kRegion = hmac(kDate, region);
+  const kService = hmac(kRegion, service);
+  return hmac(kService, 'aws4_request');
+}
+
+function criarPresignedPutUrl({ key, expiresIn = 600 }) {
+  const config = getR2Config();
+
+  if (!config.accessKeyId || !config.secretAccessKey) {
+    throw new Error('Credenciais R2 não configuradas.');
+  }
+
+  const endpointUrl = new URL(config.endpoint);
+  const now = new Date();
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
+  const dateStamp = amzDate.slice(0, 8);
+  const region = 'auto';
+  const service = 's3';
+  const scope = `${dateStamp}/${region}/${service}/aws4_request`;
+  const credential = `${config.accessKeyId}/${scope}`;
+  const canonicalUri = `/${config.bucket}/${encodeS3Path(key)}`;
+  const params = new URLSearchParams({
+    'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
+    'X-Amz-Credential': credential,
+    'X-Amz-Date': amzDate,
+    'X-Amz-Expires': String(expiresIn),
+    'X-Amz-SignedHeaders': 'host',
+  });
+  const canonicalQueryString = Array.from(params.entries())
+    .map(([paramKey, value]) => `${encodeURIComponent(paramKey)}=${encodeURIComponent(value)}`)
+    .sort()
+    .join('&');
+  const canonicalRequest = [
+    'PUT',
+    canonicalUri,
+    canonicalQueryString,
+    `host:${endpointUrl.host}\n`,
+    'host',
+    'UNSIGNED-PAYLOAD',
+  ].join('\n');
+  const stringToSign = [
+    'AWS4-HMAC-SHA256',
+    amzDate,
+    scope,
+    hash(canonicalRequest),
+  ].join('\n');
+  const signature = hmac(getSigningKey(config.secretAccessKey, dateStamp, region, service), stringToSign, 'hex');
+
+  params.set('X-Amz-Signature', signature);
+
+  return `${endpointUrl.origin}${canonicalUri}?${params.toString()}`;
 }
 
 async function autenticar(req, res, next) {
@@ -159,6 +240,47 @@ router.get('/me', autenticar, async (req, res) => {
     return res.status(200).json({ usuario: sanitizeUsuario(usuario) });
   } catch (erro) {
     console.error('[ERRO LOG] /me:', erro);
+    return res.status(500).json({ erro: 'Erro interno no servidor. Tente novamente mais tarde.' });
+  }
+});
+
+router.post('/me/foto-upload-url', autenticar, async (req, res) => {
+  try {
+    const { fileName, contentType } = req.body ?? {};
+    const tiposPermitidos = {
+      'image/jpeg': 'jpg',
+      'image/png': 'png',
+      'image/webp': 'webp',
+      'image/gif': 'gif',
+    };
+
+    if (!tiposPermitidos[contentType]) {
+      return res.status(400).json({ erro: 'Envie uma imagem JPG, PNG, WEBP ou GIF.' });
+    }
+
+    const extensaoOriginal = typeof fileName === 'string' && fileName.includes('.')
+      ? fileName.split('.').pop().toLowerCase()
+      : tiposPermitidos[contentType];
+    const extensao = ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(extensaoOriginal)
+      ? (extensaoOriginal === 'jpeg' ? 'jpg' : extensaoOriginal)
+      : tiposPermitidos[contentType];
+    const random = crypto.randomBytes(8).toString('hex');
+    const key = `usuarios/${req.usuarioAutenticado.id}/${Date.now()}-${random}.${extensao}`;
+    const config = getR2Config();
+    const uploadUrl = criarPresignedPutUrl({ key });
+
+    return res.status(200).json({
+      uploadUrl,
+      publicUrl: `${config.publicUrl}/${key}`,
+      key,
+      expiresIn: 600,
+    });
+  } catch (erro) {
+    if (erro.message === 'Credenciais R2 não configuradas.') {
+      return res.status(500).json({ erro: 'Storage R2 não configurado no servidor.' });
+    }
+
+    console.error('[ERRO LOG] POST /me/foto-upload-url:', erro);
     return res.status(500).json({ erro: 'Erro interno no servidor. Tente novamente mais tarde.' });
   }
 });

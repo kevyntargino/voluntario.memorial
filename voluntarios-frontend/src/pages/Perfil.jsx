@@ -5,6 +5,7 @@ import { Footer } from '../components/Footer';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
 import { buildApiUrl } from '../lib/api';
+import { uploadFotoUsuario } from '../lib/uploadFoto';
 
 const sexoOptions = [
   { value: '', label: 'Não informado' },
@@ -32,6 +33,7 @@ export default function Perfil() {
   const [sucesso, setSucesso] = useState('');
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
+  const [enviandoFoto, setEnviandoFoto] = useState(false);
 
   useEffect(() => {
     let ativo = true;
@@ -126,6 +128,47 @@ export default function Perfil() {
       setErro(error.message || 'Não foi possível atualizar seu perfil.');
     } finally {
       setSalvando(false);
+    }
+  };
+
+  const handleFoto = async (file) => {
+    setErro('');
+    setSucesso('');
+    setEnviandoFoto(true);
+
+    try {
+      const publicUrl = await uploadFotoUsuario({ token, file });
+      const proximoForm = {
+        ...form,
+        urlFoto: publicUrl,
+      };
+      const resposta = await fetch(buildApiUrl('/api/auth/me'), {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(proximoForm),
+      });
+      const dados = await resposta.json();
+
+      if (!resposta.ok) {
+        if (resposta.status === 401) {
+          logout();
+          navigate('/login', { replace: true });
+          return;
+        }
+
+        throw new Error(dados.erro || 'Foto enviada, mas não foi possível salvar no perfil.');
+      }
+
+      atualizarUsuario(dados.usuario);
+      setForm(createFormState(dados.usuario));
+      setSucesso('Foto atualizada com sucesso.');
+    } catch (error) {
+      setErro(error.message || 'Não foi possível enviar a foto.');
+    } finally {
+      setEnviandoFoto(false);
     }
   };
 
@@ -261,17 +304,23 @@ export default function Perfil() {
                   </label>
 
                   <label className="block">
-                    <span className="text-sm font-semibold text-gray-700">URL da foto</span>
+                    <span className="text-sm font-semibold text-gray-700">Foto do usuário</span>
                     <div className="relative mt-2">
                       <Camera className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                       <input
-                        name="urlFoto"
-                        value={form.urlFoto}
-                        onChange={handleChange}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/gif"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          if (file) handleFoto(file);
+                          event.target.value = '';
+                        }}
                         className="block w-full rounded-md border border-gray-200 bg-white py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
-                        placeholder="https://..."
                       />
                     </div>
+                    <p className="mt-1 text-xs text-gray-500">
+                      {enviandoFoto ? 'Enviando foto...' : 'JPG, PNG, WEBP ou GIF até 5MB.'}
+                    </p>
                   </label>
                 </div>
 
