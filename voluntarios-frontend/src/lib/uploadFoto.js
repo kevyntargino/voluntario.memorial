@@ -3,6 +3,15 @@ import { buildApiUrl } from './api';
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const TIPOS_PERMITIDOS = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 
+function readAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Não foi possível ler o arquivo da foto.'));
+    reader.readAsDataURL(file);
+  });
+}
+
 export async function uploadFotoUsuario({ token, file }) {
   if (!file) {
     throw new Error('Selecione uma imagem.');
@@ -16,7 +25,8 @@ export async function uploadFotoUsuario({ token, file }) {
     throw new Error('A imagem deve ter no máximo 5MB.');
   }
 
-  const assinaturaResposta = await fetch(buildApiUrl('/api/auth/me/foto-upload-url'), {
+  const base64 = await readAsDataUrl(file);
+  const uploadResposta = await fetch(buildApiUrl('/api/auth/me/foto'), {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -25,25 +35,14 @@ export async function uploadFotoUsuario({ token, file }) {
     body: JSON.stringify({
       fileName: file.name,
       contentType: file.type,
+      base64,
     }),
   });
-  const assinatura = await assinaturaResposta.json();
-
-  if (!assinaturaResposta.ok) {
-    throw new Error(assinatura.erro || 'Não foi possível preparar o upload da foto.');
-  }
-
-  const uploadResposta = await fetch(assinatura.uploadUrl, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': file.type,
-    },
-    body: file,
-  });
+  const dados = await uploadResposta.json();
 
   if (!uploadResposta.ok) {
-    throw new Error('Não foi possível enviar a foto para o storage.');
+    throw new Error(dados.erro || 'Não foi possível enviar a foto para o storage.');
   }
 
-  return assinatura.publicUrl;
+  return dados.publicUrl;
 }

@@ -285,6 +285,73 @@ router.post('/me/foto-upload-url', autenticar, async (req, res) => {
   }
 });
 
+router.post('/me/foto', autenticar, async (req, res) => {
+  try {
+    const { fileName, contentType, base64 } = req.body ?? {};
+    const tiposPermitidos = {
+      'image/jpeg': 'jpg',
+      'image/png': 'png',
+      'image/webp': 'webp',
+      'image/gif': 'gif',
+    };
+
+    if (!tiposPermitidos[contentType]) {
+      return res.status(400).json({ erro: 'Envie uma imagem JPG, PNG, WEBP ou GIF.' });
+    }
+
+    if (typeof base64 !== 'string' || !base64.trim()) {
+      return res.status(400).json({ erro: 'Arquivo da foto não foi enviado.' });
+    }
+
+    const base64Limpo = base64.includes(',') ? base64.split(',').pop() : base64;
+    const buffer = Buffer.from(base64Limpo, 'base64');
+
+    if (buffer.length === 0) {
+      return res.status(400).json({ erro: 'Arquivo da foto está vazio.' });
+    }
+
+    if (buffer.length > 5 * 1024 * 1024) {
+      return res.status(400).json({ erro: 'A imagem deve ter no máximo 5MB.' });
+    }
+
+    const extensaoOriginal = typeof fileName === 'string' && fileName.includes('.')
+      ? fileName.split('.').pop().toLowerCase()
+      : tiposPermitidos[contentType];
+    const extensao = ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(extensaoOriginal)
+      ? (extensaoOriginal === 'jpeg' ? 'jpg' : extensaoOriginal)
+      : tiposPermitidos[contentType];
+    const random = crypto.randomBytes(8).toString('hex');
+    const key = `usuarios/${req.usuarioAutenticado.id}/${Date.now()}-${random}.${extensao}`;
+    const config = getR2Config();
+    const uploadUrl = criarPresignedPutUrl({ key });
+    const uploadResposta = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': contentType,
+      },
+      body: buffer,
+    });
+
+    if (!uploadResposta.ok) {
+      const detalhe = await uploadResposta.text().catch(() => '');
+      console.error('[ERRO LOG] Upload R2 falhou:', uploadResposta.status, detalhe);
+      return res.status(502).json({ erro: 'Não foi possível enviar a foto para o storage.' });
+    }
+
+    return res.status(200).json({
+      publicUrl: `${config.publicUrl}/${key}`,
+      key,
+    });
+  } catch (erro) {
+    if (erro.message === 'Credenciais R2 não configuradas.') {
+      return res.status(500).json({ erro: 'Storage R2 não configurado no servidor.' });
+    }
+
+    console.error('[ERRO LOG] POST /me/foto:', erro);
+    return res.status(500).json({ erro: 'Erro interno no servidor. Tente novamente mais tarde.' });
+  }
+});
+
 router.patch('/me', autenticar, async (req, res) => {
   try {
     const {
