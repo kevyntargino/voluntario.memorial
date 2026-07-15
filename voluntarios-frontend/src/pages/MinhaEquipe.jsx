@@ -28,6 +28,8 @@ const formVoluntarioInicial = {
 const formEscalaInicial = {
   id: null,
   titulo: '',
+  local: '',
+  descricao: '',
   dataHora: '',
   voluntarioIds: [],
   substitutoIds: [],
@@ -189,6 +191,8 @@ export default function MinhaEquipe() {
         method: formEscala.id ? 'PATCH' : 'POST',
         body: JSON.stringify({
           titulo: formEscala.titulo,
+          local: formEscala.local,
+          descricao: formEscala.descricao,
           dataHora: formEscala.dataHora,
           voluntarioIds: formEscala.voluntarioIds,
           substitutoIds: formEscala.substitutoIds,
@@ -207,6 +211,8 @@ export default function MinhaEquipe() {
     setFormEscala({
       id: escala.id,
       titulo: escala.titulo || '',
+      local: escala.local || '',
+      descricao: escala.descricao || '',
       dataHora: toDatetimeLocal(escala.dataHora),
       voluntarioIds: escala.voluntarios.map((item) => item.usuario.id),
       substitutoIds: escala.voluntarios.filter((item) => item.substituto).map((item) => item.usuario.id),
@@ -292,6 +298,18 @@ export default function MinhaEquipe() {
       escala.voluntarios
         .filter((item) => item.status === 'PEDIU_SUBSTITUICAO')
         .map((item) => ({ ...item, escala }))
+    ));
+  }, [equipeSelecionada]);
+
+  const pedidosEscalasEsporadicas = useMemo(() => {
+    if (!equipeSelecionada) {
+      return [];
+    }
+
+    return equipeSelecionada.escalas.filter((escala) => (
+      escala.tipo === 'ESPORADICA'
+      && escala.solicitadaPeloAdmin
+      && escala.voluntarios.length === 0
     ));
   }, [equipeSelecionada]);
 
@@ -411,6 +429,39 @@ export default function MinhaEquipe() {
                 )}
               </Painel>
 
+              <Painel
+                titulo="Escalas esporádicas solicitadas"
+                icone={CalendarPlus}
+                badge={pedidosEscalasEsporadicas.length}
+              >
+                {pedidosEscalasEsporadicas.length === 0 ? (
+                  <p className="text-sm text-gray-500">Nenhuma escala esporádica aguardando atribuição.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {pedidosEscalasEsporadicas.map((escala) => (
+                      <div key={escala.id} className="rounded-md border border-amber-100 bg-amber-50 p-3">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <p className="text-sm font-bold text-gray-950">{escala.titulo || 'Escala esporádica'}</p>
+                            <p className="mt-1 text-xs font-semibold text-amber-700">{formatarData(escala.dataHora)}</p>
+                            {escala.local && <p className="mt-1 text-xs text-gray-600">Local: {escala.local}</p>}
+                            {escala.descricao && <p className="mt-2 text-sm text-gray-700">{escala.descricao}</p>}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => editarEscala(escala)}
+                            className="inline-flex items-center justify-center gap-2 rounded-md bg-amber-700 px-3 py-2 text-sm font-semibold text-white transition hover:bg-amber-800"
+                          >
+                            <UserPlus size={15} />
+                            Atribuir voluntários
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Painel>
+
               <Painel titulo="Voluntários" icone={UsersRound}>
                 <div className="space-y-2">
                   {equipeSelecionada.voluntarios.map((voluntario) => (
@@ -452,7 +503,9 @@ export default function MinhaEquipe() {
               <Painel titulo={formEscala.id ? 'Editar escala' : 'Nova escala'} icone={CalendarPlus}>
                 <form onSubmit={salvarEscala} className="space-y-4">
                   <Campo label="Título" value={formEscala.titulo} onChange={(value) => setFormEscala((atual) => ({ ...atual, titulo: value }))} />
+                  <Campo label="Local" value={formEscala.local} onChange={(value) => setFormEscala((atual) => ({ ...atual, local: value }))} />
                   <Campo label="Data e horário" type="datetime-local" value={formEscala.dataHora} onChange={(value) => setFormEscala((atual) => ({ ...atual, dataHora: value }))} />
+                  <CampoTexto label="Descrição" value={formEscala.descricao} onChange={(value) => setFormEscala((atual) => ({ ...atual, descricao: value }))} />
 
                   <div>
                     <p className="mb-2 text-sm font-semibold text-gray-700">Voluntários escalados</p>
@@ -515,6 +568,12 @@ export default function MinhaEquipe() {
                         <div>
                           <p className="text-sm font-bold text-gray-950">{escala.titulo || 'Escala sem título'}</p>
                           <p className="mt-1 text-xs text-gray-500">{formatarData(escala.dataHora)}</p>
+                          {escala.local && <p className="mt-1 text-xs text-gray-500">Local: {escala.local}</p>}
+                          {escala.tipo === 'ESPORADICA' && (
+                            <span className="mt-2 inline-flex rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-amber-700">
+                              Esporádica
+                            </span>
+                          )}
                           <p className="mt-2 text-xs text-gray-600">
                             {escala.voluntarios.length} voluntário(s): {escala.voluntarios.map((item) => item.usuario.nomeCompleto).join(', ') || 'ninguém escalado'}
                           </p>
@@ -578,6 +637,21 @@ function Campo({ label, value, onChange, type = 'text', placeholder = '' }) {
         type={type}
         value={value}
         placeholder={placeholder}
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-2 block w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
+      />
+    </label>
+  );
+}
+
+function CampoTexto({ label, value, onChange, placeholder = '' }) {
+  return (
+    <label className="block">
+      <span className="text-sm font-semibold text-gray-700">{label}</span>
+      <textarea
+        value={value}
+        placeholder={placeholder}
+        rows={3}
         onChange={(event) => onChange(event.target.value)}
         className="mt-2 block w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
       />

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Menu, X, LogOut, User, UsersRound } from 'lucide-react';
+import { Menu, X, LogOut, User, UsersRound, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
 
@@ -8,6 +8,7 @@ export default function Navbar() {
   const { usuario, logout } = useAuth();
   const { navigate } = useNavigation();
   const podeGerenciarEquipe = usuario?.permissoes?.some((permissao) => ['LIDER_EQUIPE', 'ADMINISTRADOR'].includes(permissao));
+  const isAdmin = usuario?.permissoes?.includes('ADMINISTRADOR');
 
   const handleLogout = () => {
     logout();
@@ -40,7 +41,13 @@ export default function Navbar() {
                 Minha equipe
               </button>
             )}
-            <button type="button" className="font-sans text-gray-600 hover:text-dourado-600 transition-colors font-medium">
+            {isAdmin && (
+              <button type="button" onClick={() => navigate('/admin/escalas')} className="flex items-center gap-2 font-sans text-gray-600 hover:text-dourado-600 transition-colors font-medium">
+                <ShieldCheck size={18} />
+                Admin escalas
+              </button>
+            )}
+            <button type="button" onClick={() => navigate('/avisos')} className="font-sans text-gray-600 hover:text-dourado-600 transition-colors font-medium">
               Avisos
             </button>
           </div>
@@ -91,7 +98,13 @@ export default function Navbar() {
                 Minha equipe
               </button>
             )}
-            <button type="button" className="block w-full px-3 py-2 rounded-md text-left text-base font-medium text-gray-700 hover:text-dourado-600 hover:bg-dourado-50">
+            {isAdmin && (
+              <button type="button" onClick={() => navigate('/admin/escalas')} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-base font-medium text-gray-700 hover:text-dourado-600 hover:bg-dourado-50">
+                <ShieldCheck size={18} />
+                Admin escalas
+              </button>
+            )}
+            <button type="button" onClick={() => navigate('/avisos')} className="block w-full px-3 py-2 rounded-md text-left text-base font-medium text-gray-700 hover:text-dourado-600 hover:bg-dourado-50">
               Avisos
             </button>
             <button 

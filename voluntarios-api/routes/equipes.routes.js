@@ -173,10 +173,14 @@ function formatarEquipe(equipe, usuario) {
       return {
         id: escala.id,
         titulo: escala.titulo,
+        local: escala.local,
+        descricao: escala.descricao,
         tipo: escala.tipo,
         diaSemana: escala.diaSemana,
         semanaMes: escala.semanaMes,
         dataHora: dataOcorrencia,
+        grupoEsporadicoId: escala.grupoEsporadicoId,
+        solicitadaPeloAdmin: escala.solicitadaPeloAdmin,
         voluntarios: escala.voluntarios
           .map((item) => formatarParticipacao(item, dataOcorrencia))
           .filter(Boolean),
@@ -494,7 +498,7 @@ router.post('/:equipeId/escalas', autenticar, async (req, res) => {
       return res.status(403).json({ erro: 'Você não pode gerenciar esta equipe.' });
     }
 
-    const { titulo, dataHora, voluntarioIds = [], substitutoIds = [] } = req.body ?? {};
+    const { titulo, dataHora, local, descricao, voluntarioIds = [], substitutoIds = [] } = req.body ?? {};
 
     if (!dataHora) {
       return res.status(400).json({ erro: 'Data e horário da escala são obrigatórios.' });
@@ -504,6 +508,8 @@ router.post('/:equipeId/escalas', autenticar, async (req, res) => {
     const escala = await prisma.escala.create({
       data: {
         titulo: typeof titulo === 'string' && titulo.trim() ? titulo.trim() : 'Escala da equipe',
+        local: typeof local === 'string' && local.trim() ? local.trim() : null,
+        descricao: typeof descricao === 'string' && descricao.trim() ? descricao.trim() : null,
         tipo: 'ESPORADICA',
         diaSemana: data.getDay(),
         semanaMes: Math.ceil(data.getDate() / 7),
@@ -540,7 +546,7 @@ router.patch('/:equipeId/escalas/:escalaId', autenticar, async (req, res) => {
       return res.status(403).json({ erro: 'Você não pode gerenciar esta equipe.' });
     }
 
-    const { titulo, dataHora, voluntarioIds = [], substitutoIds = [] } = req.body ?? {};
+    const { titulo, dataHora, local, descricao, voluntarioIds = [], substitutoIds = [] } = req.body ?? {};
     const data = dataHora ? new Date(dataHora) : null;
 
     const escalaExistente = await prisma.escala.findFirst({
@@ -561,6 +567,8 @@ router.patch('/:equipeId/escalas/:escalaId', autenticar, async (req, res) => {
       },
       data: {
         titulo: typeof titulo === 'string' && titulo.trim() ? titulo.trim() : undefined,
+        local: typeof local === 'string' ? local.trim() || null : undefined,
+        descricao: typeof descricao === 'string' ? descricao.trim() || null : undefined,
         dataHora: data || undefined,
         diaSemana: data ? data.getDay() : undefined,
         semanaMes: data ? Math.ceil(data.getDate() / 7) : undefined,

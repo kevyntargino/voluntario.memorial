@@ -1,0 +1,5 @@
+ALTER TABLE "escalas"
+ADD COLUMN IF NOT EXISTS "local" TEXT,
+ADD COLUMN IF NOT EXISTS "descricao" TEXT,
+ADD COLUMN IF NOT EXISTS "grupo_esporadico_id" UUID,
+ADD COLUMN IF NOT EXISTS "solicitada_pelo_admin" BOOLEAN NOT NULL DEFAULT false;

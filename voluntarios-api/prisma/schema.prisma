@@ -80,6 +80,7 @@ model Usuario {
   escalasAtribuidas VoluntarioEscala[]      @relation("AtribuidorEscala")
   ordensCriadas     OrdemCulto[]            @relation("CriadorOrdemCulto")
   avisosCriados     Aviso[]                 @relation("CriadorAviso")
+  avisosRecebidos   AvisoDestinatario[]
   logsAtividade     LogAuditoria[]          @relation("UsuarioAuditoria")
   tokensSenha       TokenRedefinicaoSenha[]
 
@@ -117,11 +118,15 @@ model Equipe {
 model Escala {
   id          String     @id @default(uuid()) @db.Uuid
   titulo      String?    // Ex: "Culto de Domingo - Manhã", "Conferência Jovem"
+  local       String?
+  descricao   String?    @db.Text
   tipo        TipoEscala
   
   diaSemana   Int?       @map("dia_semana") // Ex: 0 = Domingo, 1 = Segunda
   semanaMes   Int?       @map("semana_mes") // Ex: 1 = primeiro domingo/sábado do mês
   dataHora    DateTime?  @map("data_hora") 
+  grupoEsporadicoId String? @map("grupo_esporadico_id") @db.Uuid
+  solicitadaPeloAdmin Boolean @default(false) @map("solicitada_pelo_admin")
   
   equipeId    String     @map("equipe_id") @db.Uuid
   equipe      Equipe     @relation(fields: [equipeId], references: [id], onDelete: Cascade)
@@ -199,6 +204,7 @@ model Aviso {
   id           String    @id @default(uuid()) @db.Uuid
   titulo       String
   mensagem     String    @db.Text
+  dataAviso    DateTime  @default(now()) @map("data_aviso")
   tipo         TipoAviso @default(GLOBAL)
   
   equipeId     String?   @map("equipe_id") @db.Uuid
@@ -206,10 +212,22 @@ model Aviso {
 
   criadorId    String?   @map("criador_id") @db.Uuid
   criador      Usuario?  @relation("CriadorAviso", fields: [criadorId], references: [id], onDelete: SetNull)
+  destinatarios AvisoDestinatario[]
 
   criadoEm     DateTime  @default(now()) @map("criado_em")
 
   @@map("avisos")
+}
+
+model AvisoDestinatario {
+  id        String  @id @default(uuid()) @db.Uuid
+  avisoId   String  @map("aviso_id") @db.Uuid
+  aviso     Aviso   @relation(fields: [avisoId], references: [id], onDelete: Cascade)
+  usuarioId String  @map("usuario_id") @db.Uuid
+  usuario   Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@unique([avisoId, usuarioId])
+  @@map("avisos_destinatarios")
 }
 
 // ==========================================

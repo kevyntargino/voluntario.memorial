@@ -77,6 +77,17 @@ function formatarHorario(dataHora) {
   }).format(new Date(dataHora));
 }
 
+function formatarDataCompleta(dataHora) {
+  if (!dataHora) {
+    return 'Data a confirmar';
+  }
+
+  return new Intl.DateTimeFormat('pt-BR', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(dataHora));
+}
+
 function normalizar(texto) {
   return String(texto || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }
@@ -194,17 +205,20 @@ export default function Escalas() {
     const termo = normalizar(busca);
 
     return escalas.filter((escala) => {
+      const isEsporadicaMinha = visao === 'minhas' && escala.tipo === 'ESPORADICA';
       const mesmaSemana = getSemanaDoMes(escala) === semanaSelecionada;
       const mesmoDia = getDiaSemana(escala) === diaSelecionado;
       const texto = normalizar([
         escala.titulo,
+        escala.local,
+        escala.descricao,
         escala.equipe?.nome,
         escala.voluntarios?.map((item) => item.usuario?.nomeCompleto).join(' '),
       ].join(' '));
 
-      return mesmaSemana && mesmoDia && (!termo || texto.includes(termo));
+      return (isEsporadicaMinha || (mesmaSemana && mesmoDia)) && (!termo || texto.includes(termo));
     });
-  }, [busca, diaSelecionado, escalas, semanaSelecionada]);
+  }, [busca, diaSelecionado, escalas, semanaSelecionada, visao]);
 
   const escalasPorArea = useMemo(() => {
     const mapa = new Map(areas.map((area) => [area, []]));
@@ -425,6 +439,16 @@ function EscalaLinha({
           <>
             <p className="mt-1 text-sm font-semibold text-gray-500">{formatarHorario(escala.dataHora)}</p>
             <p className="mt-1 text-sm text-gray-600">{escala.titulo || 'Escala sem título'}</p>
+            {escala.tipo === 'ESPORADICA' && (
+              <span className="mt-2 inline-flex rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-amber-700">
+                Esporádica
+              </span>
+            )}
+            {escala.tipo === 'ESPORADICA' && (
+              <p className="mt-2 text-xs font-semibold text-gray-600">{formatarDataCompleta(escala.dataHora)}</p>
+            )}
+            {escala.local && <p className="mt-1 text-xs text-gray-500">Local: {escala.local}</p>}
+            {escala.descricao && <p className="mt-2 max-w-sm text-xs leading-5 text-gray-600">{escala.descricao}</p>}
           </>
         ) : (
           <p className="mt-1 text-sm text-gray-500">Nenhuma escala neste período.</p>

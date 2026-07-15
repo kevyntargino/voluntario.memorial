@@ -4,6 +4,7 @@ import cors from 'cors';
 import authRoutes from './routes/auth.routes.js';
 import escalasRoutes from './routes/escalas.routes.js';
 import equipesRoutes from './routes/equipes.routes.js';
+import avisosRoutes from './routes/avisos.routes.js';
 
 const app = express();
 
@@ -24,6 +25,7 @@ app.use(express.json());
 app.use('/api/auth', authRoutes);
 app.use('/api/escalas', escalasRoutes);
 app.use('/api/equipes', equipesRoutes);
+app.use('/api/avisos', avisosRoutes);
 
 // Rota de Health Check para verificar se o servidor está online
 app.get('/', (req, res) => {

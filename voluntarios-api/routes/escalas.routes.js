@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { randomUUID } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
@@ -32,6 +33,28 @@ function autenticar(req, res, next) {
   } catch {
     return res.status(401).json({ erro: 'Sessão inválida ou expirada.' });
   }
+}
+
+function exigirAdmin(req, res, next) {
+  const permissoes = req.usuarioAutenticado?.permissoes || [];
+
+  if (!permissoes.includes('ADMINISTRADOR')) {
+    return res.status(403).json({ erro: 'Acesso restrito a administradores.' });
+  }
+
+  return next();
+}
+
+function getSemanaMes(data) {
+  return Math.ceil(data.getDate() / 7);
+}
+
+function getDataHoraRecorrente(diaSemana, semanaMes, dataHora) {
+  const { horas, minutos } = getHorarioBase(dataHora);
+  const agora = new Date();
+
+  return getOcorrenciaNoMes(agora.getUTCFullYear(), agora.getUTCMonth(), diaSemana, semanaMes, dataHora)
+    || getDataUtc(agora.getUTCFullYear(), agora.getUTCMonth(), 1, horas, minutos);
 }
 
 function getHorarioBase(dataHora) {
@@ -138,10 +161,14 @@ function formatarEscala(voluntarioEscala) {
     escala: {
       id: voluntarioEscala.escala.id,
       titulo: voluntarioEscala.escala.titulo,
+      local: voluntarioEscala.escala.local,
+      descricao: voluntarioEscala.escala.descricao,
       tipo: voluntarioEscala.escala.tipo,
       diaSemana: voluntarioEscala.escala.diaSemana,
       semanaMes: voluntarioEscala.escala.semanaMes,
       dataHora: dataOcorrencia,
+      grupoEsporadicoId: voluntarioEscala.escala.grupoEsporadicoId,
+      solicitadaPeloAdmin: voluntarioEscala.escala.solicitadaPeloAdmin,
       equipe: voluntarioEscala.escala.equipe,
     },
     atribuidoPor: voluntarioEscala.atribuidoPor,
@@ -159,10 +186,14 @@ function formatarEscalaCompleta(escala, usuarioId) {
   return {
     id: escala.id,
     titulo: escala.titulo,
+    local: escala.local,
+    descricao: escala.descricao,
     tipo: escala.tipo,
     diaSemana: escala.diaSemana,
     semanaMes: escala.semanaMes,
     dataHora: dataOcorrencia,
+    grupoEsporadicoId: escala.grupoEsporadicoId,
+    solicitadaPeloAdmin: escala.solicitadaPeloAdmin,
     equipe: escala.equipe,
     voluntarios,
     minhaParticipacao: minhaParticipacao
@@ -184,10 +215,14 @@ router.get('/', autenticar, async (req, res) => {
 
     const escalas = await prisma.escala.findMany({
       where: {
-        OR: [
-          { tipo: 'RECORRENTE' },
-          { dataHora: { gte: new Date() } },
-        ],
+        OR: visao === 'minhas'
+          ? [
+              { tipo: 'RECORRENTE' },
+              { tipo: 'ESPORADICA', dataHora: { gte: new Date() } },
+            ]
+          : [
+              { tipo: 'RECORRENTE' },
+            ],
         equipe: {
           nome: {
             in: areasMCom,
@@ -239,6 +274,185 @@ router.get('/', autenticar, async (req, res) => {
     });
   } catch (erro) {
     console.error('[ERRO LOG] GET /api/escalas:', erro);
+    return res.status(500).json({ erro: 'Erro interno no servidor. Tente novamente mais tarde.' });
+  }
+});
+
+router.get('/admin', autenticar, exigirAdmin, async (req, res) => {
+  try {
+    const areasMCom = ['Midia', 'Iluminação', 'Filmagem', 'Fotografia', 'DTV', 'Direção', 'Redes Sociais'];
+    const equipes = await prisma.equipe.findMany({
+      where: {
+        nome: {
+          in: areasMCom,
+        },
+      },
+      orderBy: {
+        nome: 'asc',
+      },
+      select: {
+        id: true,
+        nome: true,
+      },
+    });
+
+    const escalas = await prisma.escala.findMany({
+      where: {
+        equipeId: {
+          in: equipes.map((equipe) => equipe.id),
+        },
+        OR: [
+          { tipo: 'RECORRENTE' },
+          { tipo: 'ESPORADICA', dataHora: { gte: new Date() } },
+        ],
+      },
+      include: {
+        equipe: {
+          select: {
+            id: true,
+            nome: true,
+          },
+        },
+        voluntarios: {
+          include: {
+            usuario: {
+              select: {
+                id: true,
+                nomeCompleto: true,
+                email: true,
+                urlFoto: true,
+              },
+            },
+          },
+          orderBy: {
+            criadoEm: 'asc',
+          },
+        },
+      },
+      orderBy: [
+        { tipo: 'asc' },
+        { dataHora: 'asc' },
+        { equipe: { nome: 'asc' } },
+      ],
+    });
+
+    return res.status(200).json({
+      equipes,
+      recorrentes: escalas
+        .filter((escala) => escala.tipo === 'RECORRENTE')
+        .map((escala) => formatarEscalaCompleta(escala, req.usuarioAutenticado.id)),
+      esporadicas: escalas
+        .filter((escala) => escala.tipo === 'ESPORADICA')
+        .map((escala) => formatarEscalaCompleta(escala, req.usuarioAutenticado.id)),
+    });
+  } catch (erro) {
+    console.error('[ERRO LOG] GET /api/escalas/admin:', erro);
+    return res.status(500).json({ erro: 'Erro interno no servidor. Tente novamente mais tarde.' });
+  }
+});
+
+router.patch('/admin/recorrentes/:id', autenticar, exigirAdmin, async (req, res) => {
+  try {
+    const { titulo, diaSemana, semanaMes, horario } = req.body ?? {};
+    const diaSemanaNumero = Number(diaSemana);
+    const semanaMesNumero = Number(semanaMes);
+
+    if (![0, 6].includes(diaSemanaNumero) || ![1, 2, 3, 4].includes(semanaMesNumero)) {
+      return res.status(400).json({ erro: 'Informe um sábado/domingo entre o 1º e o 4º fim de semana.' });
+    }
+
+    const [horasRaw, minutosRaw] = String(horario || '18:00').split(':');
+    const horas = Number(horasRaw);
+    const minutos = Number(minutosRaw);
+
+    if (Number.isNaN(horas) || Number.isNaN(minutos)) {
+      return res.status(400).json({ erro: 'Horário inválido.' });
+    }
+
+    const dataHora = getDataHoraRecorrente(
+      diaSemanaNumero,
+      semanaMesNumero,
+      getDataUtc(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1, horas, minutos),
+    );
+
+    await prisma.escala.update({
+      where: {
+        id: req.params.id,
+      },
+      data: {
+        titulo: typeof titulo === 'string' && titulo.trim() ? titulo.trim() : undefined,
+        diaSemana: diaSemanaNumero,
+        semanaMes: semanaMesNumero,
+        dataHora,
+      },
+    });
+
+    return res.status(200).json({ mensagem: 'Escala recorrente atualizada com sucesso.' });
+  } catch (erro) {
+    if (erro.code === 'P2025') {
+      return res.status(404).json({ erro: 'Escala recorrente não encontrada.' });
+    }
+
+    console.error('[ERRO LOG] PATCH /api/escalas/admin/recorrentes/:id:', erro);
+    return res.status(500).json({ erro: 'Erro interno no servidor. Tente novamente mais tarde.' });
+  }
+});
+
+router.post('/admin/esporadicas', autenticar, exigirAdmin, async (req, res) => {
+  try {
+    const { titulo, dataHora, local, descricao, equipeIds = [] } = req.body ?? {};
+
+    if (typeof titulo !== 'string' || titulo.trim().length < 3) {
+      return res.status(400).json({ erro: 'Título da escala é obrigatório.' });
+    }
+
+    if (!dataHora) {
+      return res.status(400).json({ erro: 'Data e horário da escala são obrigatórios.' });
+    }
+
+    if (!Array.isArray(equipeIds) || equipeIds.length === 0) {
+      return res.status(400).json({ erro: 'Selecione pelo menos uma equipe.' });
+    }
+
+    const equipes = await prisma.equipe.findMany({
+      where: {
+        id: {
+          in: equipeIds,
+        },
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (equipes.length !== equipeIds.length) {
+      return res.status(400).json({ erro: 'Uma ou mais equipes selecionadas são inválidas.' });
+    }
+
+    const data = new Date(dataHora);
+    const grupoEsporadicoId = randomUUID();
+
+    await prisma.escala.createMany({
+      data: equipes.map((equipe) => ({
+        titulo: titulo.trim(),
+        local: typeof local === 'string' && local.trim() ? local.trim() : null,
+        descricao: typeof descricao === 'string' && descricao.trim() ? descricao.trim() : null,
+        tipo: 'ESPORADICA',
+        diaSemana: data.getDay(),
+        semanaMes: getSemanaMes(data),
+        dataHora: data,
+        grupoEsporadicoId,
+        solicitadaPeloAdmin: true,
+        equipeId: equipe.id,
+      })),
+    });
+
+    return res.status(201).json({
+      mensagem: 'Escala esporádica criada e enviada aos líderes das equipes selecionadas.',
+      grupoEsporadicoId,
+    });
+  } catch (erro) {
+    console.error('[ERRO LOG] POST /api/escalas/admin/esporadicas:', erro);
     return res.status(500).json({ erro: 'Erro interno no servidor. Tente novamente mais tarde.' });
   }
 });
