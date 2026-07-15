@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import { Footer } from '../components/Footer';
+import { UsuarioInfoButton, UsuarioModal } from '../components/UsuarioModal';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
 import { buildApiUrl } from '../lib/api';
@@ -73,6 +74,9 @@ export default function MinhaEquipe() {
   const [formEscala, setFormEscala] = useState(formEscalaInicial);
   const [substitutosSelecionados, setSubstitutosSelecionados] = useState({});
   const [filtroEscala, setFiltroEscala] = useState(filtrosRecorrentes[0].chave);
+  const [usuarioModal, setUsuarioModal] = useState(null);
+  const [mostrarCadastroVoluntario, setMostrarCadastroVoluntario] = useState(false);
+  const [mostrarAtribuirVoluntarios, setMostrarAtribuirVoluntarios] = useState(false);
 
   const carregarEquipes = useCallback(async () => {
     setErro('');
@@ -197,6 +201,7 @@ export default function MinhaEquipe() {
         body: JSON.stringify(formVoluntario),
       });
       setFormVoluntario(formVoluntarioInicial);
+      setMostrarCadastroVoluntario(false);
     } catch (error) {
       setErro(error.message);
     } finally {
@@ -242,6 +247,7 @@ export default function MinhaEquipe() {
       });
 
       setFormEscala(formEscalaInicial);
+      setMostrarAtribuirVoluntarios(false);
     } catch (error) {
       setErro(error.message);
     } finally {
@@ -256,6 +262,7 @@ export default function MinhaEquipe() {
       voluntarioIds: escala.voluntarios.map((item) => item.usuario.id),
       substitutoIds: escala.voluntarios.filter((item) => item.substituto).map((item) => item.usuario.id),
     });
+    setMostrarAtribuirVoluntarios(true);
   };
 
   const atribuirSubstituto = async (pedidoId) => {
@@ -371,6 +378,8 @@ export default function MinhaEquipe() {
                 setEquipeId(event.target.value);
                 setFormEscala(formEscalaInicial);
                 setFiltroEscala(filtrosRecorrentes[0].chave);
+                setMostrarAtribuirVoluntarios(false);
+                setMostrarCadastroVoluntario(false);
               }}
               className="rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm font-semibold outline-none focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
             >
@@ -407,8 +416,13 @@ export default function MinhaEquipe() {
                       <div key={pedido.id} className="rounded-md border border-sky-100 bg-sky-50 p-3">
                         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                           <div>
-                            <p className="text-sm font-bold text-gray-950">{pedido.usuario.nomeCompleto}</p>
-                            <p className="mt-1 text-xs font-semibold text-sky-700">{pedido.escala.titulo || 'Escala sem título'} - {formatarData(pedido.escala.dataHora)}</p>
+                            <div className="flex items-start gap-2">
+                              <UsuarioInfoButton usuario={pedido.usuario} onClick={setUsuarioModal} />
+                              <div className="min-w-0">
+                                <p className="text-sm font-bold text-gray-950">{pedido.usuario.nomeCompleto}</p>
+                                <p className="mt-1 text-xs font-semibold text-sky-700">{pedido.escala.titulo || 'Escala sem título'} - {formatarData(pedido.escala.dataHora)}</p>
+                              </div>
+                            </div>
                           </div>
                           <div className="inline-flex items-center gap-2 rounded-md bg-white px-2.5 py-1.5 text-xs font-bold text-sky-700">
                             <RefreshCcw size={14} />
@@ -486,17 +500,34 @@ export default function MinhaEquipe() {
               </Painel>
 
               <Painel titulo="Voluntários" icone={UsersRound}>
+                <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-700">{equipeSelecionada.voluntarios.length} voluntário(s) cadastrado(s)</p>
+                    <p className="mt-1 text-xs text-gray-500">Cadastre ou consulte os dados dos voluntários da equipe.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setMostrarCadastroVoluntario((atual) => !atual)}
+                    className="inline-flex items-center justify-center gap-2 rounded-md bg-gray-950 px-3 py-2 text-sm font-semibold text-white transition hover:bg-gray-800"
+                  >
+                    <UserPlus size={15} />
+                    {mostrarCadastroVoluntario ? 'Fechar cadastro' : 'Cadastrar voluntário'}
+                  </button>
+                </div>
                 <div className="space-y-2">
                   {equipeSelecionada.voluntarios.map((voluntario) => (
                     <div key={voluntario.id} className="flex items-center justify-between gap-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-3">
-                      <div className="min-w-0">
-                        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
-                          <p className="truncate text-sm font-bold text-gray-950">{voluntario.nomeCompleto}</p>
-                          {voluntario.telefone && (
-                            <span className="text-[11px] font-medium text-gray-400">{voluntario.telefone}</span>
-                          )}
+                      <div className="flex min-w-0 items-start gap-2">
+                        <UsuarioInfoButton usuario={voluntario} onClick={setUsuarioModal} />
+                        <div className="min-w-0">
+                          <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+                            <p className="truncate text-sm font-bold text-gray-950">{voluntario.nomeCompleto}</p>
+                            {voluntario.telefone && (
+                              <span className="text-[11px] font-medium text-gray-400">{voluntario.telefone}</span>
+                            )}
+                          </div>
+                          <p className="truncate text-xs text-gray-500">{voluntario.email}</p>
                         </div>
-                        <p className="truncate text-xs text-gray-500">{voluntario.email}</p>
                       </div>
                       <button
                         type="button"
@@ -512,21 +543,36 @@ export default function MinhaEquipe() {
                 </div>
               </Painel>
 
-              <Painel titulo="Cadastrar voluntário" icone={UserPlus}>
-                <form onSubmit={cadastrarVoluntario} className="space-y-3">
-                  <Campo label="Nome completo" value={formVoluntario.nomeCompleto} onChange={(value) => setFormVoluntario((atual) => ({ ...atual, nomeCompleto: value }))} />
-                  <Campo label="E-mail" type="email" value={formVoluntario.email} onChange={(value) => setFormVoluntario((atual) => ({ ...atual, email: value }))} />
-                  <Campo label="Telefone" value={formVoluntario.telefone} onChange={(value) => setFormVoluntario((atual) => ({ ...atual, telefone: value }))} />
-                  <Campo label="Senha temporária" value={formVoluntario.senha} placeholder="Mcom@123" onChange={(value) => setFormVoluntario((atual) => ({ ...atual, senha: value }))} />
-                  <button disabled={salvando} className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-gray-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-gray-800 disabled:opacity-60">
-                    <Plus size={16} />
-                    Adicionar à equipe
-                  </button>
-                </form>
-              </Painel>
+              {mostrarCadastroVoluntario && (
+                <Painel titulo="Cadastrar voluntário" icone={UserPlus}>
+                  <form onSubmit={cadastrarVoluntario} className="space-y-3">
+                    <Campo label="Nome completo" value={formVoluntario.nomeCompleto} onChange={(value) => setFormVoluntario((atual) => ({ ...atual, nomeCompleto: value }))} />
+                    <Campo label="E-mail" type="email" value={formVoluntario.email} onChange={(value) => setFormVoluntario((atual) => ({ ...atual, email: value }))} />
+                    <Campo label="Telefone" value={formVoluntario.telefone} onChange={(value) => setFormVoluntario((atual) => ({ ...atual, telefone: value }))} />
+                    <Campo label="Senha temporária" value={formVoluntario.senha} placeholder="Mcom@123" onChange={(value) => setFormVoluntario((atual) => ({ ...atual, senha: value }))} />
+                    <div className="flex flex-wrap gap-2">
+                      <button disabled={salvando} className="inline-flex flex-1 items-center justify-center gap-2 rounded-md bg-gray-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-gray-800 disabled:opacity-60">
+                        <Plus size={16} />
+                        Adicionar à equipe
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMostrarCadastroVoluntario(false);
+                          setFormVoluntario(formVoluntarioInicial);
+                        }}
+                        className="rounded-md border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </form>
+                </Painel>
+              )}
             </section>
 
             <section className="space-y-5">
+              {mostrarAtribuirVoluntarios && (
               <Painel titulo="Atribuir voluntários" icone={CalendarPlus}>
                 <form onSubmit={salvarEscala} className="space-y-4">
                   {formEscala.id ? (
@@ -553,6 +599,7 @@ export default function MinhaEquipe() {
                             checked={formEscala.voluntarioIds.includes(voluntario.id)}
                             onChange={() => alternarVoluntarioNaEscala(voluntario.id)}
                           />
+                          <UsuarioInfoButton usuario={voluntario} onClick={setUsuarioModal} className="h-7 w-7" />
                           <span className="min-w-0">
                             <span className="block truncate">{voluntario.nomeCompleto}</span>
                             {voluntario.telefone && (
@@ -579,6 +626,7 @@ export default function MinhaEquipe() {
                             checked={formEscala.substitutoIds.includes(voluntario.id)}
                             onChange={() => alternarSubstituto(voluntario.id)}
                           />
+                          <UsuarioInfoButton usuario={voluntario} onClick={setUsuarioModal} className="h-7 w-7" />
                           <span className="min-w-0">
                             <span className="block truncate">{voluntario.nomeCompleto}</span>
                             {voluntario.telefone && (
@@ -596,13 +644,21 @@ export default function MinhaEquipe() {
                       Salvar atribuições
                     </button>
                     {formEscala.id && (
-                      <button type="button" onClick={() => setFormEscala(formEscalaInicial)} className="rounded-md border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFormEscala(formEscalaInicial);
+                          setMostrarAtribuirVoluntarios(false);
+                        }}
+                        className="rounded-md border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+                      >
                         Cancelar
                       </button>
                     )}
                   </div>
                 </form>
               </Painel>
+              )}
 
               <Painel titulo="Escalas da equipe" icone={CalendarPlus}>
                 <div className="space-y-4">
@@ -722,11 +778,16 @@ export default function MinhaEquipe() {
 
                               return (
                                 <div key={item.id} className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3">
-                                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                                    <p className="text-sm font-bold text-gray-900">{item.usuario.nomeCompleto}</p>
-                                    {item.usuario.telefone && (
-                                      <span className="text-[11px] font-medium text-gray-400">{item.usuario.telefone}</span>
-                                    )}
+                                  <div className="flex items-start gap-2">
+                                    <UsuarioInfoButton usuario={item.usuario} onClick={setUsuarioModal} />
+                                    <div className="min-w-0">
+                                      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                                        <p className="text-sm font-bold text-gray-900">{item.usuario.nomeCompleto}</p>
+                                        {item.usuario.telefone && (
+                                          <span className="text-[11px] font-medium text-gray-400">{item.usuario.telefone}</span>
+                                        )}
+                                      </div>
+                                    </div>
                                   </div>
                                   <div className="mt-2 flex flex-wrap gap-1.5">
                                     <span className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] font-semibold ${config.className}`}>
@@ -758,6 +819,7 @@ export default function MinhaEquipe() {
         )}
       </main>
 
+      <UsuarioModal usuario={usuarioModal} onClose={() => setUsuarioModal(null)} />
       <Footer />
     </div>
   );

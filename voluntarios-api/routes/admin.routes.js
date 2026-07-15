@@ -62,9 +62,14 @@ function formatarUsuario(usuario) {
     nomeCompleto: usuario.nomeCompleto,
     email: usuario.email,
     telefone: usuario.telefone,
+    urlFoto: usuario.urlFoto,
+    dataNascimento: usuario.dataNascimento,
+    sexo: usuario.sexo,
     permissoes: usuario.permissoes,
     equipes: usuario.equipes,
     equipesLideradas: usuario.equipesLideradas || [],
+    criadoEm: usuario.criadoEm,
+    atualizadoEm: usuario.atualizadoEm,
   };
 }
 
@@ -91,6 +96,13 @@ function formatarParticipacao(participacao) {
       email: participacao.usuario.email,
       telefone: participacao.usuario.telefone,
       urlFoto: participacao.usuario.urlFoto,
+      dataNascimento: participacao.usuario.dataNascimento,
+      sexo: participacao.usuario.sexo,
+      permissoes: participacao.usuario.permissoes,
+      equipes: participacao.usuario.equipes || [],
+      equipesLideradas: participacao.usuario.equipesLideradas || [],
+      criadoEm: participacao.usuario.criadoEm,
+      atualizadoEm: participacao.usuario.atualizadoEm,
     },
   };
 }
@@ -223,6 +235,13 @@ router.get('/dashboard', autenticar, exigirAdmin, async (req, res) => {
                   email: true,
                   telefone: true,
                   urlFoto: true,
+                  dataNascimento: true,
+                  sexo: true,
+                  permissoes: true,
+                  criadoEm: true,
+                  atualizadoEm: true,
+                  equipes: { select: { id: true, nome: true } },
+                  equipesLideradas: { select: { id: true, nome: true } },
                 },
               },
             },

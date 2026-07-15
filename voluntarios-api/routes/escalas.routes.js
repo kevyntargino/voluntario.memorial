@@ -266,6 +266,13 @@ router.get('/', autenticar, async (req, res) => {
                 email: true,
                 telefone: true,
                 urlFoto: true,
+                dataNascimento: true,
+                sexo: true,
+                permissoes: true,
+                criadoEm: true,
+                atualizadoEm: true,
+                equipes: { select: { id: true, nome: true } },
+                equipesLideradas: { select: { id: true, nome: true } },
               },
             },
           },
@@ -337,6 +344,13 @@ router.get('/admin', autenticar, exigirAdmin, async (req, res) => {
                 email: true,
                 telefone: true,
                 urlFoto: true,
+                dataNascimento: true,
+                sexo: true,
+                permissoes: true,
+                criadoEm: true,
+                atualizadoEm: true,
+                equipes: { select: { id: true, nome: true } },
+                equipesLideradas: { select: { id: true, nome: true } },
               },
             },
           },
@@ -486,6 +500,72 @@ router.post('/admin/esporadicas', autenticar, exigirAdmin, async (req, res) => {
     });
   } catch (erro) {
     console.error('[ERRO LOG] POST /api/escalas/admin/esporadicas:', erro);
+    return res.status(500).json({ erro: 'Erro interno no servidor. Tente novamente mais tarde.' });
+  }
+});
+
+router.post('/admin/recorrentes', autenticar, exigirAdmin, async (req, res) => {
+  try {
+    const { titulo, diaSemana, semanaMes, horario, local, descricao, equipeIds = [] } = req.body ?? {};
+    const diaSemanaNumero = Number(diaSemana);
+    const semanaMesNumero = Number(semanaMes);
+
+    if (![0, 6].includes(diaSemanaNumero) || ![1, 2, 3, 4].includes(semanaMesNumero)) {
+      return res.status(400).json({ erro: 'Informe um sábado/domingo entre o 1º e o 4º fim de semana.' });
+    }
+
+    if (!Array.isArray(equipeIds) || equipeIds.length === 0) {
+      return res.status(400).json({ erro: 'Selecione pelo menos uma equipe.' });
+    }
+
+    const [horasRaw, minutosRaw] = String(horario || '18:00').split(':');
+    const horas = Number(horasRaw);
+    const minutos = Number(minutosRaw);
+
+    if (Number.isNaN(horas) || Number.isNaN(minutos)) {
+      return res.status(400).json({ erro: 'Horário inválido.' });
+    }
+
+    const equipes = await prisma.equipe.findMany({
+      where: {
+        id: {
+          in: equipeIds,
+        },
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (equipes.length !== equipeIds.length) {
+      return res.status(400).json({ erro: 'Uma ou mais equipes selecionadas são inválidas.' });
+    }
+
+    const dataHora = getDataHoraRecorrente(
+      diaSemanaNumero,
+      semanaMesNumero,
+      getDataUtc(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1, horas, minutos),
+    );
+    const tituloPadrao = `${semanaMesNumero}º ${diaSemanaNumero === 0 ? 'Domingo' : 'Sábado'}`;
+
+    await prisma.escala.createMany({
+      data: equipes.map((equipe) => ({
+        titulo: typeof titulo === 'string' && titulo.trim() ? titulo.trim() : tituloPadrao,
+        local: typeof local === 'string' && local.trim() ? local.trim() : null,
+        descricao: typeof descricao === 'string' && descricao.trim() ? descricao.trim() : null,
+        tipo: 'RECORRENTE',
+        diaSemana: diaSemanaNumero,
+        semanaMes: semanaMesNumero,
+        dataHora,
+        equipeId: equipe.id,
+      })),
+    });
+
+    return res.status(201).json({
+      mensagem: 'Escala recorrente criada para as equipes selecionadas.',
+    });
+  } catch (erro) {
+    console.error('[ERRO LOG] POST /api/escalas/admin/recorrentes:', erro);
     return res.status(500).json({ erro: 'Erro interno no servidor. Tente novamente mais tarde.' });
   }
 });
