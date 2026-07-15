@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Menu, X, LogOut, User } from 'lucide-react';
+import { Menu, X, LogOut, User, UsersRound } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
 
@@ -7,6 +7,7 @@ export default function Navbar() {
   const [menuAberto, setMenuAberto] = useState(false);
   const { usuario, logout } = useAuth();
   const { navigate } = useNavigation();
+  const podeGerenciarEquipe = usuario?.permissoes?.some((permissao) => ['LIDER_EQUIPE', 'ADMINISTRADOR'].includes(permissao));
 
   const handleLogout = () => {
     logout();
@@ -33,6 +34,12 @@ export default function Navbar() {
             <button type="button" onClick={() => navigate('/escalas')} className="font-sans text-gray-600 hover:text-dourado-600 transition-colors font-medium">
               Minhas Escalas
             </button>
+            {podeGerenciarEquipe && (
+              <button type="button" onClick={() => navigate('/minha-equipe')} className="flex items-center gap-2 font-sans text-gray-600 hover:text-dourado-600 transition-colors font-medium">
+                <UsersRound size={18} />
+                Minha equipe
+              </button>
+            )}
             <button type="button" className="font-sans text-gray-600 hover:text-dourado-600 transition-colors font-medium">
               Avisos
             </button>
@@ -78,6 +85,12 @@ export default function Navbar() {
             <button type="button" onClick={() => navigate('/escalas')} className="block w-full px-3 py-2 rounded-md text-left text-base font-medium text-gray-700 hover:text-dourado-600 hover:bg-dourado-50">
               Minhas Escalas
             </button>
+            {podeGerenciarEquipe && (
+              <button type="button" onClick={() => navigate('/minha-equipe')} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-base font-medium text-gray-700 hover:text-dourado-600 hover:bg-dourado-50">
+                <UsersRound size={18} />
+                Minha equipe
+              </button>
+            )}
             <button type="button" className="block w-full px-3 py-2 rounded-md text-left text-base font-medium text-gray-700 hover:text-dourado-600 hover:bg-dourado-50">
               Avisos
             </button>

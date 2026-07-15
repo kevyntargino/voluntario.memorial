@@ -5,6 +5,7 @@ import Login from './pages/Login';
 import Home from './pages/Home';
 import Perfil from './pages/Perfil';
 import Escalas from './pages/Escalas';
+import MinhaEquipe from './pages/MinhaEquipe';
 import { Redirect } from './components/Redirect';
 
 function App() {
@@ -73,6 +74,10 @@ function AppRouter() {
 
   if (pathname === '/escalas') {
     return <Escalas />;
+  }
+
+  if (pathname === '/minha-equipe') {
+    return <MinhaEquipe />;
   }
 
   return <Home />;

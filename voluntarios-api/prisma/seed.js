@@ -23,7 +23,7 @@ const usuariosTeste = [
     nomeCompleto: 'Lider Teste',
     email: 'lider@teste.com',
     senha: 'Lider@123',
-    permissoes: ['LIDER_EQUIPE'],
+    permissoes: ['LIDER_EQUIPE', 'VOLUNTARIO'],
   },
   {
     nomeCompleto: 'Voluntario Teste',
@@ -76,6 +76,15 @@ const usuariosTeste = [
 ];
 
 const areasMCom = ['Midia', 'Iluminação', 'Filmagem', 'Fotografia', 'DTV', 'Direção', 'Redes Sociais'];
+const voluntariosPorArea = {
+  Midia: ['ana.midia@teste.com', 'voluntario@teste.com'],
+  Iluminação: ['bruno.iluminacao@teste.com', 'voluntario@teste.com'],
+  Filmagem: ['lider@teste.com', 'carla.filmagem@teste.com', 'voluntario@teste.com'],
+  Fotografia: ['diego.fotografia@teste.com', 'voluntario@teste.com'],
+  DTV: ['elisa.dtv@teste.com', 'voluntario@teste.com'],
+  Direção: ['fabio.direcao@teste.com', 'voluntario@teste.com'],
+  'Redes Sociais': ['gabi.redes@teste.com', 'voluntario@teste.com'],
+};
 
 function getPrimeirosDiasDoMes(diaSemana) {
   const hoje = new Date();
@@ -133,6 +142,7 @@ async function main() {
     },
   });
   const voluntarios = usuarios.filter((usuario) => usuario.permissoes.includes('VOLUNTARIO'));
+  const usuariosPorEmail = new Map(usuarios.map((usuario) => [usuario.email, usuario]));
 
   for (const nome of areasMCom) {
     const equipe = await prisma.equipe.upsert({
@@ -145,7 +155,10 @@ async function main() {
       where: { id: equipe.id },
       data: {
         voluntarios: {
-          set: voluntarios.map((usuario) => ({ id: usuario.id })),
+          set: (voluntariosPorArea[nome] || [])
+            .map((email) => usuariosPorEmail.get(email))
+            .filter(Boolean)
+            .map((usuario) => ({ id: usuario.id })),
         },
       },
     });
