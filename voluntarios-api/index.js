@@ -19,7 +19,8 @@ function getJwtSecret() {
 }
 
 function protegerApi(req, res, next) {
-  const rotaPublica = req.method === 'POST' && req.path === '/auth/login';
+  const rotaPublica = (req.method === 'POST' && req.path === '/auth/login')
+    || (req.method === 'GET' && req.path.startsWith('/auth/fotos/'));
 
   if (rotaPublica) {
     return next();
@@ -43,7 +44,7 @@ function protegerApi(req, res, next) {
 // ==========================================
 // MIDDLEWARES GLOBAIS
 // ==========================================
-app.use(cors()); 
+app.use(cors());
 app.use(express.json({ limit: '8mb' }));
 
 // ==========================================

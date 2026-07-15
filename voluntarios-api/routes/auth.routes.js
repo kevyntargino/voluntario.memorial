@@ -26,13 +26,37 @@ function getJwtSecret() {
   return process.env.JWT_SECRET || 'chave_temporaria_dev';
 }
 
-function sanitizeUsuario(usuario) {
+function getFotoProxyUrl(req, key) {
+  return `${getApiBaseUrl(req)}/api/auth/fotos/${key}`;
+}
+
+function normalizarUrlFoto(urlFoto, req) {
+  if (!urlFoto || typeof urlFoto !== 'string') {
+    return urlFoto;
+  }
+
+  const config = getR2Config();
+  const prefixosR2 = [
+    `${config.publicUrl}/`,
+    `${config.endpoint.replace(/\/$/, '')}/${config.bucket}/`,
+  ];
+  const prefixoEncontrado = prefixosR2.find((prefixo) => urlFoto.startsWith(prefixo));
+
+  if (!prefixoEncontrado) {
+    return urlFoto;
+  }
+
+  const key = urlFoto.slice(prefixoEncontrado.length).split('?')[0];
+  return key ? getFotoProxyUrl(req, key) : urlFoto;
+}
+
+function sanitizeUsuario(usuario, req = null) {
   return {
     id: usuario.id,
     nomeCompleto: usuario.nomeCompleto,
     email: usuario.email,
     telefone: usuario.telefone,
-    urlFoto: usuario.urlFoto,
+    urlFoto: req ? normalizarUrlFoto(usuario.urlFoto, req) : usuario.urlFoto,
     dataNascimento: usuario.dataNascimento
       ? usuario.dataNascimento.toISOString().slice(0, 10)
       : null,
@@ -70,7 +94,7 @@ function getSigningKey(secretAccessKey, dateStamp, region, service) {
   return hmac(kService, 'aws4_request');
 }
 
-function criarPresignedPutUrl({ key, expiresIn = 600 }) {
+function criarPresignedUrl({ key, method = 'PUT', expiresIn = 600 }) {
   const config = getR2Config();
 
   if (!config.accessKeyId || !config.secretAccessKey) {
@@ -98,7 +122,7 @@ function criarPresignedPutUrl({ key, expiresIn = 600 }) {
     .sort()
     .join('&');
   const canonicalRequest = [
-    'PUT',
+    method,
     canonicalUri,
     canonicalQueryString,
     `host:${endpointUrl.host}\n`,
@@ -116,6 +140,20 @@ function criarPresignedPutUrl({ key, expiresIn = 600 }) {
   params.set('X-Amz-Signature', signature);
 
   return `${endpointUrl.origin}${canonicalUri}?${params.toString()}`;
+}
+
+function criarPresignedPutUrl({ key, expiresIn = 600 }) {
+  return criarPresignedUrl({ key, method: 'PUT', expiresIn });
+}
+
+function criarPresignedGetUrl({ key, expiresIn = 300 }) {
+  return criarPresignedUrl({ key, method: 'GET', expiresIn });
+}
+
+function getApiBaseUrl(req) {
+  const host = req.get('x-forwarded-host') || req.get('host');
+  const protocol = req.get('x-forwarded-proto') || req.protocol || 'http';
+  return (process.env.API_PUBLIC_URL || `${protocol}://${host}`).replace(/\/$/, '');
 }
 
 async function autenticar(req, res, next) {
@@ -208,7 +246,7 @@ router.post('/login', async (req, res) => {
     return res.status(200).json({
       mensagem: 'Autenticação bem-sucedida.',
       token,
-      usuario: sanitizeUsuario(usuario)
+      usuario: sanitizeUsuario(usuario, req)
     });
 
   } catch (erro) {
@@ -237,10 +275,44 @@ router.get('/me', autenticar, async (req, res) => {
       return res.status(404).json({ erro: 'Usuário não encontrado.' });
     }
 
-    return res.status(200).json({ usuario: sanitizeUsuario(usuario) });
+    return res.status(200).json({ usuario: sanitizeUsuario(usuario, req) });
   } catch (erro) {
     console.error('[ERRO LOG] /me:', erro);
     return res.status(500).json({ erro: 'Erro interno no servidor. Tente novamente mais tarde.' });
+  }
+});
+
+router.get('/fotos/usuarios/:usuarioId/:arquivo', async (req, res) => {
+  try {
+    const { usuarioId, arquivo } = req.params;
+
+    if (!/^[0-9a-f-]{36}$/i.test(usuarioId) || !/^[a-zA-Z0-9._-]+$/.test(arquivo)) {
+      return res.status(400).send('Imagem inválida.');
+    }
+
+    const key = `usuarios/${usuarioId}/${arquivo}`;
+    const signedUrl = criarPresignedGetUrl({ key });
+    const resposta = await fetch(signedUrl);
+
+    if (!resposta.ok) {
+      const detalhe = await resposta.text().catch(() => '');
+      console.error('[ERRO LOG] Leitura R2 falhou:', resposta.status, detalhe);
+      return res.status(resposta.status === 404 ? 404 : 502).send('Imagem não encontrada.');
+    }
+
+    const contentType = resposta.headers.get('content-type') || 'application/octet-stream';
+    const buffer = Buffer.from(await resposta.arrayBuffer());
+
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    return res.status(200).send(buffer);
+  } catch (erro) {
+    if (erro.message === 'Credenciais R2 não configuradas.') {
+      return res.status(500).send('Storage R2 não configurado.');
+    }
+
+    console.error('[ERRO LOG] GET /fotos/usuarios/:usuarioId/:arquivo:', erro);
+    return res.status(500).send('Erro interno no servidor.');
   }
 });
 
@@ -266,12 +338,11 @@ router.post('/me/foto-upload-url', autenticar, async (req, res) => {
       : tiposPermitidos[contentType];
     const random = crypto.randomBytes(8).toString('hex');
     const key = `usuarios/${req.usuarioAutenticado.id}/${Date.now()}-${random}.${extensao}`;
-    const config = getR2Config();
     const uploadUrl = criarPresignedPutUrl({ key });
 
     return res.status(200).json({
       uploadUrl,
-      publicUrl: `${config.publicUrl}/${key}`,
+      publicUrl: getFotoProxyUrl(req, key),
       key,
       expiresIn: 600,
     });
@@ -322,7 +393,6 @@ router.post('/me/foto', autenticar, async (req, res) => {
       : tiposPermitidos[contentType];
     const random = crypto.randomBytes(8).toString('hex');
     const key = `usuarios/${req.usuarioAutenticado.id}/${Date.now()}-${random}.${extensao}`;
-    const config = getR2Config();
     const uploadUrl = criarPresignedPutUrl({ key });
     const uploadResposta = await fetch(uploadUrl, {
       method: 'PUT',
@@ -339,7 +409,7 @@ router.post('/me/foto', autenticar, async (req, res) => {
     }
 
     return res.status(200).json({
-      publicUrl: `${config.publicUrl}/${key}`,
+      publicUrl: getFotoProxyUrl(req, key),
       key,
     });
   } catch (erro) {
@@ -395,7 +465,7 @@ router.patch('/me', autenticar, async (req, res) => {
 
     return res.status(200).json({
       mensagem: 'Perfil atualizado com sucesso.',
-      usuario: sanitizeUsuario(usuario),
+      usuario: sanitizeUsuario(usuario, req),
     });
   } catch (erro) {
     console.error('[ERRO LOG] PATCH /me:', erro);
