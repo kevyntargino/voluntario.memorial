@@ -189,8 +189,27 @@ export async function notificarAviso(prisma, { aviso, usuarioIds }) {
     tipo: 'AVISO',
     titulo: aviso.titulo,
     mensagem: aviso.mensagem,
-    link: '/avisos',
+    link: `/avisos?aviso=${aviso.id}`,
     chave: `aviso:${aviso.id}:${usuarioId}`,
+  })));
+}
+
+export async function notificarPedidoSubstituicao(prisma, { participacao }) {
+  const lideres = participacao.escala?.equipe?.lideres || [];
+  const equipeNome = participacao.escala?.equipe?.nome || 'sua equipe';
+  const nomeVoluntario = participacao.usuario?.nomeCompleto || 'Um voluntário';
+
+  if (lideres.length === 0) {
+    return { count: 0 };
+  }
+
+  return criarNotificacoes(prisma, lideres.map((lider) => ({
+    usuarioId: lider.id,
+    tipo: 'ALERTA_LIDER',
+    titulo: 'Pedido de substituição recebido',
+    mensagem: `${nomeVoluntario} solicitou substituição em ${equipeNome}. Veja a justificativa e atribua um substituto.`,
+    link: `/minha-equipe?equipe=${participacao.escala.equipe.id}&pedido=${participacao.id}`,
+    chave: `pedido-substituicao:${lider.id}:${participacao.id}`,
   })));
 }
 
@@ -203,7 +222,7 @@ export async function notificarSubstituto(prisma, { participacao, dataOcorrencia
     tipo: 'SUBSTITUTO',
     titulo: 'Você foi alocado como substituto',
     mensagem: `Você foi alocado como substituto em ${equipeNome} para ${formatarData(data)}. Confirme sua disponibilidade.`,
-    link: '/escalas?filtro=confirmacoes',
+    link: `/escalas?filtro=confirmacoes&participacao=${participacao.id}`,
     chave: `substituto:${participacao.id}:${data.toISOString()}`,
   }]);
 }
@@ -266,7 +285,7 @@ export async function gerarNotificacoesAutomaticas(prisma) {
       tipo: 'CONFIRMACAO_ESCALA',
       titulo: dias === 5 ? 'Confirme sua próxima escala' : 'Lembrete: confirme sua escala',
       mensagem: `Sua escala em ${equipeNome} está marcada para ${dataTexto}. Confirme sua participação no painel de escalas.`,
-      link: '/escalas?filtro=confirmacoes',
+      link: `/escalas?filtro=confirmacoes&participacao=${participacao.id}`,
       chave: `confirmacao:${dias}d:${participacao.id}:${new Date(dataOcorrencia).toISOString()}`,
     });
 
@@ -277,7 +296,7 @@ export async function gerarNotificacoesAutomaticas(prisma) {
           tipo: 'ALERTA_LIDER',
           titulo: 'Voluntário ainda não confirmou escala',
           mensagem: `${participacao.usuario.nomeCompleto} ainda não confirmou a escala de ${equipeNome} em ${dataTexto}.`,
-          link: '/minha-equipe',
+          link: `/minha-equipe?equipe=${participacao.escala.equipe.id}&participacao=${participacao.id}`,
           chave: `lider-pendente:${lider.id}:${participacao.id}:${new Date(dataOcorrencia).toISOString()}`,
         });
       }

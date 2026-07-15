@@ -80,7 +80,9 @@ export function AuthProvider({ children }) {
         const dados = await resposta.json().catch(() => ({}));
 
         if (!resposta.ok) {
-          throw new Error(dados.erro || 'Sessão inválida.');
+          const erro = new Error(dados.erro || 'Sessão inválida.');
+          erro.status = resposta.status;
+          throw erro;
         }
 
         if (!ativo) return;
@@ -88,11 +90,16 @@ export function AuthProvider({ children }) {
         setUsuario(dados.usuario);
         window.localStorage.setItem(TOKEN_KEY, stored.token);
         window.localStorage.setItem(USER_KEY, JSON.stringify(dados.usuario));
-      } catch {
+      } catch (error) {
         if (!ativo) return;
-        clearStoredAuth();
-        setToken(null);
-        setUsuario(null);
+        if ([401, 403, 404].includes(error.status)) {
+          clearStoredAuth();
+          setToken(null);
+          setUsuario(null);
+        } else {
+          setToken(stored.token);
+          setUsuario(stored.usuario);
+        }
       } finally {
         if (ativo) {
           setCarregado(true);

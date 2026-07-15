@@ -50,6 +50,22 @@ async function autenticar(req, res, next) {
   }
 }
 
+async function autenticarTokenValor(token) {
+  if (!token) {
+    return null;
+  }
+
+  try {
+    const payload = jwt.verify(token, getJwtSecret());
+    return prisma.usuario.findUnique({
+      where: { id: payload.id },
+      select: { id: true, permissoes: true },
+    });
+  } catch {
+    return null;
+  }
+}
+
 async function gerarComThrottle() {
   const agora = Date.now();
 
@@ -82,32 +98,88 @@ function extrairChavesSubscription(subscription) {
   return { endpoint, p256dh, auth };
 }
 
+async function carregarResumoNotificacoes(usuarioId) {
+  await gerarComThrottle();
+
+  const [notificacoes, naoVisualizadas] = await Promise.all([
+    prisma.notificacao.findMany({
+      where: { usuarioId },
+      take: 30,
+      orderBy: { criadoEm: 'desc' },
+    }),
+    prisma.notificacao.count({
+      where: {
+        usuarioId,
+        visualizada: false,
+      },
+    }),
+  ]);
+
+  return {
+    notificacoes: notificacoes.map(formatarNotificacao),
+    naoVisualizadas,
+  };
+}
+
 router.get('/', autenticar, async (req, res) => {
   try {
-    await gerarComThrottle();
-
-    const [notificacoes, naoVisualizadas] = await Promise.all([
-      prisma.notificacao.findMany({
-        where: { usuarioId: req.usuarioAutenticado.id },
-        take: 30,
-        orderBy: { criadoEm: 'desc' },
-      }),
-      prisma.notificacao.count({
-        where: {
-          usuarioId: req.usuarioAutenticado.id,
-          visualizada: false,
-        },
-      }),
-    ]);
-
-    return res.status(200).json({
-      notificacoes: notificacoes.map(formatarNotificacao),
-      naoVisualizadas,
-    });
+    return res.status(200).json(await carregarResumoNotificacoes(req.usuarioAutenticado.id));
   } catch (erro) {
     console.error('[ERRO LOG] GET /api/notificacoes:', erro);
     return res.status(500).json({ erro: 'Erro interno no servidor. Tente novamente mais tarde.' });
   }
+});
+
+router.get('/stream', async (req, res) => {
+  const usuario = await autenticarTokenValor(req.query.token);
+
+  if (!usuario) {
+    return res.status(401).end();
+  }
+
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+
+  let ultimaAssinatura = '';
+  let ativo = true;
+
+  const enviar = async () => {
+    if (!ativo) return;
+
+    try {
+      const resumo = await carregarResumoNotificacoes(usuario.id);
+      const assinatura = JSON.stringify({
+        naoVisualizadas: resumo.naoVisualizadas,
+        ids: resumo.notificacoes.map((notificacao) => `${notificacao.id}:${notificacao.visualizada}:${notificacao.lidaEm || ''}`),
+      });
+
+      if (assinatura !== ultimaAssinatura) {
+        ultimaAssinatura = assinatura;
+        res.write(`event: notificacoes\n`);
+        res.write(`data: ${JSON.stringify(resumo)}\n\n`);
+      } else {
+        res.write(`event: heartbeat\n`);
+        res.write(`data: ${Date.now()}\n\n`);
+      }
+    } catch (erro) {
+      console.error('[ERRO LOG] GET /api/notificacoes/stream:', erro);
+      res.write(`event: erro\n`);
+      res.write(`data: ${JSON.stringify({ erro: 'Falha ao atualizar notificações.' })}\n\n`);
+    }
+  };
+
+  await enviar();
+  const interval = setInterval(enviar, 8000);
+
+  req.on('close', () => {
+    ativo = false;
+    clearInterval(interval);
+    res.end();
+  });
 });
 
 router.get('/push/public-key', autenticar, async (req, res) => {

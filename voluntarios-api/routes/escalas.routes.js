@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
+import { notificarPedidoSubstituicao } from '../services/notificacoes.service.js';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -639,7 +640,27 @@ router.patch('/:id/status', autenticar, async (req, res) => {
       },
       select: {
         id: true,
-        escala: true,
+        usuario: {
+          select: {
+            id: true,
+            nomeCompleto: true,
+          },
+        },
+        escala: {
+          include: {
+            equipe: {
+              select: {
+                id: true,
+                nome: true,
+                lideres: {
+                  select: {
+                    id: true,
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     });
 
@@ -696,6 +717,18 @@ router.patch('/:id/status', autenticar, async (req, res) => {
         },
       }).catch((notificationError) => {
         console.warn('[WARN] Falha ao marcar notificações de confirmação como visualizadas:', notificationError.message);
+      });
+    }
+
+    if (status === 'PEDIU_SUBSTITUICAO') {
+      await notificarPedidoSubstituicao(prisma, {
+        participacao: {
+          ...escalaAtualizada,
+          usuario: escalaExistente.usuario,
+          escala: escalaExistente.escala,
+        },
+      }).catch((notificationError) => {
+        console.warn('[WARN] Falha ao notificar líderes sobre substituição:', notificationError.message);
       });
     }
 

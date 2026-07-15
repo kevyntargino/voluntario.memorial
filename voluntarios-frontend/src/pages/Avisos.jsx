@@ -19,7 +19,8 @@ function formatarData(data) {
 
 export default function Avisos() {
   const { token, logout } = useAuth();
-  const { navigate } = useNavigation();
+  const { navigate, search } = useNavigation();
+  const avisoSelecionadoId = new URLSearchParams(search || '').get('aviso') || '';
   const [avisos, setAvisos] = useState([]);
   const [erro, setErro] = useState('');
   const [carregando, setCarregando] = useState(true);
@@ -32,7 +33,7 @@ export default function Avisos() {
     setCarregando(true);
 
     try {
-      const query = mostrarAntigos ? '?visualizados=todos' : '';
+      const query = mostrarAntigos || avisoSelecionadoId ? '?visualizados=todos' : '';
       const resposta = await fetch(buildApiUrl(`/api/avisos${query}`), {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -57,11 +58,24 @@ export default function Avisos() {
     } finally {
       setCarregando(false);
     }
-  }, [logout, mostrarAntigos, navigate, token]);
+  }, [avisoSelecionadoId, logout, mostrarAntigos, navigate, token]);
 
   useEffect(() => {
     carregarAvisos();
   }, [carregarAvisos]);
+
+  useEffect(() => {
+    if (!avisoSelecionadoId || carregando) {
+      return;
+    }
+
+    window.setTimeout(() => {
+      document.getElementById(`aviso-${avisoSelecionadoId}`)?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+    }, 120);
+  }, [avisoSelecionadoId, carregando]);
 
   const marcarComoVisualizado = async (avisoId) => {
     setErro('');
@@ -153,12 +167,26 @@ export default function Avisos() {
           </div>
         ) : (
           <section className="mt-5 space-y-3">
-            {avisos.map((aviso) => (
-              <article key={aviso.id} className={`rounded-lg border bg-white p-5 shadow-sm ${aviso.visualizado ? 'border-gray-200 opacity-85' : 'border-gray-300'}`}>
+            {avisos.map((aviso) => {
+              const selecionado = aviso.id === avisoSelecionadoId;
+
+              return (
+              <article
+                id={`aviso-${aviso.id}`}
+                key={aviso.id}
+                className={`rounded-lg border bg-white p-5 shadow-sm transition ${
+                  selecionado ? 'border-amber-300 ring-2 ring-amber-200' : aviso.visualizado ? 'border-gray-200 opacity-85' : 'border-gray-300'
+                }`}
+              >
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
                       <h2 className="text-xl font-bold text-gray-950">{aviso.titulo}</h2>
+                      {selecionado && (
+                        <span className="inline-flex rounded-full bg-gray-950 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-white">
+                          Aviso selecionado
+                        </span>
+                      )}
                       <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.14em] ${
                         aviso.visualizado ? 'bg-gray-100 text-gray-500' : 'bg-gray-950 text-white'
                       }`}>
@@ -189,7 +217,8 @@ export default function Avisos() {
                   )}
                 </div>
               </article>
-            ))}
+            );
+            })}
           </section>
         )}
       </main>

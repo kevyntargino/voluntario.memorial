@@ -259,8 +259,7 @@ router.post('/login', async (req, res) => {
         id: usuario.id, 
         permissoes: usuario.permissoes 
       },
-      getJwtSecret(),
-      { expiresIn: '2h' }
+      getJwtSecret()
     );
 
     // 6. Registro de Auditoria (Observabilidade)

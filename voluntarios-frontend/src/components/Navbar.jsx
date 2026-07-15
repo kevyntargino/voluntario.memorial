@@ -101,10 +101,41 @@ export default function Navbar() {
 
   useEffect(() => {
     carregarNotificacoes();
-    const interval = window.setInterval(carregarNotificacoes, 5 * 60 * 1000);
+    const interval = window.setInterval(carregarNotificacoes, 60 * 1000);
 
     return () => window.clearInterval(interval);
   }, [carregarNotificacoes]);
+
+  useEffect(() => {
+    if (!token || typeof EventSource === 'undefined') {
+      return undefined;
+    }
+
+    const streamUrl = buildApiUrl(`/api/notificacoes/stream?token=${encodeURIComponent(token)}`);
+    const source = new EventSource(streamUrl);
+
+    source.addEventListener('notificacoes', (event) => {
+      try {
+        const dados = JSON.parse(event.data);
+        setNotificacoes(dados.notificacoes || []);
+        setNaoVisualizadas(dados.naoVisualizadas || 0);
+        setCarregandoNotificacoes(false);
+      } catch {
+        carregarNotificacoes();
+      }
+    });
+
+    source.addEventListener('erro', () => {
+      carregarNotificacoes();
+    });
+
+    source.onerror = () => {
+      source.close();
+      window.setTimeout(carregarNotificacoes, 1500);
+    };
+
+    return () => source.close();
+  }, [carregarNotificacoes, token]);
 
   const handleLogout = () => {
     logout();

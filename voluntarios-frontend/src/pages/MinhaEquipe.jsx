@@ -9,6 +9,7 @@ import {
   UserPlus,
   UsersRound,
   RefreshCcw,
+  Search,
   Bell,
 } from 'lucide-react';
 import Navbar from '../components/Navbar';
@@ -45,6 +46,22 @@ const statusConfig = {
   PEDIU_SUBSTITUICAO: { label: 'Substituição', className: 'border-sky-200 bg-sky-50 text-sky-700', icon: RefreshCcw },
   AUSENTE: { label: 'Ausente', className: 'border-red-200 bg-red-50 text-red-700', icon: AlertCircle },
 };
+const filtrosTipoEscala = [
+  { value: 'TODAS', label: 'Todas' },
+  { value: 'RECORRENTE', label: 'Recorrentes' },
+  { value: 'ESPORADICA', label: 'Esporádicas' },
+];
+const filtrosStatusEscala = [
+  { value: 'TODOS', label: 'Todos' },
+  { value: 'PENDENTE', label: 'Pendentes' },
+  { value: 'CONFIRMADA', label: 'Confirmados' },
+  { value: 'PEDIU_SUBSTITUICAO', label: 'Substituição' },
+  { value: 'AUSENTE', label: 'Ausentes' },
+];
+
+function normalizar(texto) {
+  return String(texto || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
 
 function formatarData(dataHora) {
   if (!dataHora) {
@@ -59,7 +76,11 @@ function formatarData(dataHora) {
 
 export default function MinhaEquipe() {
   const { token, usuario, logout } = useAuth();
-  const { navigate } = useNavigation();
+  const { navigate, search } = useNavigation();
+  const parametros = new URLSearchParams(search || '');
+  const equipeUrlId = parametros.get('equipe') || '';
+  const pedidoSelecionadoId = parametros.get('pedido') || '';
+  const participacaoSelecionadaId = parametros.get('participacao') || '';
   const [equipes, setEquipes] = useState([]);
   const [equipeId, setEquipeId] = useState('');
   const [erro, setErro] = useState('');
@@ -73,6 +94,10 @@ export default function MinhaEquipe() {
   const [mostrarAtribuirVoluntarios, setMostrarAtribuirVoluntarios] = useState(false);
   const [mostrarCadastroVoluntario, setMostrarCadastroVoluntario] = useState(false);
   const [formNovoVoluntario, setFormNovoVoluntario] = useState(formNovoVoluntarioInicial);
+  const [buscaEscalas, setBuscaEscalas] = useState('');
+  const [tipoEscalas, setTipoEscalas] = useState('TODAS');
+  const [statusEscalas, setStatusEscalas] = useState('TODOS');
+  const [ordemEscalas, setOrdemEscalas] = useState('proximas');
 
   const carregarEquipes = useCallback(async () => {
     setErro('');
@@ -97,18 +122,29 @@ export default function MinhaEquipe() {
         throw new Error(dados.erro || 'Não foi possível carregar sua equipe.');
       }
 
-      setEquipes(dados.equipes || []);
-      setEquipeId((atual) => atual || dados.equipes?.[0]?.id || '');
+      const proximasEquipes = dados.equipes || [];
+      setEquipes(proximasEquipes);
+      setEquipeId((atual) => (
+        equipeUrlId && proximasEquipes.some((equipe) => equipe.id === equipeUrlId)
+          ? equipeUrlId
+          : atual || proximasEquipes?.[0]?.id || ''
+      ));
     } catch (error) {
       setErro(error.message || 'Não foi possível carregar sua equipe.');
     } finally {
       setCarregando(false);
     }
-  }, [logout, navigate, token]);
+  }, [equipeUrlId, logout, navigate, token]);
 
   useEffect(() => {
     carregarEquipes();
   }, [carregarEquipes]);
+
+  useEffect(() => {
+    if (equipeUrlId && equipes.some((equipe) => equipe.id === equipeUrlId)) {
+      setEquipeId(equipeUrlId);
+    }
+  }, [equipeUrlId, equipes]);
 
   const equipeSelecionada = useMemo(
     () => equipes.find((equipe) => equipe.id === equipeId) || null,
@@ -126,19 +162,54 @@ export default function MinhaEquipe() {
       return [];
     }
 
+    const termo = normalizar(buscaEscalas);
+    let base = equipeSelecionada.escalas || [];
+
     if (filtroEscala.startsWith('ESPORADICA:')) {
       const escalaId = filtroEscala.replace('ESPORADICA:', '');
-      return equipeSelecionada.escalas.filter((escala) => escala.id === escalaId);
+      base = base.filter((escala) => escala.id === escalaId);
+    } else if (filtroEscala !== 'TODAS') {
+      const filtro = filtrosRecorrentes.find((item) => item.chave === filtroEscala) || filtrosRecorrentes[0];
+      base = base.filter((escala) => (
+        escala.tipo === 'RECORRENTE'
+        && escala.diaSemana === filtro.diaSemana
+        && escala.semanaMes === filtro.semanaMes
+      ));
     }
 
-    const filtro = filtrosRecorrentes.find((item) => item.chave === filtroEscala) || filtrosRecorrentes[0];
+    return base
+      .filter((escala) => {
+        const correspondeTipo = tipoEscalas === 'TODAS' || escala.tipo === tipoEscalas;
+        const statusDaEscala = (escala.voluntarios || []).map((item) => item.status);
+        const correspondeStatus = statusEscalas === 'TODOS' || statusDaEscala.includes(statusEscalas);
+        const texto = normalizar([
+          escala.titulo,
+          escala.local,
+          escala.descricao,
+          equipeSelecionada.nome,
+          escala.voluntarios?.map((item) => [
+            item.usuario?.nomeCompleto,
+            item.usuario?.telefone,
+            statusConfig[item.status]?.label,
+          ].join(' ')).join(' '),
+        ].join(' '));
 
-    return equipeSelecionada.escalas.filter((escala) => (
-      escala.tipo === 'RECORRENTE'
-      && escala.diaSemana === filtro.diaSemana
-      && escala.semanaMes === filtro.semanaMes
-    ));
-  }, [equipeSelecionada, filtroEscala]);
+        return correspondeTipo && correspondeStatus && (!termo || texto.includes(termo));
+      })
+      .sort((a, b) => {
+        if (ordemEscalas === 'distantes') {
+          return new Date(b.dataHora || 0).getTime() - new Date(a.dataHora || 0).getTime();
+        }
+
+        if (ordemEscalas === 'status') {
+          const aPendentes = (a.voluntarios || []).filter((item) => item.status === 'PENDENTE').length;
+          const bPendentes = (b.voluntarios || []).filter((item) => item.status === 'PENDENTE').length;
+          return bPendentes - aPendentes || new Date(a.dataHora || 0).getTime() - new Date(b.dataHora || 0).getTime();
+        }
+
+        return new Date(a.dataHora || 0).getTime() - new Date(b.dataHora || 0).getTime();
+      });
+  }, [buscaEscalas, equipeSelecionada, filtroEscala, ordemEscalas, statusEscalas, tipoEscalas]);
 
   useEffect(() => {
     if (!equipeSelecionada) {
@@ -313,6 +384,21 @@ export default function MinhaEquipe() {
     ));
   }, [equipeSelecionada]);
 
+  useEffect(() => {
+    const alvo = pedidoSelecionadoId || participacaoSelecionadaId;
+
+    if (!alvo || carregando) {
+      return;
+    }
+
+    window.setTimeout(() => {
+      document.getElementById(`equipe-participacao-${alvo}`)?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+    }, 150);
+  }, [carregando, participacaoSelecionadaId, pedidoSelecionadoId]);
+
   const pedidosEscalasEsporadicas = useMemo(() => {
     if (!equipeSelecionada) {
       return [];
@@ -361,7 +447,7 @@ export default function MinhaEquipe() {
               onChange={(event) => {
                 setEquipeId(event.target.value);
                 setFormEscala(formEscalaInicial);
-                setFiltroEscala(filtrosRecorrentes[0].chave);
+                setFiltroEscala('TODAS');
                 setMostrarAtribuirVoluntarios(false);
               }}
               className="rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm font-semibold outline-none focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
@@ -395,8 +481,17 @@ export default function MinhaEquipe() {
                   <p className="text-sm text-gray-500">Nenhum pedido de substituição pendente.</p>
                 ) : (
                   <div className="space-y-3">
-                    {pedidosSubstituicao.map((pedido) => (
-                      <div key={pedido.id} className="rounded-md border border-sky-100 bg-sky-50 p-3">
+                    {pedidosSubstituicao.map((pedido) => {
+                      const selecionado = pedido.id === pedidoSelecionadoId;
+
+                      return (
+                      <div
+                        id={`equipe-participacao-${pedido.id}`}
+                        key={pedido.id}
+                        className={`rounded-md border p-3 transition ${
+                          selecionado ? 'border-amber-300 bg-amber-50 ring-2 ring-amber-200' : 'border-sky-100 bg-sky-50'
+                        }`}
+                      >
                         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                           <div>
                             <div className="flex items-start gap-2">
@@ -409,7 +504,7 @@ export default function MinhaEquipe() {
                           </div>
                           <div className="inline-flex items-center gap-2 rounded-md bg-white px-2.5 py-1.5 text-xs font-bold text-sky-700">
                             <RefreshCcw size={14} />
-                            Pedido aberto
+                            {selecionado ? 'Pedido selecionado' : 'Pedido aberto'}
                           </div>
                         </div>
                         <p className="mt-3 rounded-md bg-white px-3 py-2 text-sm text-gray-700">
@@ -444,7 +539,8 @@ export default function MinhaEquipe() {
                           </button>
                         </div>
                       </div>
-                    ))}
+                    );
+                    })}
                   </div>
                 )}
               </Painel>
@@ -656,9 +752,45 @@ export default function MinhaEquipe() {
 
               <Painel titulo="Escalas da equipe" icone={CalendarPlus}>
                 <div className="space-y-4">
+                  <div className="grid gap-3 lg:grid-cols-[1.3fr_0.85fr_0.85fr_0.85fr]">
+                    <label className="relative block">
+                      <span className="mb-2 block text-xs font-bold uppercase tracking-[0.14em] text-gray-400">Pesquisar</span>
+                      <Search className="pointer-events-none absolute left-3 top-[2.4rem] h-4 w-4 text-gray-400" />
+                      <input
+                        value={buscaEscalas}
+                        onChange={(event) => setBuscaEscalas(event.target.value)}
+                        className="block w-full rounded-md border border-gray-200 bg-white py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
+                        placeholder="Nome, telefone, título ou status"
+                      />
+                    </label>
+                    <SelectFiltro label="Tipo" value={tipoEscalas} onChange={setTipoEscalas} options={filtrosTipoEscala} />
+                    <SelectFiltro label="Status" value={statusEscalas} onChange={setStatusEscalas} options={filtrosStatusEscala} />
+                    <SelectFiltro
+                      label="Ordenar"
+                      value={ordemEscalas}
+                      onChange={setOrdemEscalas}
+                      options={[
+                        { value: 'proximas', label: 'Mais próximas' },
+                        { value: 'distantes', label: 'Mais distantes' },
+                        { value: 'status', label: 'Pendências primeiro' },
+                      ]}
+                    />
+                  </div>
+
                   <div>
                     <p className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-gray-400">Escalas fixas</p>
                     <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setFiltroEscala('TODAS')}
+                        className={`rounded-md border px-3 py-2 text-sm font-bold transition ${
+                          filtroEscala === 'TODAS'
+                            ? 'border-gray-950 bg-gray-950 text-white'
+                            : 'border-gray-200 bg-gray-50 text-gray-700 hover:border-gray-300'
+                        }`}
+                      >
+                        Todas
+                      </button>
                       {filtrosRecorrentes.map((filtro) => (
                         <button
                           key={filtro.chave}
@@ -707,7 +839,7 @@ export default function MinhaEquipe() {
                       <p className="text-sm text-gray-500">Nenhuma escala cadastrada para esta equipe.</p>
                     ) : escalasFiltradas.length === 0 ? (
                       <div className="rounded-md border border-dashed border-gray-200 bg-gray-50 px-4 py-8 text-center text-sm text-gray-500">
-                        Nenhuma escala encontrada nesse período.
+                        Nenhuma escala encontrada com os filtros selecionados.
                       </div>
                     ) : escalasFiltradas.map((escala) => (
                       <div key={escala.id} className="rounded-2xl border border-gray-200 bg-gradient-to-br from-white to-gray-50 p-5 shadow-sm">
@@ -769,9 +901,16 @@ export default function MinhaEquipe() {
                             ) : escala.voluntarios.map((item) => {
                               const config = statusConfig[item.status] || statusConfig.PENDENTE;
                               const Icon = config.icon;
+                              const selecionado = item.id === participacaoSelecionadaId;
 
                               return (
-                                <div key={item.id} className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3">
+                                <div
+                                  id={`equipe-participacao-${item.id}`}
+                                  key={item.id}
+                                  className={`rounded-lg border px-3 py-3 transition ${
+                                    selecionado ? 'border-amber-300 bg-amber-50 ring-2 ring-amber-200' : 'border-gray-200 bg-gray-50'
+                                  }`}
+                                >
                                   <div className="flex items-start gap-2">
                                     <UsuarioInfoButton usuario={item.usuario} onClick={setUsuarioModal} />
                                     <div className="min-w-0">
@@ -779,6 +918,11 @@ export default function MinhaEquipe() {
                                         <p className="text-sm font-bold text-gray-900">{item.usuario.nomeCompleto}</p>
                                         {item.usuario.telefone && (
                                           <span className="text-[11px] font-medium text-gray-400">{item.usuario.telefone}</span>
+                                        )}
+                                        {selecionado && (
+                                          <span className="rounded-full bg-gray-950 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-white">
+                                            Selecionado
+                                          </span>
                                         )}
                                       </div>
                                     </div>
@@ -835,6 +979,23 @@ function Painel({ titulo, icone: Icon, badge, children }) {
       </div>
       <div className="p-5">{children}</div>
     </section>
+  );
+}
+
+function SelectFiltro({ label, options, value, onChange }) {
+  return (
+    <label className="block">
+      <span className="mb-2 block text-xs font-bold uppercase tracking-[0.14em] text-gray-400">{label}</span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="block w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm font-semibold text-gray-700 outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>{option.label}</option>
+        ))}
+      </select>
+    </label>
   );
 }
 

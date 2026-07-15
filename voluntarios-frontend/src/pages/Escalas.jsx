@@ -21,6 +21,18 @@ const dias = [
   { value: 0, label: 'Domingo' },
   { value: 6, label: 'Sábado' },
 ];
+const filtrosStatus = [
+  { value: 'TODOS', label: 'Todos' },
+  { value: 'PENDENTE', label: 'Pendentes' },
+  { value: 'CONFIRMADA', label: 'Confirmadas' },
+  { value: 'PEDIU_SUBSTITUICAO', label: 'Substituição' },
+  { value: 'AUSENTE', label: 'Ausentes' },
+];
+const filtrosTipo = [
+  { value: 'TODAS', label: 'Todas' },
+  { value: 'RECORRENTE', label: 'Recorrentes' },
+  { value: 'ESPORADICA', label: 'Esporádicas' },
+];
 
 const statusConfig = {
   PENDENTE: {
@@ -95,11 +107,17 @@ function normalizar(texto) {
 export default function Escalas() {
   const { token, logout } = useAuth();
   const { navigate, search } = useNavigation();
-  const filtroInicial = new URLSearchParams(search || '').get('filtro');
+  const parametrosIniciais = new URLSearchParams(search || '');
+  const filtroInicial = parametrosIniciais.get('filtro');
   const [visao, setVisao] = useState(filtroInicial === 'confirmacoes' ? 'minhas' : 'todas');
   const [filtroConfirmacoes, setFiltroConfirmacoes] = useState(filtroInicial === 'confirmacoes');
+  const [participacaoSelecionadaId, setParticipacaoSelecionadaId] = useState(parametrosIniciais.get('participacao') || '');
   const [diaSelecionado, setDiaSelecionado] = useState(0);
   const [semanaSelecionada, setSemanaSelecionada] = useState(1);
+  const [tipoFiltro, setTipoFiltro] = useState('TODAS');
+  const [statusFiltro, setStatusFiltro] = useState(filtroInicial === 'confirmacoes' ? 'PENDENTE' : 'TODOS');
+  const [areaFiltro, setAreaFiltro] = useState('TODAS');
+  const [ordem, setOrdem] = useState('proximas');
   const [busca, setBusca] = useState('');
   const [escalas, setEscalas] = useState([]);
   const [erro, setErro] = useState('');
@@ -144,13 +162,33 @@ export default function Escalas() {
   }, [carregarEscalas]);
 
   useEffect(() => {
-    const filtro = new URLSearchParams(search || '').get('filtro');
+    const params = new URLSearchParams(search || '');
+    const filtro = params.get('filtro');
+    const participacao = params.get('participacao') || '';
 
     if (filtro === 'confirmacoes') {
       setVisao('minhas');
       setFiltroConfirmacoes(true);
+      setStatusFiltro('PENDENTE');
+      setParticipacaoSelecionadaId(participacao);
+    } else {
+      setFiltroConfirmacoes(false);
+      setParticipacaoSelecionadaId('');
     }
   }, [search]);
+
+  useEffect(() => {
+    if (!participacaoSelecionadaId || carregando) {
+      return;
+    }
+
+    window.setTimeout(() => {
+      document.getElementById(`participacao-${participacaoSelecionadaId}`)?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+    }, 120);
+  }, [carregando, participacaoSelecionadaId]);
 
   const atualizarStatus = async (participacaoId, status, justificativaSubstituicao = '', dataOcorrencia = '') => {
     setErro('');
@@ -219,22 +257,56 @@ export default function Escalas() {
       const isEsporadicaMinha = visao === 'minhas' && escala.tipo === 'ESPORADICA';
       const mesmaSemana = getSemanaDoMes(escala) === semanaSelecionada;
       const mesmoDia = getDiaSemana(escala) === diaSelecionado;
+      const correspondeParticipacao = !participacaoSelecionadaId || escala.minhaParticipacao?.id === participacaoSelecionadaId;
       const correspondeConfirmacao = !filtroConfirmacoes || escala.minhaParticipacao?.status === 'PENDENTE';
+      const correspondeTipo = tipoFiltro === 'TODAS' || escala.tipo === tipoFiltro;
+      const correspondeArea = areaFiltro === 'TODAS' || escala.equipe?.nome === areaFiltro;
+      const statusBase = visao === 'minhas'
+        ? [escala.minhaParticipacao?.status]
+        : (escala.voluntarios || []).map((item) => item.status);
+      const correspondeStatus = statusFiltro === 'TODOS' || statusBase.includes(statusFiltro);
+      const usaFiltroPeriodo = escala.tipo === 'RECORRENTE' && tipoFiltro !== 'ESPORADICA';
       const texto = normalizar([
         escala.titulo,
         escala.local,
         escala.descricao,
         escala.equipe?.nome,
-        escala.voluntarios?.map((item) => item.usuario?.nomeCompleto).join(' '),
+        escala.voluntarios?.map((item) => [
+          item.usuario?.nomeCompleto,
+          item.usuario?.telefone,
+          statusConfig[item.status]?.label,
+        ].join(' ')).join(' '),
       ].join(' '));
+      const correspondeTexto = !termo || texto.includes(termo);
 
       if (filtroConfirmacoes) {
-        return correspondeConfirmacao && (!termo || texto.includes(termo));
+        return correspondeParticipacao && correspondeConfirmacao && correspondeTipo && correspondeArea && correspondeTexto;
       }
 
-      return correspondeConfirmacao && (isEsporadicaMinha || (mesmaSemana && mesmoDia)) && (!termo || texto.includes(termo));
+      return correspondeTipo
+        && correspondeArea
+        && correspondeStatus
+        && (isEsporadicaMinha || !usaFiltroPeriodo || (mesmaSemana && mesmoDia))
+        && correspondeTexto;
+    }).sort((a, b) => {
+      if (ordem === 'distantes') {
+        return (getData(b)?.getTime() || 0) - (getData(a)?.getTime() || 0);
+      }
+
+      if (ordem === 'area') {
+        return (a.equipe?.nome || '').localeCompare(b.equipe?.nome || '', 'pt-BR')
+          || (getData(a)?.getTime() || 0) - (getData(b)?.getTime() || 0);
+      }
+
+      if (ordem === 'pendentes') {
+        const aPendente = a.minhaParticipacao?.status === 'PENDENTE' ? 0 : 1;
+        const bPendente = b.minhaParticipacao?.status === 'PENDENTE' ? 0 : 1;
+        return aPendente - bPendente || (getData(a)?.getTime() || 0) - (getData(b)?.getTime() || 0);
+      }
+
+      return (getData(a)?.getTime() || 0) - (getData(b)?.getTime() || 0);
     });
-  }, [busca, diaSelecionado, escalas, filtroConfirmacoes, semanaSelecionada, visao]);
+  }, [areaFiltro, busca, diaSelecionado, escalas, filtroConfirmacoes, ordem, participacaoSelecionadaId, semanaSelecionada, statusFiltro, tipoFiltro, visao]);
 
   const escalasPorArea = useMemo(() => {
     const mapa = new Map(areas.map((area) => [area, []]));
@@ -244,10 +316,37 @@ export default function Escalas() {
       mapa.set(area, [...(mapa.get(area) || []), escala]);
     }
 
-    return Array.from(mapa.entries()).map(([area, itens]) => ({ area, itens }));
-  }, [escalasVisiveis]);
+    const manterAreasVazias = !filtroConfirmacoes
+      && !participacaoSelecionadaId
+      && !busca.trim()
+      && areaFiltro === 'TODAS'
+      && statusFiltro === 'TODOS'
+      && tipoFiltro !== 'ESPORADICA';
+
+    return Array.from(mapa.entries())
+      .map(([area, itens]) => ({ area, itens }))
+      .filter(({ itens }) => manterAreasVazias || itens.length > 0);
+  }, [areaFiltro, busca, escalasVisiveis, filtroConfirmacoes, participacaoSelecionadaId, statusFiltro, tipoFiltro]);
 
   const totalVoluntarios = escalasVisiveis.reduce((total, escala) => total + (escala.voluntarios?.length || 0), 0);
+  const temFiltrosAtivos = filtroConfirmacoes
+    || Boolean(participacaoSelecionadaId)
+    || busca.trim()
+    || areaFiltro !== 'TODAS'
+    || statusFiltro !== 'TODOS'
+    || tipoFiltro !== 'TODAS'
+    || ordem !== 'proximas';
+
+  const limparFiltros = () => {
+    setFiltroConfirmacoes(false);
+    setParticipacaoSelecionadaId('');
+    setTipoFiltro('TODAS');
+    setStatusFiltro('TODOS');
+    setAreaFiltro('TODAS');
+    setOrdem('proximas');
+    setBusca('');
+    navigate('/escalas', { replace: true });
+  };
 
   return (
     <div className="flex min-h-screen flex-col bg-[#f7f4ed] text-gray-900">
@@ -262,7 +361,9 @@ export default function Escalas() {
                 {filtroConfirmacoes ? 'Confirmações pendentes' : 'Escalas por área'}
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-600">
-                {filtroConfirmacoes
+                {participacaoSelecionadaId
+                  ? 'Abrimos a pendência exata enviada pela notificação para você confirmar ou solicitar substituição.'
+                  : filtroConfirmacoes
                   ? 'Veja somente suas escalas que ainda aguardam confirmação.'
                   : 'Veja os voluntários escalados para cada área nos sábados e domingos do 1º ao 4º fim de semana.'}
               </p>
@@ -276,7 +377,7 @@ export default function Escalas() {
         </section>
 
         <section className="mt-5 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-          <div className="grid gap-4 xl:grid-cols-[auto_auto_1fr] xl:items-center">
+          <div className="grid gap-4 xl:grid-cols-[auto_auto_minmax(150px,0.8fr)_minmax(150px,0.8fr)_1fr] xl:items-end">
             <Segmento
               label="Visão"
               options={[
@@ -287,20 +388,44 @@ export default function Escalas() {
               onChange={(valor) => {
                 setVisao(valor);
                 if (filtroConfirmacoes && valor !== 'minhas') {
-                  setFiltroConfirmacoes(false);
-                  navigate('/escalas', { replace: true });
+                  limparFiltros();
                 }
               }}
             />
 
-            <Segmento
-              label="Dia"
-              options={dias}
-              value={diaSelecionado}
-              onChange={setDiaSelecionado}
+            <SelectFiltro
+              label="Tipo"
+              value={tipoFiltro}
+              onChange={setTipoFiltro}
+              options={filtrosTipo}
+            />
+
+            <SelectFiltro
+              label="Status"
+              value={statusFiltro}
+              onChange={(valor) => {
+                setStatusFiltro(valor);
+                if (valor !== 'PENDENTE') {
+                  setFiltroConfirmacoes(false);
+                  setParticipacaoSelecionadaId('');
+                  navigate('/escalas', { replace: true });
+                }
+              }}
+              options={filtrosStatus}
+            />
+
+            <SelectFiltro
+              label="Área"
+              value={areaFiltro}
+              onChange={setAreaFiltro}
+              options={[
+                { value: 'TODAS', label: 'Todas as áreas' },
+                ...areas.map((area) => ({ value: area, label: area })),
+              ]}
             />
 
             <div className="relative">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">Busca</p>
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
               <input
                 value={busca}
@@ -311,33 +436,72 @@ export default function Escalas() {
             </div>
           </div>
 
+          <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
+            <div className="space-y-3">
+              {tipoFiltro !== 'ESPORADICA' && !filtroConfirmacoes && (
+                <div className="flex flex-wrap gap-2">
+                  <Segmento
+                    label="Dia"
+                    options={dias}
+                    value={diaSelecionado}
+                    onChange={setDiaSelecionado}
+                  />
+                </div>
+              )}
+              {tipoFiltro !== 'ESPORADICA' && !filtroConfirmacoes && (
+                <div className="flex flex-wrap gap-2">
+                  {semanas.map((semana) => (
+                    <button
+                      key={semana}
+                      type="button"
+                      onClick={() => setSemanaSelecionada(semana)}
+                      className={`rounded-md px-3 py-2 text-sm font-semibold transition ${
+                        semanaSelecionada === semana
+                          ? 'bg-gray-950 text-white'
+                          : 'border border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                      }`}
+                    >
+                      {semana}º fim de semana
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-wrap gap-2 lg:justify-end">
+              <SelectFiltro
+                label="Ordenar"
+                value={ordem}
+                onChange={setOrdem}
+                options={[
+                  { value: 'proximas', label: 'Mais próximas' },
+                  { value: 'distantes', label: 'Mais distantes' },
+                  { value: 'area', label: 'Área' },
+                  { value: 'pendentes', label: 'Pendentes primeiro' },
+                ]}
+              />
+            </div>
+          </div>
+
           <div className="mt-4 flex flex-wrap gap-2">
             {filtroConfirmacoes && (
               <button
                 type="button"
-                onClick={() => {
-                  setFiltroConfirmacoes(false);
-                  navigate('/escalas', { replace: true });
-                }}
+                onClick={limparFiltros}
                 className="rounded-md border border-gray-300 bg-gray-950 px-3 py-2 text-sm font-semibold text-white transition hover:bg-gray-800"
               >
-                Mostrando apenas pendentes - limpar filtro
+                {participacaoSelecionadaId ? 'Mostrando a pendência selecionada - limpar' : 'Mostrando pendentes - limpar'}
               </button>
             )}
-            {semanas.map((semana) => (
+            {temFiltrosAtivos && !filtroConfirmacoes && (
               <button
-                key={semana}
                 type="button"
-                onClick={() => setSemanaSelecionada(semana)}
-                className={`rounded-md px-3 py-2 text-sm font-semibold transition ${
-                  semanaSelecionada === semana
-                    ? 'bg-gray-950 text-white'
-                    : 'border border-gray-200 bg-white text-gray-600 hover:border-gray-300'
-                }`}
+                onClick={limparFiltros}
+                className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
               >
-                {semana}º fim de semana
+                Limpar filtros
               </button>
-            ))}
+            )}
           </div>
         </section>
 
@@ -356,6 +520,8 @@ export default function Escalas() {
         ) : (
           <TabelaEscalas
             escalasPorArea={escalasPorArea}
+            temResultados={escalasVisiveis.length > 0}
+            participacaoSelecionadaId={participacaoSelecionadaId}
             atualizandoId={atualizandoId}
             substituicaoAbertaId={substituicaoAbertaId}
             justificativa={justificativa}
@@ -412,8 +578,27 @@ function Segmento({ label, options, value, onChange }) {
   );
 }
 
+function SelectFiltro({ label, options, value, onChange }) {
+  return (
+    <label className="block">
+      <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">{label}</span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="block w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm font-semibold text-gray-700 outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>{option.label}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function TabelaEscalas({
   escalasPorArea,
+  temResultados,
+  participacaoSelecionadaId,
   atualizandoId,
   substituicaoAbertaId,
   justificativa,
@@ -436,11 +621,17 @@ function TabelaEscalas({
       </div>
 
       <div className="divide-y divide-gray-100">
-        {linhas.map(({ area, escala }) => (
+        {!temResultados ? (
+          <div className="px-6 py-12 text-center">
+            <p className="text-base font-bold text-gray-950">Nenhuma escala encontrada</p>
+            <p className="mt-2 text-sm text-gray-500">Ajuste os filtros, altere a busca ou limpe os critérios para visualizar outras escalas.</p>
+          </div>
+        ) : linhas.map(({ area, escala }) => (
           <EscalaLinha
             key={escala?.id || area}
             area={area}
             escala={escala}
+            destaque={Boolean(participacaoSelecionadaId && escala?.minhaParticipacao?.id === participacaoSelecionadaId)}
             atualizandoId={atualizandoId}
             substituicaoAbertaId={substituicaoAbertaId}
             justificativa={justificativa}
@@ -458,6 +649,7 @@ function TabelaEscalas({
 function EscalaLinha({
   area,
   escala,
+  destaque,
   atualizandoId,
   substituicaoAbertaId,
   justificativa,
@@ -470,9 +662,19 @@ function EscalaLinha({
   const justificando = participacao && substituicaoAbertaId === participacao.id;
 
   return (
-    <div className="grid gap-4 px-4 py-4 md:grid-cols-[minmax(160px,0.8fr)_minmax(220px,1.2fr)]">
+    <div
+      id={participacao ? `participacao-${participacao.id}` : undefined}
+      className={`grid gap-4 px-4 py-4 transition md:grid-cols-[minmax(160px,0.8fr)_minmax(220px,1.2fr)] ${
+        destaque ? 'bg-amber-50/80 ring-2 ring-inset ring-amber-300' : ''
+      }`}
+    >
       <div>
         <p className="text-base font-bold text-gray-950">{area}</p>
+        {destaque && (
+          <span className="mt-2 inline-flex rounded-full bg-gray-950 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-white">
+            Pendência selecionada
+          </span>
+        )}
         {escala ? (
           <>
             <p className="mt-1 text-sm font-semibold text-gray-500">{formatarHorario(escala.dataHora)}</p>
