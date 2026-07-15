@@ -5,7 +5,7 @@ import { Footer } from '../components/Footer';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
 import { buildApiUrl } from '../lib/api';
-import logo from '../assets/logo.png';
+import logo from '../assets/ico.png';
 
 export default function Home() {
   const { token, usuario, logout } = useAuth();

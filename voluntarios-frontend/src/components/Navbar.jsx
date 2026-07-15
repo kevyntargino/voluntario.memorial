@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
 import { buildApiUrl } from '../lib/api';
 import { uploadFotoUsuario } from '../lib/uploadFoto';
-import logo from '../assets/logo.png';
+import logo from '../assets/ico.png';
 
 const sexoOptions = [
   { value: '', label: 'Não informado' },
