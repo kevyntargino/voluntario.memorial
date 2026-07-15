@@ -416,14 +416,18 @@ router.patch('/admin/recorrentes/:id', autenticar, exigirAdmin, async (req, res)
 
 router.post('/admin/esporadicas', autenticar, exigirAdmin, async (req, res) => {
   try {
-    const { titulo, dataHora, local, descricao, equipeIds = [] } = req.body ?? {};
+    const { titulo, dataHora, dataHoras, local, descricao, equipeIds = [] } = req.body ?? {};
 
     if (typeof titulo !== 'string' || titulo.trim().length < 3) {
       return res.status(400).json({ erro: 'Título da escala é obrigatório.' });
     }
 
-    if (!dataHora) {
-      return res.status(400).json({ erro: 'Data e horário da escala são obrigatórios.' });
+    const datasInformadas = Array.isArray(dataHoras) && dataHoras.length > 0
+      ? dataHoras
+      : [dataHora].filter(Boolean);
+
+    if (datasInformadas.length === 0) {
+      return res.status(400).json({ erro: 'Informe pelo menos uma data e horário da escala.' });
     }
 
     if (!Array.isArray(equipeIds) || equipeIds.length === 0) {
@@ -445,27 +449,40 @@ router.post('/admin/esporadicas', autenticar, exigirAdmin, async (req, res) => {
       return res.status(400).json({ erro: 'Uma ou mais equipes selecionadas são inválidas.' });
     }
 
-    const data = new Date(dataHora);
-    const grupoEsporadicoId = randomUUID();
+    const datas = datasInformadas.map((item) => new Date(item));
+
+    if (datas.some((data) => Number.isNaN(data.getTime()))) {
+      return res.status(400).json({ erro: 'Uma ou mais datas/horários são inválidos.' });
+    }
+
+    const grupos = datas.map((data) => ({
+      data,
+      grupoEsporadicoId: randomUUID(),
+    }));
 
     await prisma.escala.createMany({
-      data: equipes.map((equipe) => ({
-        titulo: titulo.trim(),
-        local: typeof local === 'string' && local.trim() ? local.trim() : null,
-        descricao: typeof descricao === 'string' && descricao.trim() ? descricao.trim() : null,
-        tipo: 'ESPORADICA',
-        diaSemana: data.getDay(),
-        semanaMes: getSemanaMes(data),
-        dataHora: data,
-        grupoEsporadicoId,
-        solicitadaPeloAdmin: true,
-        equipeId: equipe.id,
-      })),
+      data: grupos.flatMap(({ data, grupoEsporadicoId }) => (
+        equipes.map((equipe) => ({
+          titulo: titulo.trim(),
+          local: typeof local === 'string' && local.trim() ? local.trim() : null,
+          descricao: typeof descricao === 'string' && descricao.trim() ? descricao.trim() : null,
+          tipo: 'ESPORADICA',
+          diaSemana: data.getDay(),
+          semanaMes: getSemanaMes(data),
+          dataHora: data,
+          grupoEsporadicoId,
+          solicitadaPeloAdmin: true,
+          equipeId: equipe.id,
+        }))
+      )),
     });
 
     return res.status(201).json({
-      mensagem: 'Escala esporádica criada e enviada aos líderes das equipes selecionadas.',
-      grupoEsporadicoId,
+      mensagem: `${grupos.length} escala(s) esporádica(s) criada(s) e enviada(s) aos líderes das equipes selecionadas.`,
+      grupos: grupos.map((grupo) => ({
+        grupoEsporadicoId: grupo.grupoEsporadicoId,
+        dataHora: grupo.data,
+      })),
     });
   } catch (erro) {
     console.error('[ERRO LOG] POST /api/escalas/admin/esporadicas:', erro);

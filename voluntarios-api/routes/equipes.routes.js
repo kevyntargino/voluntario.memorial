@@ -514,51 +514,7 @@ router.post('/:equipeId/substituicoes/:participacaoId/atribuir', autenticar, asy
 });
 
 router.post('/:equipeId/escalas', autenticar, async (req, res) => {
-  try {
-    const usuario = await getUsuarioComEquipes(req.usuarioAutenticado.id);
-
-    if (!podeGerenciar(usuario, req.params.equipeId)) {
-      return res.status(403).json({ erro: 'Você não pode gerenciar esta equipe.' });
-    }
-
-    const { titulo, dataHora, local, descricao, voluntarioIds = [], substitutoIds = [] } = req.body ?? {};
-
-    if (!dataHora) {
-      return res.status(400).json({ erro: 'Data e horário da escala são obrigatórios.' });
-    }
-
-    const data = new Date(dataHora);
-    const escala = await prisma.escala.create({
-      data: {
-        titulo: typeof titulo === 'string' && titulo.trim() ? titulo.trim() : 'Escala da equipe',
-        local: typeof local === 'string' && local.trim() ? local.trim() : null,
-        descricao: typeof descricao === 'string' && descricao.trim() ? descricao.trim() : null,
-        tipo: 'ESPORADICA',
-        diaSemana: data.getDay(),
-        semanaMes: Math.ceil(data.getDate() / 7),
-        dataHora: data,
-        equipeId: req.params.equipeId,
-        voluntarios: {
-          create: voluntarioIds.map((usuarioId) => ({
-            usuarioId,
-            substituto: substitutoIds.includes(usuarioId),
-            atribuidoPorId: req.usuarioAutenticado.id,
-          })),
-        },
-      },
-    });
-
-    const equipe = await carregarEquipe(req.params.equipeId, usuario);
-
-    return res.status(201).json({
-      mensagem: 'Escala criada com sucesso.',
-      escalaId: escala.id,
-      equipe,
-    });
-  } catch (erro) {
-    console.error('[ERRO LOG] POST /api/equipes/:equipeId/escalas:', erro);
-    return res.status(500).json({ erro: 'Erro interno no servidor. Tente novamente mais tarde.' });
-  }
+  return res.status(403).json({ erro: 'Escalas são criadas somente pelo administrador.' });
 });
 
 router.patch('/:equipeId/escalas/:escalaId', autenticar, async (req, res) => {
@@ -569,8 +525,7 @@ router.patch('/:equipeId/escalas/:escalaId', autenticar, async (req, res) => {
       return res.status(403).json({ erro: 'Você não pode gerenciar esta equipe.' });
     }
 
-    const { titulo, dataHora, local, descricao, voluntarioIds = [], substitutoIds = [] } = req.body ?? {};
-    const data = dataHora ? new Date(dataHora) : null;
+    const { voluntarioIds = [], substitutoIds = [] } = req.body ?? {};
 
     const escalaExistente = await prisma.escala.findFirst({
       where: {
@@ -584,30 +539,28 @@ router.patch('/:equipeId/escalas/:escalaId', autenticar, async (req, res) => {
       return res.status(404).json({ erro: 'Escala não encontrada nesta equipe.' });
     }
 
-    await prisma.escala.update({
-      where: {
-        id: escalaExistente.id,
-      },
-      data: {
-        titulo: typeof titulo === 'string' && titulo.trim() ? titulo.trim() : undefined,
-        local: typeof local === 'string' ? local.trim() || null : undefined,
-        descricao: typeof descricao === 'string' ? descricao.trim() || null : undefined,
-        dataHora: data || undefined,
-        diaSemana: data ? data.getDay() : undefined,
-        semanaMes: data ? Math.ceil(data.getDate() / 7) : undefined,
+    const voluntariosDaEquipe = await prisma.equipe.findUnique({
+      where: { id: req.params.equipeId },
+      select: {
+        voluntarios: {
+          select: { id: true },
+        },
       },
     });
+    const idsPermitidos = new Set((voluntariosDaEquipe?.voluntarios || []).map((voluntario) => voluntario.id));
+    const voluntarioIdsValidos = Array.from(new Set(voluntarioIds)).filter((id) => idsPermitidos.has(id));
+    const substitutoIdsValidos = Array.from(new Set(substitutoIds)).filter((id) => voluntarioIdsValidos.includes(id));
 
     await prisma.voluntarioEscala.deleteMany({
       where: {
         escalaId: req.params.escalaId,
         usuarioId: {
-          notIn: voluntarioIds,
+          notIn: voluntarioIdsValidos,
         },
       },
     });
 
-    for (const usuarioId of voluntarioIds) {
+    for (const usuarioId of voluntarioIdsValidos) {
       await prisma.voluntarioEscala.upsert({
         where: {
           usuarioId_escalaId: {
@@ -616,12 +569,12 @@ router.patch('/:equipeId/escalas/:escalaId', autenticar, async (req, res) => {
           },
         },
         update: {
-          substituto: substitutoIds.includes(usuarioId),
+          substituto: substitutoIdsValidos.includes(usuarioId),
         },
         create: {
           usuarioId,
           escalaId: req.params.escalaId,
-          substituto: substitutoIds.includes(usuarioId),
+          substituto: substitutoIdsValidos.includes(usuarioId),
           atribuidoPorId: req.usuarioAutenticado.id,
         },
       });
@@ -630,7 +583,7 @@ router.patch('/:equipeId/escalas/:escalaId', autenticar, async (req, res) => {
     const equipe = await carregarEquipe(req.params.equipeId, usuario);
 
     return res.status(200).json({
-      mensagem: 'Escala atualizada com sucesso.',
+      mensagem: 'Voluntários atribuídos com sucesso.',
       equipe,
     });
   } catch (erro) {
@@ -640,41 +593,7 @@ router.patch('/:equipeId/escalas/:escalaId', autenticar, async (req, res) => {
 });
 
 router.delete('/:equipeId/escalas/:escalaId', autenticar, async (req, res) => {
-  try {
-    const usuario = await getUsuarioComEquipes(req.usuarioAutenticado.id);
-
-    if (!podeGerenciar(usuario, req.params.equipeId)) {
-      return res.status(403).json({ erro: 'Você não pode gerenciar esta equipe.' });
-    }
-
-    const escalaExistente = await prisma.escala.findFirst({
-      where: {
-        id: req.params.escalaId,
-        equipeId: req.params.equipeId,
-      },
-      select: { id: true },
-    });
-
-    if (!escalaExistente) {
-      return res.status(404).json({ erro: 'Escala não encontrada nesta equipe.' });
-    }
-
-    await prisma.escala.delete({
-      where: {
-        id: escalaExistente.id,
-      },
-    });
-
-    const equipe = await carregarEquipe(req.params.equipeId, usuario);
-
-    return res.status(200).json({
-      mensagem: 'Escala removida com sucesso.',
-      equipe,
-    });
-  } catch (erro) {
-    console.error('[ERRO LOG] DELETE /api/equipes/:equipeId/escalas/:escalaId:', erro);
-    return res.status(500).json({ erro: 'Erro interno no servidor. Tente novamente mais tarde.' });
-  }
+  return res.status(403).json({ erro: 'Escalas são removidas somente pelo administrador.' });
 });
 
 export default router;

@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   Clock3,
   Loader2,
-  Pencil,
   Plus,
   Save,
   Trash2,
@@ -30,9 +29,6 @@ const formVoluntarioInicial = {
 const formEscalaInicial = {
   id: null,
   titulo: '',
-  local: '',
-  descricao: '',
-  dataHora: '',
   voluntarioIds: [],
   substitutoIds: [],
 };
@@ -52,17 +48,6 @@ const statusConfig = {
   PEDIU_SUBSTITUICAO: { label: 'Substituição', className: 'border-sky-200 bg-sky-50 text-sky-700', icon: RefreshCcw },
   AUSENTE: { label: 'Ausente', className: 'border-red-200 bg-red-50 text-red-700', icon: AlertCircle },
 };
-
-function toDatetimeLocal(dataHora) {
-  if (!dataHora) {
-    return '';
-  }
-
-  const data = new Date(dataHora);
-  const offset = data.getTimezoneOffset();
-  const local = new Date(data.getTime() - offset * 60000);
-  return local.toISOString().slice(0, 16);
-}
 
 function formatarData(dataHora) {
   if (!dataHora) {
@@ -237,22 +222,20 @@ export default function MinhaEquipe() {
 
   const salvarEscala = async (event) => {
     event.preventDefault();
+
+    if (!formEscala.id) {
+      setErro('Selecione uma escala para atribuir voluntários.');
+      return;
+    }
+
     setErro('');
     setSucesso('');
     setSalvando(true);
 
     try {
-      const path = formEscala.id
-        ? `/api/equipes/${equipeId}/escalas/${formEscala.id}`
-        : `/api/equipes/${equipeId}/escalas`;
-
-      await requestEquipe(path, {
-        method: formEscala.id ? 'PATCH' : 'POST',
+      await requestEquipe(`/api/equipes/${equipeId}/escalas/${formEscala.id}`, {
+        method: 'PATCH',
         body: JSON.stringify({
-          titulo: formEscala.titulo,
-          local: formEscala.local,
-          descricao: formEscala.descricao,
-          dataHora: formEscala.dataHora,
           voluntarioIds: formEscala.voluntarioIds,
           substitutoIds: formEscala.substitutoIds,
         }),
@@ -270,29 +253,9 @@ export default function MinhaEquipe() {
     setFormEscala({
       id: escala.id,
       titulo: escala.titulo || '',
-      local: escala.local || '',
-      descricao: escala.descricao || '',
-      dataHora: toDatetimeLocal(escala.dataHora),
       voluntarioIds: escala.voluntarios.map((item) => item.usuario.id),
       substitutoIds: escala.voluntarios.filter((item) => item.substituto).map((item) => item.usuario.id),
     });
-  };
-
-  const removerEscala = async (escalaId) => {
-    setErro('');
-    setSucesso('');
-    setSalvando(true);
-
-    try {
-      await requestEquipe(`/api/equipes/${equipeId}/escalas/${escalaId}`, {
-        method: 'DELETE',
-      });
-      setFormEscala((atual) => (atual.id === escalaId ? formEscalaInicial : atual));
-    } catch (error) {
-      setErro(error.message);
-    } finally {
-      setSalvando(false);
-    }
   };
 
   const atribuirSubstituto = async (pedidoId) => {
@@ -564,12 +527,21 @@ export default function MinhaEquipe() {
             </section>
 
             <section className="space-y-5">
-              <Painel titulo={formEscala.id ? 'Editar escala' : 'Nova escala'} icone={CalendarPlus}>
+              <Painel titulo="Atribuir voluntários" icone={CalendarPlus}>
                 <form onSubmit={salvarEscala} className="space-y-4">
-                  <Campo label="Título" value={formEscala.titulo} onChange={(value) => setFormEscala((atual) => ({ ...atual, titulo: value }))} />
-                  <Campo label="Local" value={formEscala.local} onChange={(value) => setFormEscala((atual) => ({ ...atual, local: value }))} />
-                  <Campo label="Data e horário" type="datetime-local" value={formEscala.dataHora} onChange={(value) => setFormEscala((atual) => ({ ...atual, dataHora: value }))} />
-                  <CampoTexto label="Descrição" value={formEscala.descricao} onChange={(value) => setFormEscala((atual) => ({ ...atual, descricao: value }))} />
+                  {formEscala.id ? (
+                    <div className="rounded-md border border-dourado-100 bg-dourado-50 px-3 py-3">
+                      <p className="text-xs font-bold uppercase tracking-[0.14em] text-dourado-700">Escala selecionada</p>
+                      <p className="mt-1 text-sm font-bold text-gray-950">{formEscala.titulo || 'Escala sem título'}</p>
+                      <p className="mt-1 text-xs text-gray-600">
+                        Altere somente os voluntários atribuídos a esta escala. O evento é criado e editado pelo administrador.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="rounded-md border border-dashed border-gray-200 bg-gray-50 px-3 py-4 text-sm text-gray-500">
+                      Selecione uma escala na listagem abaixo para atribuir voluntários.
+                    </div>
+                  )}
 
                   <div>
                     <p className="mb-2 text-sm font-semibold text-gray-700">Voluntários escalados</p>
@@ -619,13 +591,13 @@ export default function MinhaEquipe() {
                   </div>
 
                   <div className="flex flex-wrap gap-2">
-                    <button disabled={salvando} className="inline-flex items-center gap-2 rounded-md bg-gray-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-gray-800 disabled:opacity-60">
+                    <button disabled={salvando || !formEscala.id} className="inline-flex items-center gap-2 rounded-md bg-gray-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-gray-800 disabled:opacity-60">
                       <Save size={16} />
-                      Salvar escala
+                      Salvar atribuições
                     </button>
                     {formEscala.id && (
                       <button type="button" onClick={() => setFormEscala(formEscalaInicial)} className="rounded-md border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50">
-                        Cancelar edição
+                        Cancelar
                       </button>
                     )}
                   </div>
@@ -716,14 +688,14 @@ export default function MinhaEquipe() {
                               <p className="mt-3 text-sm leading-6 text-gray-600">{escala.descricao}</p>
                             )}
                           </div>
-                          <div className="flex gap-2">
-                            <button type="button" onClick={() => editarEscala(escala)} className="rounded-md border border-gray-200 bg-white p-2 text-gray-700 transition hover:bg-gray-100" title="Editar escala">
-                              <Pencil size={16} />
-                            </button>
-                            <button type="button" onClick={() => removerEscala(escala.id)} className="rounded-md border border-red-100 bg-white p-2 text-red-600 transition hover:bg-red-50" title="Remover escala">
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
+                          <button
+                            type="button"
+                            onClick={() => editarEscala(escala)}
+                            className="inline-flex items-center justify-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
+                          >
+                            <UserPlus size={15} />
+                            Atribuir voluntários
+                          </button>
                         </div>
 
                         <div className="mt-5 rounded-xl border border-gray-200 bg-white p-4">
@@ -818,21 +790,6 @@ function Campo({ label, value, onChange, type = 'text', placeholder = '' }) {
         type={type}
         value={value}
         placeholder={placeholder}
-        onChange={(event) => onChange(event.target.value)}
-        className="mt-2 block w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
-      />
-    </label>
-  );
-}
-
-function CampoTexto({ label, value, onChange, placeholder = '' }) {
-  return (
-    <label className="block">
-      <span className="text-sm font-semibold text-gray-700">{label}</span>
-      <textarea
-        value={value}
-        placeholder={placeholder}
-        rows={3}
         onChange={(event) => onChange(event.target.value)}
         className="mt-2 block w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
       />

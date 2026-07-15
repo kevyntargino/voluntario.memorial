@@ -7,6 +7,7 @@ import {
   Clock3,
   Loader2,
   Megaphone,
+  ArrowDownUp,
   Plus,
   RefreshCcw,
   Save,
@@ -37,7 +38,7 @@ const statusConfig = {
   AUSENTE: { label: 'Ausente', className: 'border-red-200 bg-red-50 text-red-700', icon: AlertCircle },
 };
 
-const formEsporadicaInicial = { titulo: '', dataHora: '', local: '', descricao: '', equipeIds: [] };
+const formEsporadicaInicial = { titulo: '', data: '', horarios: ['09:00'], local: '', descricao: '', equipeIds: [] };
 const formAvisoInicial = { titulo: '', mensagem: '', dataAviso: '', publico: 'TODOS', equipeIds: [], usuarioIds: [] };
 const formEquipeInicial = { nome: '' };
 const filtrosTipoEscala = [
@@ -45,6 +46,14 @@ const filtrosTipoEscala = [
   { value: 'RECORRENTE', label: 'Recorrentes' },
   { value: 'ESPORADICA', label: 'Esporádicas' },
 ];
+const filtrosRecorrentes = [0, 6].flatMap((diaSemana) => (
+  semanas.map((semanaMes) => ({
+    value: `${diaSemana}-${semanaMes}`,
+    diaSemana,
+    semanaMes,
+    label: `${semanaMes}º ${diaSemana === 0 ? 'Domingo' : 'Sábado'}`,
+  }))
+));
 
 function formatarData(dataHora) {
   if (!dataHora) return 'Sem data';
@@ -93,7 +102,9 @@ export default function AdminEscalas() {
   const [equipeSelecionadaId, setEquipeSelecionadaId] = useState(null);
   const [formEquipe, setFormEquipe] = useState(formEquipeInicial);
   const [tipoEscalas, setTipoEscalas] = useState('TODAS');
+  const [filtroRecorrenciaAdmin, setFiltroRecorrenciaAdmin] = useState('TODAS');
   const [buscaEscalas, setBuscaEscalas] = useState('');
+  const [ordemEscalas, setOrdemEscalas] = useState('proximas');
   const [escalaEditandoId, setEscalaEditandoId] = useState(null);
   const [carregando, setCarregando] = useState(true);
   const [salvandoId, setSalvandoId] = useState(null);
@@ -167,11 +178,15 @@ export default function AdminEscalas() {
     [equipeSelecionadaId, equipes],
   );
 
-  const escalasFiltradas = useMemo(() => {
+  const eventosEscalas = useMemo(() => {
     const termo = buscaEscalas.trim().toLowerCase();
     const todasEscalas = [...recorrentes, ...esporadicas];
     const filtradas = todasEscalas.filter((escala) => (
       (tipoEscalas === 'TODAS' || escala.tipo === tipoEscalas)
+      && (tipoEscalas !== 'RECORRENTE' || filtroRecorrenciaAdmin === 'TODAS' || (() => {
+        const filtro = filtrosRecorrentes.find((item) => item.value === filtroRecorrenciaAdmin);
+        return !filtro || (escala.diaSemana === filtro.diaSemana && escala.semanaMes === filtro.semanaMes);
+      })())
       && (!termo || [
         escala.titulo,
         escala.equipe?.nome,
@@ -180,12 +195,35 @@ export default function AdminEscalas() {
         escala.voluntarios?.map((item) => item.usuario?.nomeCompleto).join(' '),
       ].filter(Boolean).join(' ').toLowerCase().includes(termo))
     ));
+    const eventos = new Map();
 
-    return [...filtradas].sort((a, b) => (
-      new Date(a.dataHora || 0).getTime() - new Date(b.dataHora || 0).getTime()
-      || (a.equipe?.nome || '').localeCompare(b.equipe?.nome || '', 'pt-BR')
+    for (const escala of filtradas) {
+      const data = escala.dataHora ? new Date(escala.dataHora).toISOString() : 'sem-data';
+      const chave = escala.tipo === 'ESPORADICA'
+        ? `ESPORADICA:${escala.grupoEsporadicoId || escala.id}`
+        : `RECORRENTE:${escala.diaSemana}:${escala.semanaMes}:${data}:${escala.titulo || ''}`;
+      const evento = eventos.get(chave) || {
+        id: chave,
+        titulo: escala.titulo || 'Escala sem título',
+        tipo: escala.tipo,
+        dataHora: escala.dataHora,
+        local: escala.local,
+        descricao: escala.descricao,
+        diaSemana: escala.diaSemana,
+        semanaMes: escala.semanaMes,
+        areas: [],
+      };
+
+      evento.areas.push(escala);
+      eventos.set(chave, evento);
+    }
+
+    return Array.from(eventos.values()).sort((a, b) => (
+      ordemEscalas === 'distantes'
+        ? new Date(b.dataHora || 0).getTime() - new Date(a.dataHora || 0).getTime()
+        : new Date(a.dataHora || 0).getTime() - new Date(b.dataHora || 0).getTime()
     ));
-  }, [buscaEscalas, esporadicas, recorrentes, tipoEscalas]);
+  }, [buscaEscalas, esporadicas, filtroRecorrenciaAdmin, ordemEscalas, recorrentes, tipoEscalas]);
 
   const alterarFormUsuario = (usuarioId, campo, valor) => {
     setFormsUsuarios((atuais) => ({
@@ -403,11 +441,19 @@ export default function AdminEscalas() {
     setErro('');
     setSucesso('');
     setSalvandoId('esporadica');
+
+    const dataHoras = (formEsporadica.horarios || [])
+      .filter((horario) => horario)
+      .map((horario) => `${formEsporadica.data}T${horario}`);
+
     try {
       const resposta = await fetch(buildApiUrl('/api/escalas/admin/esporadicas'), {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(formEsporadica),
+        body: JSON.stringify({
+          ...formEsporadica,
+          dataHoras,
+        }),
       });
       const dados = await resposta.json();
       if (!resposta.ok) throw new Error(dados.erro || 'Não foi possível criar a escala esporádica.');
@@ -530,9 +576,11 @@ export default function AdminEscalas() {
             {painelAberto === 'escalas' && (
               <PainelEscalas
                 equipes={equipes}
-                escalas={escalasFiltradas}
+                eventos={eventosEscalas}
                 tipoEscalas={tipoEscalas}
+                filtroRecorrencia={filtroRecorrenciaAdmin}
                 buscaEscalas={buscaEscalas}
+                ordemEscalas={ordemEscalas}
                 escalaEditandoId={escalaEditandoId}
                 esporadicas={esporadicas}
                 formRecorrentes={formRecorrentes}
@@ -541,7 +589,9 @@ export default function AdminEscalas() {
                 onAlterarRecorrente={alterarRecorrente}
                 onSalvarRecorrente={salvarRecorrente}
                 onTipoEscalas={setTipoEscalas}
+                onFiltroRecorrencia={setFiltroRecorrenciaAdmin}
                 onBuscaEscalas={setBuscaEscalas}
+                onOrdemEscalas={setOrdemEscalas}
                 onEditarEscala={setEscalaEditandoId}
                 onChangeEsporadica={setFormEsporadica}
                 onAlternarEquipe={(equipeId) => alternarEquipe('esporadica', equipeId)}
@@ -871,9 +921,11 @@ function PainelNotificacao({ equipes, usuarios, formAviso, salvandoId, onSubmit,
 
 function PainelEscalas({
   equipes,
-  escalas,
+  eventos,
   tipoEscalas,
+  filtroRecorrencia,
   buscaEscalas,
+  ordemEscalas,
   escalaEditandoId,
   esporadicas,
   formRecorrentes,
@@ -882,7 +934,9 @@ function PainelEscalas({
   onAlterarRecorrente,
   onSalvarRecorrente,
   onTipoEscalas,
+  onFiltroRecorrencia,
   onBuscaEscalas,
+  onOrdemEscalas,
   onEditarEscala,
   onChangeEsporadica,
   onAlternarEquipe,
@@ -904,7 +958,12 @@ function PainelEscalas({
                 <button
                   key={filtro.value}
                   type="button"
-                  onClick={() => onTipoEscalas(filtro.value)}
+                  onClick={() => {
+                    onTipoEscalas(filtro.value);
+                    if (filtro.value !== 'RECORRENTE') {
+                      onFiltroRecorrencia('TODAS');
+                    }
+                  }}
                   className={`rounded-md px-3 py-1.5 text-xs font-bold transition ${
                     tipoEscalas === filtro.value ? 'bg-gray-950 text-white' : 'text-gray-600 hover:bg-white'
                   }`}
@@ -917,7 +976,46 @@ function PainelEscalas({
         </div>
 
         <div className="space-y-4 p-5">
-          <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-center">
+          {tipoEscalas === 'RECORRENTE' && (
+            <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+              <p className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-gray-400">Filtrar recorrentes</p>
+              <div className="space-y-2">
+                {[0, 6].map((diaSemana) => (
+                  <div key={diaSemana} className="flex flex-wrap gap-2">
+                    {filtrosRecorrentes
+                      .filter((filtro) => filtro.diaSemana === diaSemana)
+                      .map((filtro) => (
+                        <button
+                          key={filtro.value}
+                          type="button"
+                          onClick={() => onFiltroRecorrencia(filtro.value)}
+                          className={`rounded-md border px-3 py-2 text-sm font-bold transition ${
+                            filtroRecorrencia === filtro.value
+                              ? 'border-gray-950 bg-gray-950 text-white'
+                              : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
+                          }`}
+                        >
+                          {filtro.label}
+                        </button>
+                      ))}
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => onFiltroRecorrencia('TODAS')}
+                  className={`rounded-md border px-3 py-2 text-sm font-bold transition ${
+                    filtroRecorrencia === 'TODAS'
+                      ? 'border-dourado-700 bg-dourado-700 text-white'
+                      : 'border-dourado-200 bg-dourado-50 text-dourado-800 hover:border-dourado-300'
+                  }`}
+                >
+                  Todas recorrentes
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto] lg:items-center">
             <label className="relative block">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
               <input
@@ -927,120 +1025,129 @@ function PainelEscalas({
                 placeholder="Pesquisar por equipe, título ou voluntário"
               />
             </label>
+            <button
+              type="button"
+              onClick={() => onOrdemEscalas(ordemEscalas === 'proximas' ? 'distantes' : 'proximas')}
+              className="inline-flex items-center justify-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm font-bold text-gray-700 transition hover:bg-gray-50"
+              title="Alternar ordenação"
+            >
+              <ArrowDownUp size={16} />
+              {ordemEscalas === 'proximas' ? 'Mais próximas' : 'Mais distantes'}
+            </button>
             <span className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-600">
-              {escalas.length} escala(s)
+              {eventos.length} evento(s)
             </span>
           </div>
 
           <div className="space-y-4">
-            {escalas.length === 0 ? (
+            {eventos.length === 0 ? (
               <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-8 text-center text-sm text-gray-500">
                 Nenhuma escala encontrada para esse filtro.
               </div>
-            ) : escalas.map((escala) => {
-              const form = formRecorrentes[escala.id] || {};
-              const editando = escalaEditandoId === escala.id;
-
+            ) : eventos.map((evento) => {
               return (
-                <div key={escala.id} className="rounded-2xl border border-gray-200 bg-gradient-to-br from-white to-gray-50 p-5 shadow-sm">
+                <div key={evento.id} className="rounded-2xl border border-gray-200 bg-gradient-to-br from-white to-gray-50 p-5 shadow-sm">
                   <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="rounded-full border border-dourado-200 bg-dourado-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-dourado-700">
-                          {escala.equipe?.nome || 'Sem equipe'}
+                          {evento.areas.length} área(s)
                         </span>
                         <span className={`rounded-full border px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] ${
-                          escala.tipo === 'ESPORADICA'
+                          evento.tipo === 'ESPORADICA'
                             ? 'border-amber-200 bg-amber-50 text-amber-700'
                             : 'border-gray-200 bg-white text-gray-500'
                         }`}
                         >
-                          {escala.tipo === 'ESPORADICA' ? 'Esporádica' : 'Recorrente'}
+                          {evento.tipo === 'ESPORADICA' ? 'Esporádica' : 'Recorrente'}
                         </span>
                       </div>
-                      <h3 className="mt-3 text-xl font-bold text-gray-950">{escala.titulo || 'Escala sem título'}</h3>
+                      <h3 className="mt-3 text-xl font-bold text-gray-950">{evento.titulo}</h3>
                       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
-                        <span>{formatarData(escala.dataHora)}</span>
-                        {escala.local && <span>Local: {escala.local}</span>}
-                        {escala.tipo === 'RECORRENTE' && (
-                          <span>{escala.semanaMes}º {escala.diaSemana === 0 ? 'domingo' : 'sábado'}</span>
+                        <span>{formatarData(evento.dataHora)}</span>
+                        {evento.local && <span>Local: {evento.local}</span>}
+                        {evento.tipo === 'RECORRENTE' && (
+                          <span>{evento.semanaMes}º {evento.diaSemana === 0 ? 'domingo' : 'sábado'}</span>
                         )}
                       </div>
-                      {escala.descricao && (
-                        <p className="mt-3 max-w-2xl text-sm leading-6 text-gray-600">{escala.descricao}</p>
+                      {evento.descricao && (
+                        <p className="mt-3 max-w-2xl text-sm leading-6 text-gray-600">{evento.descricao}</p>
                       )}
                     </div>
-
-                    {escala.tipo === 'RECORRENTE' && (
-                      <button
-                        type="button"
-                        onClick={() => onEditarEscala(editando ? null : escala.id)}
-                        className="inline-flex items-center justify-center rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
-                      >
-                        {editando ? 'Fechar edição' : 'Editar recorrência'}
-                      </button>
-                    )}
                   </div>
 
-                  <div className="mt-5 rounded-xl border border-gray-200 bg-white p-4">
-                    <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-                      <div>
-                        <p className="text-xs font-bold uppercase tracking-[0.14em] text-gray-400">Pessoas escaladas</p>
-                        <p className="mt-1 text-sm text-gray-600">
-                          Função/equipe: <strong className="font-semibold text-gray-800">{escala.equipe?.nome || 'Sem equipe'}</strong>
-                        </p>
-                      </div>
-                      <span className="text-xs font-semibold text-gray-400">
-                        {(escala.voluntarios || []).length} voluntário(s)
-                      </span>
-                    </div>
+                  <div className="mt-5 space-y-3">
+                    {evento.areas.map((area) => {
+                      const form = formRecorrentes[area.id] || {};
+                      const editando = escalaEditandoId === area.id;
 
-                    <div className="mt-4 grid gap-2 md:grid-cols-2">
-                      {(escala.voluntarios || []).length === 0 ? (
-                        <div className="rounded-md border border-dashed border-gray-200 bg-gray-50 px-3 py-4 text-sm text-gray-500 md:col-span-2">
-                          Nenhum voluntário atribuído para esta função.
-                        </div>
-                      ) : escala.voluntarios.map((item) => {
-                        const config = statusConfig[item.status] || statusConfig.PENDENTE;
-                        const Icon = config.icon;
-
-                        return (
-                          <div key={item.id} className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3">
-                            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                              <p className="text-sm font-bold text-gray-900">{item.usuario?.nomeCompleto || 'Voluntário'}</p>
-                              {item.usuario?.telefone && (
-                                <span className="text-[11px] font-medium text-gray-400">{item.usuario.telefone}</span>
-                              )}
+                      return (
+                        <div key={area.id} className="rounded-xl border border-gray-200 bg-white p-4">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                              <p className="text-xs font-bold uppercase tracking-[0.14em] text-gray-400">Área</p>
+                              <p className="mt-1 text-sm font-bold text-gray-950">{area.equipe?.nome || 'Sem equipe'}</p>
                             </div>
-                            <div className="mt-2 flex flex-wrap gap-1.5">
-                              <span className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] font-semibold ${config.className}`}>
-                                <Icon size={11} />
-                                {config.label}
-                              </span>
-                              {item.substituto && (
-                                <span className="inline-flex rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[11px] font-semibold text-violet-700">
-                                  Substituto
-                                </span>
-                              )}
-                            </div>
+                            {area.tipo === 'RECORRENTE' && (
+                              <button
+                                type="button"
+                                onClick={() => onEditarEscala(editando ? null : area.id)}
+                                className="inline-flex items-center justify-center rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
+                              >
+                                {editando ? 'Fechar edição' : 'Editar recorrência'}
+                              </button>
+                            )}
                           </div>
-                        );
-                      })}
-                    </div>
-                  </div>
 
-                  {editando && escala.tipo === 'RECORRENTE' && (
-                    <div className="mt-4 grid gap-3 rounded-lg border border-gray-200 bg-white p-4 lg:grid-cols-[1.3fr_0.8fr_0.8fr_0.7fr_auto] lg:items-end">
-                      <Campo label="Título" value={form.titulo || ''} onChange={(value) => onAlterarRecorrente(escala.id, 'titulo', value)} />
-                      <Select label="Dia" value={form.diaSemana ?? 0} options={dias} onChange={(value) => onAlterarRecorrente(escala.id, 'diaSemana', Number(value))} />
-                      <Select label="Fim de semana" value={form.semanaMes || 1} options={semanas.map((semana) => ({ value: semana, label: `${semana}º` }))} onChange={(value) => onAlterarRecorrente(escala.id, 'semanaMes', Number(value))} />
-                      <Campo label="Horário" type="time" value={form.horario || '18:00'} onChange={(value) => onAlterarRecorrente(escala.id, 'horario', value)} />
-                      <button type="button" disabled={salvandoId === escala.id} onClick={() => onSalvarRecorrente(escala.id)} className="inline-flex items-center justify-center gap-2 rounded-md bg-gray-950 px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-60">
-                        {salvandoId === escala.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save size={16} />}
-                        Salvar
-                      </button>
-                    </div>
-                  )}
+                          <div className="mt-4 grid gap-2 md:grid-cols-2">
+                            {(area.voluntarios || []).length === 0 ? (
+                              <div className="rounded-md border border-dashed border-gray-200 bg-gray-50 px-3 py-4 text-sm text-gray-500 md:col-span-2">
+                                Nenhum voluntário atribuído para esta área.
+                              </div>
+                            ) : area.voluntarios.map((item) => {
+                              const config = statusConfig[item.status] || statusConfig.PENDENTE;
+                              const Icon = config.icon;
+
+                              return (
+                                <div key={item.id} className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3">
+                                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                                    <p className="text-sm font-bold text-gray-900">{item.usuario?.nomeCompleto || 'Voluntário'}</p>
+                                    {item.usuario?.telefone && (
+                                      <span className="text-[11px] font-medium text-gray-400">{item.usuario.telefone}</span>
+                                    )}
+                                  </div>
+                                  <div className="mt-2 flex flex-wrap gap-1.5">
+                                    <span className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] font-semibold ${config.className}`}>
+                                      <Icon size={11} />
+                                      {config.label}
+                                    </span>
+                                    {item.substituto && (
+                                      <span className="inline-flex rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[11px] font-semibold text-violet-700">
+                                        Substituto
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {editando && area.tipo === 'RECORRENTE' && (
+                            <div className="mt-4 grid gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4 lg:grid-cols-[1.3fr_0.8fr_0.8fr_0.7fr_auto] lg:items-end">
+                              <Campo label="Título" value={form.titulo || ''} onChange={(value) => onAlterarRecorrente(area.id, 'titulo', value)} />
+                              <Select label="Dia" value={form.diaSemana ?? 0} options={dias} onChange={(value) => onAlterarRecorrente(area.id, 'diaSemana', Number(value))} />
+                              <Select label="Fim de semana" value={form.semanaMes || 1} options={semanas.map((semana) => ({ value: semana, label: `${semana}º` }))} onChange={(value) => onAlterarRecorrente(area.id, 'semanaMes', Number(value))} />
+                              <Campo label="Horário" type="time" value={form.horario || '18:00'} onChange={(value) => onAlterarRecorrente(area.id, 'horario', value)} />
+                              <button type="button" disabled={salvandoId === area.id} onClick={() => onSalvarRecorrente(area.id)} className="inline-flex items-center justify-center gap-2 rounded-md bg-gray-950 px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-60">
+                                {salvandoId === area.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save size={16} />}
+                                Salvar
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               );
             })}
@@ -1065,7 +1172,49 @@ function PainelEscalas({
               </button>
             </div>
             <Campo label="Título" value={formEsporadica.titulo} onChange={(value) => onChangeEsporadica((atual) => ({ ...atual, titulo: value }))} />
-            <Campo label="Data e horário" type="datetime-local" value={formEsporadica.dataHora} onChange={(value) => onChangeEsporadica((atual) => ({ ...atual, dataHora: value }))} />
+            <Campo label="Data" type="date" value={formEsporadica.data} onChange={(value) => onChangeEsporadica((atual) => ({ ...atual, data: value }))} />
+            <div>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="text-sm font-semibold text-gray-700">Horários</span>
+                <button
+                  type="button"
+                  onClick={() => onChangeEsporadica((atual) => ({ ...atual, horarios: [...(atual.horarios || []), ''] }))}
+                  className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-bold text-gray-700 transition hover:bg-gray-50"
+                >
+                  <Plus size={13} />
+                  Adicionar horário
+                </button>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {(formEsporadica.horarios || []).map((horario, index) => (
+                  <div key={`${index}-${horario}`} className="flex gap-2">
+                    <input
+                      type="time"
+                      value={horario}
+                      onChange={(event) => onChangeEsporadica((atual) => ({
+                        ...atual,
+                        horarios: (atual.horarios || []).map((item, itemIndex) => (itemIndex === index ? event.target.value : item)),
+                      }))}
+                      className="block min-w-0 flex-1 rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
+                    />
+                    {(formEsporadica.horarios || []).length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => onChangeEsporadica((atual) => ({
+                          ...atual,
+                          horarios: (atual.horarios || []).filter((_, itemIndex) => itemIndex !== index),
+                        }))}
+                        className="rounded-md border border-red-100 bg-white px-2.5 text-red-600 transition hover:bg-red-50"
+                        title="Remover horário"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <p className="mt-2 text-xs text-gray-500">Exemplo: adicione 09:00, 10:00, 17:00 e 19:00 para criar quatro escalas no mesmo dia.</p>
+            </div>
             <Campo label="Local" value={formEsporadica.local} onChange={(value) => onChangeEsporadica((atual) => ({ ...atual, local: value }))} />
             <CampoTexto label="Descrição" value={formEsporadica.descricao} onChange={(value) => onChangeEsporadica((atual) => ({ ...atual, descricao: value }))} />
             <GrupoChecks titulo="Equipes solicitadas">
