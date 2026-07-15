@@ -3,6 +3,8 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { NavigationProvider, useNavigation } from './context/NavigationContext';
 import Login from './pages/Login';
 import Home from './pages/Home';
+import Perfil from './pages/Perfil';
+import Escalas from './pages/Escalas';
 import { Redirect } from './components/Redirect';
 
 function App() {
@@ -63,6 +65,14 @@ function AppRouter() {
 
   if (pathname === '/login') {
     return <Redirect to="/" replace />;
+  }
+
+  if (pathname === '/perfil') {
+    return <Perfil />;
+  }
+
+  if (pathname === '/escalas') {
+    return <Escalas />;
   }
 
   return <Home />;

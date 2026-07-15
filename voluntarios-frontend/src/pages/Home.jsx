@@ -56,11 +56,11 @@ export default function Home() {
               </p>
 
               <div className="mt-8 flex flex-wrap gap-3">
-                <button className="inline-flex items-center gap-2 rounded-full bg-gray-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-gray-800">
+                <button onClick={() => navigate('/perfil')} className="inline-flex items-center gap-2 rounded-full bg-gray-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-gray-800">
                   <ShieldCheck size={16} />
                   Ver meu perfil
                 </button>
-                <button className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-5 py-3 text-sm font-semibold text-gray-700 transition hover:border-gray-300 hover:bg-gray-50">
+                <button onClick={() => navigate('/perfil')} className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-5 py-3 text-sm font-semibold text-gray-700 transition hover:border-gray-300 hover:bg-gray-50">
                   <UserCircle2 size={16} />
                   Atualizar dados
                 </button>
@@ -109,6 +109,11 @@ export default function Home() {
                 </div>
                 <p className="mt-4 text-4xl font-bold text-gray-950">{card.value}</p>
                 <p className="mt-3 text-sm leading-6 text-gray-600">{card.description}</p>
+                {card.title === 'Próximas escalas' && (
+                  <button onClick={() => navigate('/escalas')} className="mt-5 text-sm font-semibold text-dourado-700 transition hover:text-dourado-800">
+                    Ver escalas
+                  </button>
+                )}
               </article>
             );
           })}

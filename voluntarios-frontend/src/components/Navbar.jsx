@@ -21,7 +21,7 @@ export default function Navbar() {
           {/* Logo / Título */}
           <div className="flex items-center">
             <button type="button" onClick={() => navigate('/')} className="font-serif text-2xl font-bold text-dourado-600">
-              Cadência
+              MCom
             </button>
           </div>
 
@@ -30,7 +30,7 @@ export default function Navbar() {
             <button type="button" onClick={() => navigate('/')} className="font-sans text-gray-600 hover:text-dourado-600 transition-colors font-medium">
               Início
             </button>
-            <button type="button" className="font-sans text-gray-600 hover:text-dourado-600 transition-colors font-medium">
+            <button type="button" onClick={() => navigate('/escalas')} className="font-sans text-gray-600 hover:text-dourado-600 transition-colors font-medium">
               Minhas Escalas
             </button>
             <button type="button" className="font-sans text-gray-600 hover:text-dourado-600 transition-colors font-medium">
@@ -40,7 +40,7 @@ export default function Navbar() {
 
           {/* Ações do Usuário - Desktop */}
           <div className="hidden md:flex items-center space-x-4">
-            <button className="flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:border-dourado-200 hover:text-dourado-700 focus:outline-none focus:ring-2 focus:ring-dourado-500">
+            <button type="button" onClick={() => navigate('/perfil')} className="flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:border-dourado-200 hover:text-dourado-700 focus:outline-none focus:ring-2 focus:ring-dourado-500">
               <User size={20} />
               <span className="max-w-36 truncate">{usuario?.nomeCompleto || 'Perfil'}</span>
             </button>
@@ -72,7 +72,10 @@ export default function Navbar() {
             <button type="button" onClick={() => navigate('/')} className="block w-full px-3 py-2 rounded-md text-left text-base font-medium text-gray-700 hover:text-dourado-600 hover:bg-dourado-50">
               Início
             </button>
-            <button type="button" className="block w-full px-3 py-2 rounded-md text-left text-base font-medium text-gray-700 hover:text-dourado-600 hover:bg-dourado-50">
+            <button type="button" onClick={() => navigate('/perfil')} className="block w-full px-3 py-2 rounded-md text-left text-base font-medium text-gray-700 hover:text-dourado-600 hover:bg-dourado-50">
+              Perfil
+            </button>
+            <button type="button" onClick={() => navigate('/escalas')} className="block w-full px-3 py-2 rounded-md text-left text-base font-medium text-gray-700 hover:text-dourado-600 hover:bg-dourado-50">
               Minhas Escalas
             </button>
             <button type="button" className="block w-full px-3 py-2 rounded-md text-left text-base font-medium text-gray-700 hover:text-dourado-600 hover:bg-dourado-50">

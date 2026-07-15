@@ -2,6 +2,7 @@ import 'dotenv/config'; // ISSO DEVE SER A PRIMEIRA LINHA DO ARQUIVO!
 import express from 'express';
 import cors from 'cors';
 import authRoutes from './routes/auth.routes.js';
+import escalasRoutes from './routes/escalas.routes.js';
 
 const app = express();
 
@@ -20,10 +21,11 @@ app.use(express.json());
 // ==========================================
 // Exposição da rota de login
 app.use('/api/auth', authRoutes);
+app.use('/api/escalas', escalasRoutes);
 
 // Rota de Health Check para verificar se o servidor está online
 app.get('/', (req, res) => {
-  res.status(200).json({ mensagem: 'API do sistema Cadência está online! 🚀' });
+  res.status(200).json({ mensagem: 'API do sistema MCom está online!' });
 });
 
 // ==========================================

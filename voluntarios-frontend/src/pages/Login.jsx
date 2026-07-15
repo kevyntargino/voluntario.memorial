@@ -75,7 +75,7 @@ export default function Login() {
       {/* Cabeçalho */}
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center mb-8">
         <h2 className="text-4xl font-bold font-serif text-black tracking-tight">
-          Cadência
+          MCom
         </h2>
         <p className="mt-2 text-sm text-gray-500">
           Acesso ao Portal do Voluntário

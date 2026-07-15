@@ -14,6 +14,42 @@ const prisma = new PrismaClient({
 });
 const router = Router();
 
+function getJwtSecret() {
+  return process.env.JWT_SECRET || 'chave_temporaria_dev';
+}
+
+function sanitizeUsuario(usuario) {
+  return {
+    id: usuario.id,
+    nomeCompleto: usuario.nomeCompleto,
+    email: usuario.email,
+    telefone: usuario.telefone,
+    urlFoto: usuario.urlFoto,
+    dataNascimento: usuario.dataNascimento
+      ? usuario.dataNascimento.toISOString().slice(0, 10)
+      : null,
+    sexo: usuario.sexo,
+    permissoes: usuario.permissoes,
+  };
+}
+
+async function autenticar(req, res, next) {
+  const authorization = req.headers.authorization || '';
+  const [, token] = authorization.split(' ');
+
+  if (!token) {
+    return res.status(401).json({ erro: 'Token de autenticação não informado.' });
+  }
+
+  try {
+    const payload = jwt.verify(token, getJwtSecret());
+    req.usuarioAutenticado = payload;
+    return next();
+  } catch {
+    return res.status(401).json({ erro: 'Sessão inválida ou expirada.' });
+  }
+}
+
 router.post('/login', async (req, res) => {
   try {
     const { email, senha } = req.body ?? {};
@@ -31,6 +67,9 @@ router.post('/login', async (req, res) => {
         id: true,
         nomeCompleto: true,
         email: true,
+        telefone: true,
+        dataNascimento: true,
+        sexo: true,
         senhaHash: true,
         permissoes: true,
         urlFoto: true,
@@ -55,7 +94,7 @@ router.post('/login', async (req, res) => {
         id: usuario.id, 
         permissoes: usuario.permissoes 
       },
-      process.env.JWT_SECRET || 'chave_temporaria_dev',
+      getJwtSecret(),
       { expiresIn: '2h' }
     );
 
@@ -75,17 +114,89 @@ router.post('/login', async (req, res) => {
     return res.status(200).json({
       mensagem: 'Autenticação bem-sucedida.',
       token,
-      usuario: {
-        id: usuario.id,
-        nomeCompleto: usuario.nomeCompleto,
-        email: usuario.email,
-        permissoes: usuario.permissoes,
-        urlFoto: usuario.urlFoto
-      }
+      usuario: sanitizeUsuario(usuario)
     });
 
   } catch (erro) {
     console.error('[ERRO LOG] /login:', erro);
+    return res.status(500).json({ erro: 'Erro interno no servidor. Tente novamente mais tarde.' });
+  }
+});
+
+router.get('/me', autenticar, async (req, res) => {
+  try {
+    const usuario = await prisma.usuario.findUnique({
+      where: { id: req.usuarioAutenticado.id },
+      select: {
+        id: true,
+        nomeCompleto: true,
+        email: true,
+        telefone: true,
+        dataNascimento: true,
+        sexo: true,
+        permissoes: true,
+        urlFoto: true,
+      }
+    });
+
+    if (!usuario) {
+      return res.status(404).json({ erro: 'Usuário não encontrado.' });
+    }
+
+    return res.status(200).json({ usuario: sanitizeUsuario(usuario) });
+  } catch (erro) {
+    console.error('[ERRO LOG] /me:', erro);
+    return res.status(500).json({ erro: 'Erro interno no servidor. Tente novamente mais tarde.' });
+  }
+});
+
+router.patch('/me', autenticar, async (req, res) => {
+  try {
+    const {
+      nomeCompleto,
+      telefone,
+      urlFoto,
+      dataNascimento,
+      sexo,
+    } = req.body ?? {};
+
+    if (typeof nomeCompleto !== 'string' || nomeCompleto.trim().length < 3) {
+      return res.status(400).json({ erro: 'Nome completo deve ter pelo menos 3 caracteres.' });
+    }
+
+    const sexosPermitidos = ['MASCULINO', 'FEMININO', 'OUTRO', 'PREFIRO_NAO_INFORMAR'];
+
+    if (sexo && !sexosPermitidos.includes(sexo)) {
+      return res.status(400).json({ erro: 'Sexo informado é inválido.' });
+    }
+
+    const usuario = await prisma.usuario.update({
+      where: { id: req.usuarioAutenticado.id },
+      data: {
+        nomeCompleto: nomeCompleto.trim(),
+        telefone: typeof telefone === 'string' && telefone.trim() ? telefone.trim() : null,
+        urlFoto: typeof urlFoto === 'string' && urlFoto.trim() ? urlFoto.trim() : null,
+        dataNascimento: dataNascimento ? new Date(`${dataNascimento}T00:00:00.000Z`) : null,
+        sexo: sexo || null,
+      },
+      select: {
+        id: true,
+        nomeCompleto: true,
+        email: true,
+        telefone: true,
+        dataNascimento: true,
+        sexo: true,
+        permissoes: true,
+        urlFoto: true,
+      }
+    });
+
+    return res.status(200).json({
+      mensagem: 'Perfil atualizado com sucesso.',
+      usuario: sanitizeUsuario(usuario),
+    });
+  } catch (erro) {
+    console.error('[ERRO LOG] PATCH /me:', erro);
     return res.status(500).json({ erro: 'Erro interno no servidor. Tente novamente mais tarde.' });
   }
 });

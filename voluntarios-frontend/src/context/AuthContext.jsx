@@ -3,16 +3,18 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 
 const AuthContext = createContext(null);
 
-const TOKEN_KEY = 'cadencia_token';
-const USER_KEY = 'cadencia_usuario';
+const TOKEN_KEY = 'mcom_token';
+const USER_KEY = 'mcom_usuario';
+const LEGACY_TOKEN_KEY = 'cadencia_token';
+const LEGACY_USER_KEY = 'cadencia_usuario';
 
 function readStoredAuth() {
   if (typeof window === 'undefined') {
     return { token: null, usuario: null };
   }
 
-  const token = window.localStorage.getItem(TOKEN_KEY);
-  const usuarioRaw = window.localStorage.getItem(USER_KEY);
+  const token = window.localStorage.getItem(TOKEN_KEY) || window.localStorage.getItem(LEGACY_TOKEN_KEY);
+  const usuarioRaw = window.localStorage.getItem(USER_KEY) || window.localStorage.getItem(LEGACY_USER_KEY);
 
   let usuario = null;
 
@@ -21,7 +23,18 @@ function readStoredAuth() {
       usuario = JSON.parse(usuarioRaw);
     } catch {
       window.localStorage.removeItem(USER_KEY);
+      window.localStorage.removeItem(LEGACY_USER_KEY);
     }
+  }
+
+  if (token) {
+    window.localStorage.setItem(TOKEN_KEY, token);
+    window.localStorage.removeItem(LEGACY_TOKEN_KEY);
+  }
+
+  if (usuario) {
+    window.localStorage.setItem(USER_KEY, JSON.stringify(usuario));
+    window.localStorage.removeItem(LEGACY_USER_KEY);
   }
 
   return { token, usuario };
@@ -44,6 +57,13 @@ export function AuthProvider({ children }) {
     setUsuario(novoUsuario);
     window.localStorage.setItem(TOKEN_KEY, novoToken);
     window.localStorage.setItem(USER_KEY, JSON.stringify(novoUsuario));
+    window.localStorage.removeItem(LEGACY_TOKEN_KEY);
+    window.localStorage.removeItem(LEGACY_USER_KEY);
+  }, []);
+
+  const atualizarUsuario = useCallback((novoUsuario) => {
+    setUsuario(novoUsuario);
+    window.localStorage.setItem(USER_KEY, JSON.stringify(novoUsuario));
   }, []);
 
   const logout = useCallback(() => {
@@ -51,6 +71,8 @@ export function AuthProvider({ children }) {
     setUsuario(null);
     window.localStorage.removeItem(TOKEN_KEY);
     window.localStorage.removeItem(USER_KEY);
+    window.localStorage.removeItem(LEGACY_TOKEN_KEY);
+    window.localStorage.removeItem(LEGACY_USER_KEY);
   }, []);
 
   const value = useMemo(() => ({
@@ -60,7 +82,8 @@ export function AuthProvider({ children }) {
     isAuthenticated: Boolean(token),
     login,
     logout,
-  }), [carregado, token, usuario, login, logout]);
+    atualizarUsuario,
+  }), [atualizarUsuario, carregado, token, usuario, login, logout]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
