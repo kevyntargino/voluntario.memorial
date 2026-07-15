@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
   CalendarPlus,
+  CheckCircle2,
+  Clock3,
   Loader2,
   Pencil,
   Plus,
@@ -33,6 +35,22 @@ const formEscalaInicial = {
   dataHora: '',
   voluntarioIds: [],
   substitutoIds: [],
+};
+
+const filtrosRecorrentes = [0, 6].flatMap((diaSemana) => (
+  [1, 2, 3, 4].map((semanaMes) => ({
+    chave: `RECORRENTE:${diaSemana}:${semanaMes}`,
+    diaSemana,
+    semanaMes,
+    label: `${semanaMes}º ${diaSemana === 0 ? 'domingo' : 'sábado'}`,
+  }))
+));
+
+const statusConfig = {
+  PENDENTE: { label: 'Pendente', className: 'border-amber-200 bg-amber-50 text-amber-700', icon: Clock3 },
+  CONFIRMADA: { label: 'Confirmado', className: 'border-emerald-200 bg-emerald-50 text-emerald-700', icon: CheckCircle2 },
+  PEDIU_SUBSTITUICAO: { label: 'Substituição', className: 'border-sky-200 bg-sky-50 text-sky-700', icon: RefreshCcw },
+  AUSENTE: { label: 'Ausente', className: 'border-red-200 bg-red-50 text-red-700', icon: AlertCircle },
 };
 
 function toDatetimeLocal(dataHora) {
@@ -69,6 +87,7 @@ export default function MinhaEquipe() {
   const [formVoluntario, setFormVoluntario] = useState(formVoluntarioInicial);
   const [formEscala, setFormEscala] = useState(formEscalaInicial);
   const [substitutosSelecionados, setSubstitutosSelecionados] = useState({});
+  const [filtroEscala, setFiltroEscala] = useState(filtrosRecorrentes[0].chave);
 
   const carregarEquipes = useCallback(async () => {
     setErro('');
@@ -110,6 +129,46 @@ export default function MinhaEquipe() {
     () => equipes.find((equipe) => equipe.id === equipeId) || null,
     [equipeId, equipes],
   );
+
+  const escalasEsporadicas = useMemo(() => (
+    (equipeSelecionada?.escalas || [])
+      .filter((escala) => escala.tipo === 'ESPORADICA')
+      .sort((a, b) => new Date(a.dataHora || 0).getTime() - new Date(b.dataHora || 0).getTime())
+  ), [equipeSelecionada]);
+
+  const escalasFiltradas = useMemo(() => {
+    if (!equipeSelecionada) {
+      return [];
+    }
+
+    if (filtroEscala.startsWith('ESPORADICA:')) {
+      const escalaId = filtroEscala.replace('ESPORADICA:', '');
+      return equipeSelecionada.escalas.filter((escala) => escala.id === escalaId);
+    }
+
+    const filtro = filtrosRecorrentes.find((item) => item.chave === filtroEscala) || filtrosRecorrentes[0];
+
+    return equipeSelecionada.escalas.filter((escala) => (
+      escala.tipo === 'RECORRENTE'
+      && escala.diaSemana === filtro.diaSemana
+      && escala.semanaMes === filtro.semanaMes
+    ));
+  }, [equipeSelecionada, filtroEscala]);
+
+  useEffect(() => {
+    if (!equipeSelecionada) {
+      return;
+    }
+
+    if (filtroEscala.startsWith('ESPORADICA:')) {
+      const escalaId = filtroEscala.replace('ESPORADICA:', '');
+      const escalaAindaExiste = equipeSelecionada.escalas.some((escala) => escala.id === escalaId);
+
+      if (!escalaAindaExiste) {
+        setFiltroEscala(filtrosRecorrentes[0].chave);
+      }
+    }
+  }, [equipeSelecionada, filtroEscala]);
 
   const atualizarEquipe = (equipeAtualizada) => {
     setEquipes((atuais) => atuais.map((equipe) => (
@@ -348,6 +407,7 @@ export default function MinhaEquipe() {
               onChange={(event) => {
                 setEquipeId(event.target.value);
                 setFormEscala(formEscalaInicial);
+                setFiltroEscala(filtrosRecorrentes[0].chave);
               }}
               className="rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm font-semibold outline-none focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
             >
@@ -573,58 +633,148 @@ export default function MinhaEquipe() {
               </Painel>
 
               <Painel titulo="Escalas da equipe" icone={CalendarPlus}>
-                <div className="space-y-3">
-                  {equipeSelecionada.escalas.length === 0 ? (
-                    <p className="text-sm text-gray-500">Nenhuma escala cadastrada para esta equipe.</p>
-                  ) : equipeSelecionada.escalas.map((escala) => (
-                    <div key={escala.id} className="rounded-md border border-gray-200 bg-gray-50 p-3">
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                        <div>
-                          <p className="text-sm font-bold text-gray-950">{escala.titulo || 'Escala sem título'}</p>
-                          <p className="mt-1 text-xs text-gray-500">{formatarData(escala.dataHora)}</p>
-                          {escala.local && <p className="mt-1 text-xs text-gray-500">Local: {escala.local}</p>}
-                          {escala.tipo === 'ESPORADICA' && (
-                            <span className="mt-2 inline-flex rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-amber-700">
-                              Esporádica
-                            </span>
-                          )}
-                          <div className="mt-2 flex flex-wrap gap-1.5 text-xs text-gray-600">
-                            {escala.voluntarios.length === 0 ? (
-                              <span>ninguém escalado</span>
-                            ) : escala.voluntarios.map((item) => (
-                              <span key={item.id} className="inline-flex items-baseline gap-1 rounded border border-gray-200 bg-white px-2 py-1">
-                                <strong className="font-semibold text-gray-700">{item.usuario.nomeCompleto}</strong>
-                                {item.usuario.telefone && (
-                                  <span className="text-[11px] font-medium text-gray-400">{item.usuario.telefone}</span>
-                                )}
-                              </span>
-                            ))}
-                          </div>
-                          {escala.voluntarios.some((item) => item.substituto) && (
-                            <div className="mt-2 flex flex-wrap gap-1.5 text-xs font-semibold text-violet-700">
-                              <span>Substituto(s):</span>
-                              {escala.voluntarios.filter((item) => item.substituto).map((item) => (
-                                <span key={item.id} className="inline-flex items-baseline gap-1 rounded border border-violet-100 bg-white px-2 py-1">
-                                  {item.usuario.nomeCompleto}
-                                  {item.usuario.telefone && (
-                                    <span className="text-[11px] font-medium text-violet-500/70">{item.usuario.telefone}</span>
-                                  )}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex gap-2">
-                          <button type="button" onClick={() => editarEscala(escala)} className="rounded-md border border-gray-200 bg-white p-2 text-gray-700 transition hover:bg-gray-100" title="Editar escala">
-                            <Pencil size={16} />
-                          </button>
-                          <button type="button" onClick={() => removerEscala(escala.id)} className="rounded-md border border-red-100 bg-white p-2 text-red-600 transition hover:bg-red-50" title="Remover escala">
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
+                <div className="space-y-4">
+                  <div>
+                    <p className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-gray-400">Escalas fixas</p>
+                    <div className="flex flex-wrap gap-2">
+                      {filtrosRecorrentes.map((filtro) => (
+                        <button
+                          key={filtro.chave}
+                          type="button"
+                          onClick={() => setFiltroEscala(filtro.chave)}
+                          className={`rounded-md border px-3 py-2 text-sm font-bold transition ${
+                            filtroEscala === filtro.chave
+                              ? 'border-gray-950 bg-gray-950 text-white'
+                              : 'border-gray-200 bg-gray-50 text-gray-700 hover:border-gray-300'
+                          }`}
+                        >
+                          {filtro.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {escalasEsporadicas.length > 0 && (
+                    <div>
+                      <p className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-amber-700">Escalas esporádicas</p>
+                      <div className="flex flex-wrap gap-2">
+                        {escalasEsporadicas.map((escala) => {
+                          const chave = `ESPORADICA:${escala.id}`;
+
+                          return (
+                            <button
+                              key={escala.id}
+                              type="button"
+                              onClick={() => setFiltroEscala(chave)}
+                              className={`rounded-md border px-3 py-2 text-sm font-bold transition ${
+                                filtroEscala === chave
+                                  ? 'border-amber-700 bg-amber-700 text-white'
+                                  : 'border-amber-200 bg-amber-50 text-amber-800 hover:border-amber-300'
+                              }`}
+                            >
+                              {escala.titulo || 'Escala esporádica'}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
-                  ))}
+                  )}
+
+                  <div className="space-y-3">
+                    {equipeSelecionada.escalas.length === 0 ? (
+                      <p className="text-sm text-gray-500">Nenhuma escala cadastrada para esta equipe.</p>
+                    ) : escalasFiltradas.length === 0 ? (
+                      <div className="rounded-md border border-dashed border-gray-200 bg-gray-50 px-4 py-8 text-center text-sm text-gray-500">
+                        Nenhuma escala encontrada nesse período.
+                      </div>
+                    ) : escalasFiltradas.map((escala) => (
+                      <div key={escala.id} className="rounded-2xl border border-gray-200 bg-gradient-to-br from-white to-gray-50 p-5 shadow-sm">
+                        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="rounded-full border border-dourado-200 bg-dourado-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-dourado-700">
+                                {equipeSelecionada.nome}
+                              </span>
+                              <span className={`rounded-full border px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] ${
+                                escala.tipo === 'ESPORADICA'
+                                  ? 'border-amber-200 bg-amber-50 text-amber-700'
+                                  : 'border-gray-200 bg-white text-gray-500'
+                              }`}
+                              >
+                                {escala.tipo === 'ESPORADICA' ? 'Esporádica' : 'Recorrente'}
+                              </span>
+                            </div>
+                            <p className="mt-3 text-xl font-bold text-gray-950">{escala.titulo || 'Escala sem título'}</p>
+                            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
+                              <span>{formatarData(escala.dataHora)}</span>
+                              {escala.local && <span>Local: {escala.local}</span>}
+                              {escala.tipo === 'RECORRENTE' && (
+                                <span>{escala.semanaMes}º {escala.diaSemana === 0 ? 'domingo' : 'sábado'}</span>
+                              )}
+                            </div>
+                            {escala.descricao && (
+                              <p className="mt-3 text-sm leading-6 text-gray-600">{escala.descricao}</p>
+                            )}
+                          </div>
+                          <div className="flex gap-2">
+                            <button type="button" onClick={() => editarEscala(escala)} className="rounded-md border border-gray-200 bg-white p-2 text-gray-700 transition hover:bg-gray-100" title="Editar escala">
+                              <Pencil size={16} />
+                            </button>
+                            <button type="button" onClick={() => removerEscala(escala.id)} className="rounded-md border border-red-100 bg-white p-2 text-red-600 transition hover:bg-red-50" title="Remover escala">
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="mt-5 rounded-xl border border-gray-200 bg-white p-4">
+                          <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                            <div>
+                              <p className="text-xs font-bold uppercase tracking-[0.14em] text-gray-400">Voluntários da equipe</p>
+                              <p className="mt-1 text-sm text-gray-600">
+                                Função/equipe: <strong className="font-semibold text-gray-800">{equipeSelecionada.nome}</strong>
+                              </p>
+                            </div>
+                            <span className="text-xs font-semibold text-gray-400">
+                              {escala.voluntarios.length} voluntário(s)
+                            </span>
+                          </div>
+
+                          <div className="mt-4 grid gap-2 md:grid-cols-2">
+                            {escala.voluntarios.length === 0 ? (
+                              <div className="rounded-md border border-dashed border-gray-200 bg-gray-50 px-3 py-4 text-sm text-gray-500 md:col-span-2">
+                                Nenhum voluntário da equipe foi atribuído para esta escala.
+                              </div>
+                            ) : escala.voluntarios.map((item) => {
+                              const config = statusConfig[item.status] || statusConfig.PENDENTE;
+                              const Icon = config.icon;
+
+                              return (
+                                <div key={item.id} className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3">
+                                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                                    <p className="text-sm font-bold text-gray-900">{item.usuario.nomeCompleto}</p>
+                                    {item.usuario.telefone && (
+                                      <span className="text-[11px] font-medium text-gray-400">{item.usuario.telefone}</span>
+                                    )}
+                                  </div>
+                                  <div className="mt-2 flex flex-wrap gap-1.5">
+                                    <span className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] font-semibold ${config.className}`}>
+                                      <Icon size={11} />
+                                      {config.label}
+                                    </span>
+                                    {item.substituto && (
+                                      <span className="inline-flex rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[11px] font-semibold text-violet-700">
+                                        Substituto
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </Painel>
             </section>

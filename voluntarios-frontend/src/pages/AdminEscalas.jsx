@@ -40,14 +40,11 @@ const statusConfig = {
 const formEsporadicaInicial = { titulo: '', dataHora: '', local: '', descricao: '', equipeIds: [] };
 const formAvisoInicial = { titulo: '', mensagem: '', dataAviso: '', publico: 'TODOS', equipeIds: [], usuarioIds: [] };
 const formEquipeInicial = { nome: '' };
-const filtrosRecorrentes = [0, 6].flatMap((diaSemana) => (
-  semanas.map((semanaMes) => ({
-    value: `${diaSemana}-${semanaMes}`,
-    diaSemana,
-    semanaMes,
-    label: `${semanaMes}º ${diaSemana === 0 ? 'domingo' : 'sábado'}`,
-  }))
-));
+const filtrosTipoEscala = [
+  { value: 'TODAS', label: 'Todas' },
+  { value: 'RECORRENTE', label: 'Recorrentes' },
+  { value: 'ESPORADICA', label: 'Esporádicas' },
+];
 
 function formatarData(dataHora) {
   if (!dataHora) return 'Sem data';
@@ -95,9 +92,8 @@ export default function AdminEscalas() {
   const [editandoUsuarioId, setEditandoUsuarioId] = useState(null);
   const [equipeSelecionadaId, setEquipeSelecionadaId] = useState(null);
   const [formEquipe, setFormEquipe] = useState(formEquipeInicial);
-  const [filtroRecorrente, setFiltroRecorrente] = useState('0-1');
+  const [tipoEscalas, setTipoEscalas] = useState('TODAS');
   const [buscaEscalas, setBuscaEscalas] = useState('');
-  const [ordemEscalas, setOrdemEscalas] = useState('equipe');
   const [escalaEditandoId, setEscalaEditandoId] = useState(null);
   const [carregando, setCarregando] = useState(true);
   const [salvandoId, setSalvandoId] = useState(null);
@@ -171,31 +167,25 @@ export default function AdminEscalas() {
     [equipeSelecionadaId, equipes],
   );
 
-  const recorrentesFiltradas = useMemo(() => {
-    const filtro = filtrosRecorrentes.find((item) => item.value === filtroRecorrente) || filtrosRecorrentes[0];
+  const escalasFiltradas = useMemo(() => {
     const termo = buscaEscalas.trim().toLowerCase();
-    const filtradas = recorrentes.filter((escala) => (
-      escala.diaSemana === filtro.diaSemana
-      && escala.semanaMes === filtro.semanaMes
+    const todasEscalas = [...recorrentes, ...esporadicas];
+    const filtradas = todasEscalas.filter((escala) => (
+      (tipoEscalas === 'TODAS' || escala.tipo === tipoEscalas)
       && (!termo || [
         escala.titulo,
         escala.equipe?.nome,
+        escala.local,
+        escala.descricao,
         escala.voluntarios?.map((item) => item.usuario?.nomeCompleto).join(' '),
       ].filter(Boolean).join(' ').toLowerCase().includes(termo))
     ));
 
-    return [...filtradas].sort((a, b) => {
-      if (ordemEscalas === 'titulo') {
-        return (a.titulo || '').localeCompare(b.titulo || '', 'pt-BR');
-      }
-
-      if (ordemEscalas === 'horario') {
-        return toTime(a.dataHora).localeCompare(toTime(b.dataHora));
-      }
-
-      return (a.equipe?.nome || '').localeCompare(b.equipe?.nome || '', 'pt-BR');
-    });
-  }, [buscaEscalas, filtroRecorrente, ordemEscalas, recorrentes]);
+    return [...filtradas].sort((a, b) => (
+      new Date(a.dataHora || 0).getTime() - new Date(b.dataHora || 0).getTime()
+      || (a.equipe?.nome || '').localeCompare(b.equipe?.nome || '', 'pt-BR')
+    ));
+  }, [buscaEscalas, esporadicas, recorrentes, tipoEscalas]);
 
   const alterarFormUsuario = (usuarioId, campo, valor) => {
     setFormsUsuarios((atuais) => ({
@@ -540,10 +530,9 @@ export default function AdminEscalas() {
             {painelAberto === 'escalas' && (
               <PainelEscalas
                 equipes={equipes}
-                recorrentes={recorrentesFiltradas}
-                filtroRecorrente={filtroRecorrente}
+                escalas={escalasFiltradas}
+                tipoEscalas={tipoEscalas}
                 buscaEscalas={buscaEscalas}
-                ordemEscalas={ordemEscalas}
                 escalaEditandoId={escalaEditandoId}
                 esporadicas={esporadicas}
                 formRecorrentes={formRecorrentes}
@@ -551,9 +540,8 @@ export default function AdminEscalas() {
                 salvandoId={salvandoId}
                 onAlterarRecorrente={alterarRecorrente}
                 onSalvarRecorrente={salvarRecorrente}
-                onFiltroRecorrente={setFiltroRecorrente}
+                onTipoEscalas={setTipoEscalas}
                 onBuscaEscalas={setBuscaEscalas}
-                onOrdemEscalas={setOrdemEscalas}
                 onEditarEscala={setEscalaEditandoId}
                 onChangeEsporadica={setFormEsporadica}
                 onAlternarEquipe={(equipeId) => alternarEquipe('esporadica', equipeId)}
@@ -883,10 +871,9 @@ function PainelNotificacao({ equipes, usuarios, formAviso, salvandoId, onSubmit,
 
 function PainelEscalas({
   equipes,
-  recorrentes,
-  filtroRecorrente,
+  escalas,
+  tipoEscalas,
   buscaEscalas,
-  ordemEscalas,
   escalaEditandoId,
   esporadicas,
   formRecorrentes,
@@ -894,69 +881,42 @@ function PainelEscalas({
   salvandoId,
   onAlterarRecorrente,
   onSalvarRecorrente,
-  onFiltroRecorrente,
+  onTipoEscalas,
   onBuscaEscalas,
-  onOrdemEscalas,
   onEditarEscala,
   onChangeEsporadica,
   onAlternarEquipe,
   onCriarEsporadica,
 }) {
-  const filtroAtual = filtrosRecorrentes.find((item) => item.value === filtroRecorrente) || filtrosRecorrentes[0];
-
   return (
-    <section className="mt-5 grid gap-5 xl:grid-cols-[1.25fr_0.75fr]">
+    <section className="mt-5 grid gap-5 xl:grid-cols-[1.35fr_0.65fr]">
       <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
         <div className="border-b border-gray-100 px-5 py-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <h2 className="text-lg font-bold text-gray-950">Gerenciar escalas recorrentes</h2>
-              <p className="mt-1 text-sm text-gray-500">Edite as escalas fixas filtrando por domingo ou sábado específico.</p>
+              <h2 className="text-lg font-bold text-gray-950">Gerenciar escalas</h2>
+              <p className="mt-1 text-sm text-gray-500">
+                Veja cada escala como um evento e acompanhe as pessoas escaladas por função/equipe.
+              </p>
             </div>
             <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1">
-              <button
-                type="button"
-                onClick={() => onOrdemEscalas('equipe')}
-                className={`rounded-md px-3 py-1.5 text-xs font-bold transition ${ordemEscalas === 'equipe' ? 'bg-gray-950 text-white' : 'text-gray-600 hover:bg-white'}`}
-              >
-                Equipe
-              </button>
-              <button
-                type="button"
-                onClick={() => onOrdemEscalas('titulo')}
-                className={`rounded-md px-3 py-1.5 text-xs font-bold transition ${ordemEscalas === 'titulo' ? 'bg-gray-950 text-white' : 'text-gray-600 hover:bg-white'}`}
-              >
-                Título
-              </button>
-              <button
-                type="button"
-                onClick={() => onOrdemEscalas('horario')}
-                className={`rounded-md px-3 py-1.5 text-xs font-bold transition ${ordemEscalas === 'horario' ? 'bg-gray-950 text-white' : 'text-gray-600 hover:bg-white'}`}
-              >
-                Horário
-              </button>
+              {filtrosTipoEscala.map((filtro) => (
+                <button
+                  key={filtro.value}
+                  type="button"
+                  onClick={() => onTipoEscalas(filtro.value)}
+                  className={`rounded-md px-3 py-1.5 text-xs font-bold transition ${
+                    tipoEscalas === filtro.value ? 'bg-gray-950 text-white' : 'text-gray-600 hover:bg-white'
+                  }`}
+                >
+                  {filtro.label}
+                </button>
+              ))}
             </div>
           </div>
         </div>
 
         <div className="space-y-4 p-5">
-          <div className="flex flex-wrap gap-2">
-            {filtrosRecorrentes.map((filtro) => (
-              <button
-                key={filtro.value}
-                type="button"
-                onClick={() => onFiltroRecorrente(filtro.value)}
-                className={`rounded-md border px-3 py-2 text-sm font-bold transition ${
-                  filtroRecorrente === filtro.value
-                    ? 'border-dourado-700 bg-dourado-700 text-white'
-                    : 'border-gray-200 bg-gray-50 text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                {filtro.label}
-              </button>
-            ))}
-          </div>
-
           <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-center">
             <label className="relative block">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -968,55 +928,108 @@ function PainelEscalas({
               />
             </label>
             <span className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-600">
-              {recorrentes.length} escala(s) em {filtroAtual.label}
+              {escalas.length} escala(s)
             </span>
           </div>
 
-          <div className="space-y-3">
-            {recorrentes.length === 0 ? (
+          <div className="space-y-4">
+            {escalas.length === 0 ? (
               <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-8 text-center text-sm text-gray-500">
                 Nenhuma escala encontrada para esse filtro.
               </div>
-            ) : recorrentes.map((escala) => {
+            ) : escalas.map((escala) => {
               const form = formRecorrentes[escala.id] || {};
               const editando = escalaEditandoId === escala.id;
 
               return (
-                <div key={escala.id} className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div key={escala.id} className="rounded-2xl border border-gray-200 bg-gradient-to-br from-white to-gray-50 p-5 shadow-sm">
+                  <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="rounded border border-dourado-200 bg-dourado-50 px-2 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-dourado-700">
+                        <span className="rounded-full border border-dourado-200 bg-dourado-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-dourado-700">
                           {escala.equipe?.nome || 'Sem equipe'}
                         </span>
-                        <span className="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-gray-500">
-                          {filtroAtual.label}
+                        <span className={`rounded-full border px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] ${
+                          escala.tipo === 'ESPORADICA'
+                            ? 'border-amber-200 bg-amber-50 text-amber-700'
+                            : 'border-gray-200 bg-white text-gray-500'
+                        }`}
+                        >
+                          {escala.tipo === 'ESPORADICA' ? 'Esporádica' : 'Recorrente'}
                         </span>
                       </div>
-                      <h3 className="mt-3 text-base font-bold text-gray-950">{escala.titulo || 'Escala sem título'}</h3>
-                      <p className="mt-1 text-sm text-gray-500">{formatarData(escala.dataHora)}</p>
-                      <div className="mt-3 flex flex-wrap gap-1.5">
-                        {(escala.voluntarios || []).length === 0 ? (
-                          <span className="text-xs text-gray-500">Nenhum voluntário atribuído.</span>
-                        ) : escala.voluntarios.map((item) => (
-                          <span key={item.id} className="inline-flex items-baseline gap-1 rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700">
-                            <strong className="font-semibold">{item.usuario?.nomeCompleto}</strong>
-                            {item.usuario?.telefone && <span className="text-[11px] text-gray-400">{item.usuario.telefone}</span>}
-                          </span>
-                        ))}
+                      <h3 className="mt-3 text-xl font-bold text-gray-950">{escala.titulo || 'Escala sem título'}</h3>
+                      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
+                        <span>{formatarData(escala.dataHora)}</span>
+                        {escala.local && <span>Local: {escala.local}</span>}
+                        {escala.tipo === 'RECORRENTE' && (
+                          <span>{escala.semanaMes}º {escala.diaSemana === 0 ? 'domingo' : 'sábado'}</span>
+                        )}
                       </div>
+                      {escala.descricao && (
+                        <p className="mt-3 max-w-2xl text-sm leading-6 text-gray-600">{escala.descricao}</p>
+                      )}
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => onEditarEscala(editando ? null : escala.id)}
-                      className="inline-flex items-center justify-center rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
-                    >
-                      {editando ? 'Fechar edição' : 'Editar'}
-                    </button>
+                    {escala.tipo === 'RECORRENTE' && (
+                      <button
+                        type="button"
+                        onClick={() => onEditarEscala(editando ? null : escala.id)}
+                        className="inline-flex items-center justify-center rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
+                      >
+                        {editando ? 'Fechar edição' : 'Editar recorrência'}
+                      </button>
+                    )}
                   </div>
 
-                  {editando && (
+                  <div className="mt-5 rounded-xl border border-gray-200 bg-white p-4">
+                    <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-[0.14em] text-gray-400">Pessoas escaladas</p>
+                        <p className="mt-1 text-sm text-gray-600">
+                          Função/equipe: <strong className="font-semibold text-gray-800">{escala.equipe?.nome || 'Sem equipe'}</strong>
+                        </p>
+                      </div>
+                      <span className="text-xs font-semibold text-gray-400">
+                        {(escala.voluntarios || []).length} voluntário(s)
+                      </span>
+                    </div>
+
+                    <div className="mt-4 grid gap-2 md:grid-cols-2">
+                      {(escala.voluntarios || []).length === 0 ? (
+                        <div className="rounded-md border border-dashed border-gray-200 bg-gray-50 px-3 py-4 text-sm text-gray-500 md:col-span-2">
+                          Nenhum voluntário atribuído para esta função.
+                        </div>
+                      ) : escala.voluntarios.map((item) => {
+                        const config = statusConfig[item.status] || statusConfig.PENDENTE;
+                        const Icon = config.icon;
+
+                        return (
+                          <div key={item.id} className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3">
+                            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                              <p className="text-sm font-bold text-gray-900">{item.usuario?.nomeCompleto || 'Voluntário'}</p>
+                              {item.usuario?.telefone && (
+                                <span className="text-[11px] font-medium text-gray-400">{item.usuario.telefone}</span>
+                              )}
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              <span className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] font-semibold ${config.className}`}>
+                                <Icon size={11} />
+                                {config.label}
+                              </span>
+                              {item.substituto && (
+                                <span className="inline-flex rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[11px] font-semibold text-violet-700">
+                                  Substituto
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {editando && escala.tipo === 'RECORRENTE' && (
                     <div className="mt-4 grid gap-3 rounded-lg border border-gray-200 bg-white p-4 lg:grid-cols-[1.3fr_0.8fr_0.8fr_0.7fr_auto] lg:items-end">
                       <Campo label="Título" value={form.titulo || ''} onChange={(value) => onAlterarRecorrente(escala.id, 'titulo', value)} />
                       <Select label="Dia" value={form.diaSemana ?? 0} options={dias} onChange={(value) => onAlterarRecorrente(escala.id, 'diaSemana', Number(value))} />
@@ -1037,10 +1050,20 @@ function PainelEscalas({
 
       <div className="space-y-5">
         <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
-          <div className="border-b border-gray-100 px-5 py-4">
-            <h2 className="text-lg font-bold text-gray-950">Nova escala esporádica</h2>
-          </div>
           <form onSubmit={onCriarEsporadica} className="space-y-4 p-5">
+            <div className="flex flex-col gap-3 border-b border-gray-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-gray-950">Nova escala esporádica</h2>
+                <p className="mt-1 text-sm text-gray-500">Crie um evento pontual e envie para os líderes atribuírem voluntários.</p>
+              </div>
+              <button
+                disabled={salvandoId === 'esporadica'}
+                className="inline-flex items-center justify-center gap-2 rounded-md bg-dourado-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {salvandoId === 'esporadica' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save size={16} />}
+                Salvar escala esporádica
+              </button>
+            </div>
             <Campo label="Título" value={formEsporadica.titulo} onChange={(value) => onChangeEsporadica((atual) => ({ ...atual, titulo: value }))} />
             <Campo label="Data e horário" type="datetime-local" value={formEsporadica.dataHora} onChange={(value) => onChangeEsporadica((atual) => ({ ...atual, dataHora: value }))} />
             <Campo label="Local" value={formEsporadica.local} onChange={(value) => onChangeEsporadica((atual) => ({ ...atual, local: value }))} />
@@ -1053,9 +1076,9 @@ function PainelEscalas({
                 </label>
               ))}
             </GrupoChecks>
-            <button disabled={salvandoId === 'esporadica'} className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-dourado-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">
+            <button disabled={salvandoId === 'esporadica'} className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-gray-950 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">
               {salvandoId === 'esporadica' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send size={16} />}
-              Enviar para líderes
+              Salvar escala esporádica e enviar para líderes
             </button>
           </form>
         </div>
