@@ -15,6 +15,11 @@ export default function Navbar() {
     navigate('/login', { replace: true });
   };
 
+  const irPara = (rota) => {
+    navigate(rota);
+    setMenuAberto(false);
+  };
+
   return (
     <nav className="sticky top-0 z-30 border-b border-white/60 bg-white/85 shadow-sm backdrop-blur">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -29,25 +34,25 @@ export default function Navbar() {
 
           {/* Links de Navegação - Desktop */}
           <div className="hidden md:flex md:items-center md:space-x-8">
-            <button type="button" onClick={() => navigate('/')} className="font-sans text-gray-600 hover:text-dourado-600 transition-colors font-medium">
+            <button type="button" onClick={() => irPara('/')} className="font-sans text-gray-600 hover:text-dourado-600 transition-colors font-medium">
               Início
             </button>
-            <button type="button" onClick={() => navigate('/escalas')} className="font-sans text-gray-600 hover:text-dourado-600 transition-colors font-medium">
+            <button type="button" onClick={() => irPara('/escalas')} className="font-sans text-gray-600 hover:text-dourado-600 transition-colors font-medium">
               Minhas Escalas
             </button>
             {podeGerenciarEquipe && (
-              <button type="button" onClick={() => navigate('/minha-equipe')} className="flex items-center gap-2 font-sans text-gray-600 hover:text-dourado-600 transition-colors font-medium">
+              <button type="button" onClick={() => irPara('/minha-equipe')} className="flex items-center gap-2 font-sans text-gray-600 hover:text-dourado-600 transition-colors font-medium">
                 <UsersRound size={18} />
                 Minha equipe
               </button>
             )}
             {isAdmin && (
-              <button type="button" onClick={() => navigate('/admin/escalas')} className="flex items-center gap-2 font-sans text-gray-600 hover:text-dourado-600 transition-colors font-medium">
+              <button type="button" onClick={() => irPara('/admin/escalas')} className="flex items-center gap-2 font-sans text-gray-600 hover:text-dourado-600 transition-colors font-medium">
                 <ShieldCheck size={18} />
                 Admin escalas
               </button>
             )}
-            <button type="button" onClick={() => navigate('/avisos')} className="font-sans text-gray-600 hover:text-dourado-600 transition-colors font-medium">
+            <button type="button" onClick={() => irPara('/avisos')} className="font-sans text-gray-600 hover:text-dourado-600 transition-colors font-medium">
               Avisos
             </button>
           </div>
@@ -83,28 +88,28 @@ export default function Navbar() {
       {menuAberto && (
         <div className="md:hidden border-t border-gray-100 bg-white">
           <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3">
-            <button type="button" onClick={() => navigate('/')} className="block w-full px-3 py-2 rounded-md text-left text-base font-medium text-gray-700 hover:text-dourado-600 hover:bg-dourado-50">
+            <button type="button" onClick={() => irPara('/')} className="block w-full px-3 py-2 rounded-md text-left text-base font-medium text-gray-700 hover:text-dourado-600 hover:bg-dourado-50">
               Início
             </button>
-            <button type="button" onClick={() => navigate('/perfil')} className="block w-full px-3 py-2 rounded-md text-left text-base font-medium text-gray-700 hover:text-dourado-600 hover:bg-dourado-50">
+            <button type="button" onClick={() => irPara('/perfil')} className="block w-full px-3 py-2 rounded-md text-left text-base font-medium text-gray-700 hover:text-dourado-600 hover:bg-dourado-50">
               Perfil
             </button>
-            <button type="button" onClick={() => navigate('/escalas')} className="block w-full px-3 py-2 rounded-md text-left text-base font-medium text-gray-700 hover:text-dourado-600 hover:bg-dourado-50">
+            <button type="button" onClick={() => irPara('/escalas')} className="block w-full px-3 py-2 rounded-md text-left text-base font-medium text-gray-700 hover:text-dourado-600 hover:bg-dourado-50">
               Minhas Escalas
             </button>
             {podeGerenciarEquipe && (
-              <button type="button" onClick={() => navigate('/minha-equipe')} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-base font-medium text-gray-700 hover:text-dourado-600 hover:bg-dourado-50">
+              <button type="button" onClick={() => irPara('/minha-equipe')} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-base font-medium text-gray-700 hover:text-dourado-600 hover:bg-dourado-50">
                 <UsersRound size={18} />
                 Minha equipe
               </button>
             )}
             {isAdmin && (
-              <button type="button" onClick={() => navigate('/admin/escalas')} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-base font-medium text-gray-700 hover:text-dourado-600 hover:bg-dourado-50">
+              <button type="button" onClick={() => irPara('/admin/escalas')} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-base font-medium text-gray-700 hover:text-dourado-600 hover:bg-dourado-50">
                 <ShieldCheck size={18} />
                 Admin escalas
               </button>
             )}
-            <button type="button" onClick={() => navigate('/avisos')} className="block w-full px-3 py-2 rounded-md text-left text-base font-medium text-gray-700 hover:text-dourado-600 hover:bg-dourado-50">
+            <button type="button" onClick={() => irPara('/avisos')} className="block w-full px-3 py-2 rounded-md text-left text-base font-medium text-gray-700 hover:text-dourado-600 hover:bg-dourado-50">
               Avisos
             </button>
             <button 

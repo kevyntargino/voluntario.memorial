@@ -5,6 +5,7 @@ import authRoutes from './routes/auth.routes.js';
 import escalasRoutes from './routes/escalas.routes.js';
 import equipesRoutes from './routes/equipes.routes.js';
 import avisosRoutes from './routes/avisos.routes.js';
+import adminRoutes from './routes/admin.routes.js';
 
 const app = express();
 
@@ -26,6 +27,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/escalas', escalasRoutes);
 app.use('/api/equipes', equipesRoutes);
 app.use('/api/avisos', avisosRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Rota de Health Check para verificar se o servidor está online
 app.get('/', (req, res) => {

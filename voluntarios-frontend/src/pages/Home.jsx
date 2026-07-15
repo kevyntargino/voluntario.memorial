@@ -1,39 +1,77 @@
-import React from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Bell, CalendarDays, ClipboardList, LogOut, ShieldCheck, UserCircle2 } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import { Footer } from '../components/Footer';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
-
-const cards = [
-  {
-    title: 'Próximas escalas',
-    value: '3',
-    description: 'Você tem compromissos confirmados para esta semana.',
-    icon: CalendarDays,
-  },
-  {
-    title: 'Avisos recentes',
-    value: '2',
-    description: 'Confira as mensagens da sua equipe antes do próximo culto.',
-    icon: Bell,
-  },
-  {
-    title: 'Tarefas pendentes',
-    value: '1',
-    description: 'Há uma confirmação aguardando sua resposta.',
-    icon: ClipboardList,
-  },
-];
+import { buildApiUrl } from '../lib/api';
 
 export default function Home() {
-  const { usuario, logout } = useAuth();
+  const { token, usuario, logout } = useAuth();
   const { navigate } = useNavigation();
+  const [totalAvisos, setTotalAvisos] = useState(null);
 
   const handleLogout = () => {
     logout();
     navigate('/login', { replace: true });
   };
+
+  const carregarResumoAvisos = useCallback(async () => {
+    try {
+      const resposta = await fetch(buildApiUrl('/api/avisos'), {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const dados = await resposta.json();
+
+      if (!resposta.ok) {
+        if (resposta.status === 401) {
+          logout();
+          navigate('/login', { replace: true });
+        }
+
+        return;
+      }
+
+      setTotalAvisos((dados.avisos || []).length);
+    } catch {
+      setTotalAvisos(null);
+    }
+  }, [logout, navigate, token]);
+
+  useEffect(() => {
+    carregarResumoAvisos();
+  }, [carregarResumoAvisos]);
+
+  const cards = useMemo(() => ([
+    {
+      title: 'Próximas escalas',
+      value: '3',
+      description: 'Você tem compromissos confirmados para esta semana.',
+      icon: CalendarDays,
+      action: 'Ver escalas',
+      path: '/escalas',
+    },
+    {
+      title: 'Avisos recentes',
+      value: totalAvisos === null ? '-' : String(totalAvisos),
+      description: totalAvisos === 0
+        ? 'Nenhum aviso disponível para você no momento.'
+        : 'Confira os comunicados enviados para você e suas equipes.',
+      icon: Bell,
+      action: 'Ver avisos',
+      path: '/avisos',
+    },
+    {
+      title: 'Tarefas pendentes',
+      value: '1',
+      description: 'Há uma confirmação aguardando sua resposta.',
+      icon: ClipboardList,
+      action: 'Ver pendências',
+      path: '/escalas',
+    },
+  ]), [totalAvisos]);
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(212,175,55,0.12),_transparent_34%),linear-gradient(180deg,#faf7f0_0%,#f5efe1_100%)] text-gray-900">
@@ -109,11 +147,9 @@ export default function Home() {
                 </div>
                 <p className="mt-4 text-4xl font-bold text-gray-950">{card.value}</p>
                 <p className="mt-3 text-sm leading-6 text-gray-600">{card.description}</p>
-                {card.title === 'Próximas escalas' && (
-                  <button onClick={() => navigate('/escalas')} className="mt-5 text-sm font-semibold text-dourado-700 transition hover:text-dourado-800">
-                    Ver escalas
-                  </button>
-                )}
+                <button onClick={() => navigate(card.path)} className="mt-5 text-sm font-semibold text-dourado-700 transition hover:text-dourado-800">
+                  {card.action}
+                </button>
               </article>
             );
           })}
