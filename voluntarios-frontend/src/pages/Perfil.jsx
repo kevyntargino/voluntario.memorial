@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { ArrowLeft, BadgeCheck, Camera, Loader2, Mail, Save, UserRound } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { ArrowLeft, BadgeCheck, Loader2, Mail, Pencil, Save, Trash2, UserRound } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import { Footer } from '../components/Footer';
 import { useAuth } from '../context/AuthContext';
@@ -34,6 +34,7 @@ export default function Perfil() {
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const [enviandoFoto, setEnviandoFoto] = useState(false);
+  const fotoInputRef = useRef(null);
 
   useEffect(() => {
     let ativo = true;
@@ -172,6 +173,42 @@ export default function Perfil() {
     }
   };
 
+  const removerFoto = async () => {
+    setErro('');
+    setSucesso('');
+    setEnviandoFoto(true);
+
+    try {
+      const resposta = await fetch(buildApiUrl('/api/auth/me'), {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ ...form, urlFoto: '' }),
+      });
+      const dados = await resposta.json();
+
+      if (!resposta.ok) {
+        if (resposta.status === 401) {
+          logout();
+          navigate('/login', { replace: true });
+          return;
+        }
+
+        throw new Error(dados.erro || 'Não foi possível remover a foto.');
+      }
+
+      atualizarUsuario(dados.usuario);
+      setForm(createFormState(dados.usuario));
+      setSucesso('Foto removida com sucesso.');
+    } catch (error) {
+      setErro(error.message || 'Não foi possível remover a foto.');
+    } finally {
+      setEnviandoFoto(false);
+    }
+  };
+
   return (
     <div className="flex min-h-screen flex-col bg-[#f7f4ed] text-gray-900">
       <Navbar />
@@ -189,13 +226,33 @@ export default function Perfil() {
         <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
           <aside className="h-fit rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
             <div className="flex items-center gap-4">
-              <div className="grid h-20 w-20 place-items-center overflow-hidden rounded-lg bg-gray-950 text-white">
+              <input
+                ref={fotoInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                className="hidden"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) handleFoto(file);
+                  event.target.value = '';
+                }}
+              />
+              <button
+                type="button"
+                disabled={enviandoFoto}
+                onClick={() => fotoInputRef.current?.click()}
+                className="group relative grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-lg bg-gray-950 text-white disabled:cursor-wait"
+                aria-label="Alterar foto de perfil"
+              >
                 {form.urlFoto ? (
                   <img src={form.urlFoto} alt={form.nomeCompleto} className="h-full w-full object-cover" />
                 ) : (
                   <UserRound size={34} />
                 )}
-              </div>
+                <span className="absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-full bg-white text-gray-800 shadow ring-1 ring-black/10 transition group-hover:scale-105">
+                  {enviandoFoto ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pencil size={14} />}
+                </span>
+              </button>
 
               <div className="min-w-0">
                 <p className="truncate text-lg font-bold text-gray-950">{usuario?.nomeCompleto || 'Usuário'}</p>
@@ -217,6 +274,16 @@ export default function Perfil() {
                 ))}
               </div>
             </div>
+
+            <button
+              type="button"
+              disabled={enviandoFoto || !form.urlFoto}
+              onClick={removerFoto}
+              className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-md border border-red-100 bg-white px-3 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {enviandoFoto ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 size={15} />}
+              Remover foto
+            </button>
           </aside>
 
           <section className="rounded-lg border border-gray-200 bg-white shadow-sm">
@@ -303,25 +370,6 @@ export default function Perfil() {
                     </select>
                   </label>
 
-                  <label className="block">
-                    <span className="text-sm font-semibold text-gray-700">Foto do usuário</span>
-                    <div className="relative mt-2">
-                      <Camera className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                      <input
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp,image/gif"
-                        onChange={(event) => {
-                          const file = event.target.files?.[0];
-                          if (file) handleFoto(file);
-                          event.target.value = '';
-                        }}
-                        className="block w-full rounded-md border border-gray-200 bg-white py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
-                      />
-                    </div>
-                    <p className="mt-1 text-xs text-gray-500">
-                      {enviandoFoto ? 'Enviando foto...' : 'JPG, PNG, WEBP ou GIF até 5MB.'}
-                    </p>
-                  </label>
                 </div>
 
                 <div className="flex justify-end border-t border-gray-100 pt-5">

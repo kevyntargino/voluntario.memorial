@@ -30,13 +30,16 @@ function getFotoProxyUrl(req, key) {
   return `${getApiBaseUrl(req)}/api/auth/fotos/${key}`;
 }
 
-function normalizarUrlFoto(urlFoto, req) {
+function extrairKeyFoto(urlFoto, req) {
   if (!urlFoto || typeof urlFoto !== 'string') {
-    return urlFoto;
+    return null;
   }
 
-  if (urlFoto.includes('/api/auth/fotos/')) {
-    return urlFoto;
+  const proxyMarker = '/api/auth/fotos/';
+  const proxyIndex = urlFoto.indexOf(proxyMarker);
+
+  if (proxyIndex >= 0) {
+    return decodeURIComponent(urlFoto.slice(proxyIndex + proxyMarker.length).split('?')[0]);
   }
 
   const config = getR2Config();
@@ -47,10 +50,18 @@ function normalizarUrlFoto(urlFoto, req) {
   const prefixoEncontrado = prefixosR2.find((prefixo) => urlFoto.startsWith(prefixo));
 
   if (!prefixoEncontrado) {
+    return null;
+  }
+
+  return decodeURIComponent(urlFoto.slice(prefixoEncontrado.length).split('?')[0]);
+}
+
+function normalizarUrlFoto(urlFoto, req) {
+  if (!urlFoto || typeof urlFoto !== 'string') {
     return urlFoto;
   }
 
-  const key = urlFoto.slice(prefixoEncontrado.length).split('?')[0];
+  const key = extrairKeyFoto(urlFoto, req);
   return key ? getFotoProxyUrl(req, key) : urlFoto;
 }
 
@@ -154,10 +165,28 @@ function criarPresignedGetUrl({ key, expiresIn = 300 }) {
   return criarPresignedUrl({ key, method: 'GET', expiresIn });
 }
 
+function criarPresignedDeleteUrl({ key, expiresIn = 300 }) {
+  return criarPresignedUrl({ key, method: 'DELETE', expiresIn });
+}
+
 function getApiBaseUrl(req) {
   const host = req.get('x-forwarded-host') || req.get('host');
   const protocol = req.get('x-forwarded-proto') || req.protocol || 'http';
   return (process.env.API_PUBLIC_URL || `${protocol}://${host}`).replace(/\/$/, '');
+}
+
+async function apagarFotoDoStorage(key) {
+  if (!key || !key.startsWith('usuarios/')) {
+    return;
+  }
+
+  const deleteUrl = criarPresignedDeleteUrl({ key });
+  const resposta = await fetch(deleteUrl, { method: 'DELETE' });
+
+  if (!resposta.ok && resposta.status !== 404) {
+    const detalhe = await resposta.text().catch(() => '');
+    console.warn('[WARN] Falha ao excluir foto do R2:', resposta.status, detalhe);
+  }
 }
 
 async function autenticar(req, res, next) {
@@ -446,12 +475,20 @@ router.patch('/me', autenticar, async (req, res) => {
       return res.status(400).json({ erro: 'Sexo informado é inválido.' });
     }
 
+    const usuarioAtual = await prisma.usuario.findUnique({
+      where: { id: req.usuarioAutenticado.id },
+      select: { urlFoto: true },
+    });
+    const proximaUrlFoto = typeof urlFoto === 'string' && urlFoto.trim()
+      ? normalizarUrlFoto(urlFoto.trim(), req)
+      : null;
+
     const usuario = await prisma.usuario.update({
       where: { id: req.usuarioAutenticado.id },
       data: {
         nomeCompleto: nomeCompleto.trim(),
         telefone: typeof telefone === 'string' && telefone.trim() ? telefone.trim() : null,
-        urlFoto: typeof urlFoto === 'string' && urlFoto.trim() ? normalizarUrlFoto(urlFoto.trim(), req) : null,
+        urlFoto: proximaUrlFoto,
         dataNascimento: dataNascimento ? new Date(`${dataNascimento}T00:00:00.000Z`) : null,
         sexo: sexo || null,
       },
@@ -466,6 +503,15 @@ router.patch('/me', autenticar, async (req, res) => {
         urlFoto: true,
       }
     });
+
+    const keyAnterior = extrairKeyFoto(usuarioAtual?.urlFoto, req);
+    const keyAtual = extrairKeyFoto(proximaUrlFoto, req);
+
+    if (keyAnterior && keyAnterior !== keyAtual) {
+      apagarFotoDoStorage(keyAnterior).catch((deleteError) => {
+        console.warn('[WARN] Falha ao remover foto antiga do storage:', deleteError.message);
+      });
+    }
 
     return res.status(200).json({
       mensagem: 'Perfil atualizado com sucesso.',

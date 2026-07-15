@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { BadgeCheck, Camera, Loader2, LogOut, Menu, Save, User, X } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { BadgeCheck, Loader2, LogOut, Menu, Pencil, Save, Trash2, User, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
 import { buildApiUrl } from '../lib/api';
@@ -53,6 +53,7 @@ export default function Navbar() {
   const [salvandoPerfil, setSalvandoPerfil] = useState(false);
   const [salvandoSenha, setSalvandoSenha] = useState(false);
   const [enviandoFoto, setEnviandoFoto] = useState(false);
+  const fotoInputRef = useRef(null);
   const { token, usuario, atualizarUsuario, logout } = useAuth();
   const { navigate } = useNavigation();
   const podeGerenciarEquipe = usuario?.permissoes?.some((permissao) => ['LIDER_EQUIPE', 'ADMINISTRADOR'].includes(permissao));
@@ -221,6 +222,41 @@ export default function Navbar() {
     }
   };
 
+  const removerFoto = async () => {
+    setErroPerfil('');
+    setSucessoPerfil('');
+    setEnviandoFoto(true);
+
+    try {
+      const resposta = await fetch(buildApiUrl('/api/auth/me'), {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ ...formPerfil, urlFoto: '' }),
+      });
+      const dados = await resposta.json();
+
+      if (!resposta.ok) {
+        if (resposta.status === 401) {
+          handleLogout();
+          return;
+        }
+
+        throw new Error(dados.erro || 'Não foi possível remover a foto.');
+      }
+
+      atualizarUsuario(dados.usuario);
+      setFormPerfil(criarFormUsuario(dados.usuario));
+      setSucessoPerfil('Foto removida com sucesso.');
+    } catch (error) {
+      setErroPerfil(error.message || 'Não foi possível remover a foto.');
+    } finally {
+      setEnviandoFoto(false);
+    }
+  };
+
   return (
     <nav className="sticky top-0 z-30 border-b border-white/60 bg-white/85 shadow-sm backdrop-blur">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -351,13 +387,26 @@ export default function Navbar() {
         <div className="absolute right-4 top-[4.5rem] z-50 w-[calc(100vw-2rem)] max-w-xl overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl md:right-8">
           <div className="flex items-start justify-between gap-4 border-b border-gray-100 px-5 py-4">
             <div className="flex min-w-0 items-center gap-3">
-              <div className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-2xl bg-gray-950 text-white">
+              <button
+                type="button"
+                disabled={!editandoPerfil || enviandoFoto}
+                onClick={() => {
+                  if (editandoPerfil) fotoInputRef.current?.click();
+                }}
+                className="group relative grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-2xl bg-gray-950 text-white disabled:cursor-default"
+                aria-label={editandoPerfil ? 'Alterar foto de perfil' : 'Foto de perfil'}
+              >
                 {formPerfil.urlFoto ? (
                   <img src={formPerfil.urlFoto} alt="" className="h-full w-full object-cover" />
                 ) : (
                   <User size={26} />
                 )}
-              </div>
+                {editandoPerfil && (
+                  <span className="absolute right-1 top-1 grid h-6 w-6 place-items-center rounded-full bg-white text-gray-800 shadow ring-1 ring-black/10 transition group-hover:scale-105">
+                    {enviandoFoto ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Pencil size={13} />}
+                  </span>
+                )}
+              </button>
               <div className="min-w-0">
                 <p className="truncate text-lg font-bold text-gray-950">{usuario?.nomeCompleto || 'Usuário'}</p>
                 <p className="truncate text-sm text-gray-500">{usuario?.email || '-'}</p>
@@ -389,11 +438,22 @@ export default function Navbar() {
             )}
 
             <form onSubmit={salvarPerfil} className="space-y-4">
+              <input
+                ref={fotoInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                className="hidden"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) enviarFoto(file);
+                  event.target.value = '';
+                }}
+              />
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h2 className="text-base font-bold text-gray-950">Minhas informações</h2>
                   <p className="mt-1 text-xs text-gray-500">
-                    Clique em editar para habilitar alterações.
+                    Clique em editar para habilitar alterações. A foto é alterada clicando no avatar.
                   </p>
                 </div>
                 <button
@@ -428,37 +488,28 @@ export default function Navbar() {
                     ))}
                   </select>
                 </label>
-                <label className="block">
-                  <span className="text-sm font-semibold text-gray-700">Foto do usuário</span>
-                  <div className="relative mt-2">
-                    <Camera className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp,image/gif"
-                      disabled={!editandoPerfil}
-                      onChange={(event) => {
-                        const file = event.target.files?.[0];
-                        if (file) enviarFoto(file);
-                        event.target.value = '';
-                      }}
-                      className="block w-full rounded-md border border-gray-200 bg-white py-2.5 pl-9 pr-3 text-sm outline-none transition disabled:bg-gray-50 disabled:text-gray-500 focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
-                    />
-                  </div>
-                  <p className="mt-1 text-xs text-gray-500">
-                    {enviandoFoto ? 'Enviando foto...' : 'JPG, PNG, WEBP ou GIF até 5MB.'}
-                  </p>
-                </label>
               </div>
 
               {editandoPerfil && (
-                <button
-                  type="submit"
-                  disabled={salvandoPerfil}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-gray-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-gray-800 disabled:opacity-60"
-                >
-                  {salvandoPerfil ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save size={16} />}
-                  Salvar dados
-                </button>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <button
+                    type="submit"
+                    disabled={salvandoPerfil}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-gray-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-gray-800 disabled:opacity-60"
+                  >
+                    {salvandoPerfil ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save size={16} />}
+                    Salvar dados
+                  </button>
+                  <button
+                    type="button"
+                    disabled={enviandoFoto || !formPerfil.urlFoto}
+                    onClick={removerFoto}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-red-100 bg-white px-4 py-2.5 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {enviandoFoto ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 size={16} />}
+                    Remover foto
+                  </button>
+                </div>
               )}
             </form>
 
