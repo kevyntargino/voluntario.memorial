@@ -35,6 +35,10 @@ function normalizarUrlFoto(urlFoto, req) {
     return urlFoto;
   }
 
+  if (urlFoto.includes('/api/auth/fotos/')) {
+    return urlFoto;
+  }
+
   const config = getR2Config();
   const prefixosR2 = [
     `${config.publicUrl}/`,
@@ -447,7 +451,7 @@ router.patch('/me', autenticar, async (req, res) => {
       data: {
         nomeCompleto: nomeCompleto.trim(),
         telefone: typeof telefone === 'string' && telefone.trim() ? telefone.trim() : null,
-        urlFoto: typeof urlFoto === 'string' && urlFoto.trim() ? urlFoto.trim() : null,
+        urlFoto: typeof urlFoto === 'string' && urlFoto.trim() ? normalizarUrlFoto(urlFoto.trim(), req) : null,
         dataNascimento: dataNascimento ? new Date(`${dataNascimento}T00:00:00.000Z`) : null,
         sexo: sexo || null,
       },

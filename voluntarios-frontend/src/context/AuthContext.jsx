@@ -1,5 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { buildApiUrl } from '../lib/api';
 
 const AuthContext = createContext(null);
 
@@ -40,16 +41,70 @@ function readStoredAuth() {
   return { token, usuario };
 }
 
+function clearStoredAuth() {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.removeItem(TOKEN_KEY);
+  window.localStorage.removeItem(USER_KEY);
+  window.localStorage.removeItem(LEGACY_TOKEN_KEY);
+  window.localStorage.removeItem(LEGACY_USER_KEY);
+}
+
 export function AuthProvider({ children }) {
   const [token, setToken] = useState(null);
   const [usuario, setUsuario] = useState(null);
   const [carregado, setCarregado] = useState(false);
 
   useEffect(() => {
-    const stored = readStoredAuth();
-    setToken(stored.token);
-    setUsuario(stored.usuario);
-    setCarregado(true);
+    let ativo = true;
+
+    async function carregarSessao() {
+      const stored = readStoredAuth();
+
+      if (!stored.token) {
+        if (!ativo) return;
+        setToken(null);
+        setUsuario(null);
+        setCarregado(true);
+        return;
+      }
+
+      try {
+        const resposta = await fetch(buildApiUrl('/api/auth/me'), {
+          headers: {
+            Authorization: `Bearer ${stored.token}`,
+          },
+        });
+        const dados = await resposta.json().catch(() => ({}));
+
+        if (!resposta.ok) {
+          throw new Error(dados.erro || 'Sessão inválida.');
+        }
+
+        if (!ativo) return;
+        setToken(stored.token);
+        setUsuario(dados.usuario);
+        window.localStorage.setItem(TOKEN_KEY, stored.token);
+        window.localStorage.setItem(USER_KEY, JSON.stringify(dados.usuario));
+      } catch {
+        if (!ativo) return;
+        clearStoredAuth();
+        setToken(null);
+        setUsuario(null);
+      } finally {
+        if (ativo) {
+          setCarregado(true);
+        }
+      }
+    }
+
+    carregarSessao();
+
+    return () => {
+      ativo = false;
+    };
   }, []);
 
   const login = useCallback((novoToken, novoUsuario) => {
@@ -69,10 +124,7 @@ export function AuthProvider({ children }) {
   const logout = useCallback(() => {
     setToken(null);
     setUsuario(null);
-    window.localStorage.removeItem(TOKEN_KEY);
-    window.localStorage.removeItem(USER_KEY);
-    window.localStorage.removeItem(LEGACY_TOKEN_KEY);
-    window.localStorage.removeItem(LEGACY_USER_KEY);
+    clearStoredAuth();
   }, []);
 
   const value = useMemo(() => ({
