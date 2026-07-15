@@ -64,12 +64,13 @@ function formatarUsuario(usuario) {
     telefone: usuario.telefone,
     permissoes: usuario.permissoes,
     equipes: usuario.equipes,
+    equipesLideradas: usuario.equipesLideradas || [],
   };
 }
 
 function formatarEquipe(equipe) {
   const voluntarios = equipe.voluntarios || [];
-  const lideres = voluntarios.filter((usuario) => usuario.permissoes.includes('LIDER_EQUIPE'));
+  const lideres = equipe.lideres || [];
 
   return {
     id: equipe.id,
@@ -142,6 +143,29 @@ router.get('/dashboard', autenticar, exigirAdmin, async (req, res) => {
                   nome: true,
                 },
               },
+              equipesLideradas: {
+                select: {
+                  id: true,
+                  nome: true,
+                },
+              },
+            },
+          },
+          lideres: {
+            orderBy: { nomeCompleto: 'asc' },
+            include: {
+              equipes: {
+                select: {
+                  id: true,
+                  nome: true,
+                },
+              },
+              equipesLideradas: {
+                select: {
+                  id: true,
+                  nome: true,
+                },
+              },
             },
           },
         },
@@ -150,6 +174,12 @@ router.get('/dashboard', autenticar, exigirAdmin, async (req, res) => {
         orderBy: { nomeCompleto: 'asc' },
         include: {
           equipes: {
+            select: {
+              id: true,
+              nome: true,
+            },
+          },
+          equipesLideradas: {
             select: {
               id: true,
               nome: true,
@@ -217,7 +247,7 @@ router.get('/dashboard', autenticar, exigirAdmin, async (req, res) => {
       },
       equipes: equipes.map(formatarEquipe),
       usuarios: usuarios.map(formatarUsuario),
-      lideres: usuarios.filter((usuario) => usuario.permissoes.includes('LIDER_EQUIPE')).map(formatarUsuario),
+      lideres: usuarios.filter((usuario) => usuario.permissoes.includes('LIDER_EQUIPE') || usuario.equipesLideradas.length > 0).map(formatarUsuario),
       proximaEscala: formatarEscala(proximaEscala),
     });
   } catch (erro) {
@@ -242,6 +272,28 @@ router.post('/equipes', autenticar, exigirAdmin, async (req, res) => {
         voluntarios: {
           include: {
             equipes: {
+              select: {
+                id: true,
+                nome: true,
+              },
+            },
+            equipesLideradas: {
+              select: {
+                id: true,
+                nome: true,
+              },
+            },
+          },
+        },
+        lideres: {
+          include: {
+            equipes: {
+              select: {
+                id: true,
+                nome: true,
+              },
+            },
+            equipesLideradas: {
               select: {
                 id: true,
                 nome: true,
@@ -287,9 +339,13 @@ router.delete('/equipes/:id', autenticar, exigirAdmin, async (req, res) => {
 
 router.patch('/usuarios/:id', autenticar, exigirAdmin, async (req, res) => {
   try {
-    const { nomeCompleto, telefone, permissoes = [], equipeIds = [] } = req.body ?? {};
+    const { nomeCompleto, telefone, permissoes = [], equipeIds = [], liderEquipeIds = [] } = req.body ?? {};
     const permissoesPermitidas = ['ADMINISTRADOR', 'LIDER_EQUIPE', 'VOLUNTARIO'];
-    const permissoesValidas = Array.from(new Set(permissoes)).filter((permissao) => permissoesPermitidas.includes(permissao));
+    const liderEquipeIdsValidos = Array.isArray(liderEquipeIds) ? Array.from(new Set(liderEquipeIds)) : [];
+    const permissoesValidas = Array.from(new Set([
+      ...permissoes.filter((permissao) => permissao !== 'LIDER_EQUIPE'),
+      ...(liderEquipeIdsValidos.length > 0 ? ['LIDER_EQUIPE'] : []),
+    ])).filter((permissao) => permissoesPermitidas.includes(permissao));
 
     if (typeof nomeCompleto !== 'string' || nomeCompleto.trim().length < 3) {
       return res.status(400).json({ erro: 'Nome completo é obrigatório.' });
@@ -310,9 +366,18 @@ router.patch('/usuarios/:id', autenticar, exigirAdmin, async (req, res) => {
         equipes: {
           set: Array.isArray(equipeIds) ? equipeIds.map((id) => ({ id })) : [],
         },
+        equipesLideradas: {
+          set: permissoesValidas.includes('LIDER_EQUIPE') ? liderEquipeIdsValidos.map((id) => ({ id })) : [],
+        },
       },
       include: {
         equipes: {
+          select: {
+            id: true,
+            nome: true,
+          },
+        },
+        equipesLideradas: {
           select: {
             id: true,
             nome: true,

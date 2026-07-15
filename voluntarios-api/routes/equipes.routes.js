@@ -62,6 +62,12 @@ async function getUsuarioComEquipes(usuarioId) {
           nome: true,
         },
       },
+      equipesLideradas: {
+        select: {
+          id: true,
+          nome: true,
+        },
+      },
     },
   });
 }
@@ -76,7 +82,7 @@ function podeGerenciar(usuario, equipeId) {
   }
 
   return usuario.permissoes.includes('LIDER_EQUIPE')
-    && usuario.equipes.some((equipe) => equipe.id === equipeId);
+    && usuario.equipesLideradas.some((equipe) => equipe.id === equipeId);
 }
 
 function getHorarioBase(dataHora) {
@@ -260,7 +266,7 @@ router.get('/minhas', autenticar, async (req, res) => {
 
     const where = usuario.permissoes.includes('ADMINISTRADOR')
       ? { nome: { in: areasMCom } }
-      : { id: { in: usuario.equipes.map((equipe) => equipe.id) } };
+      : { id: { in: usuario.equipesLideradas.map((equipe) => equipe.id) } };
 
     const equipes = await prisma.equipe.findMany({
       where,

@@ -10,6 +10,7 @@ import {
   Plus,
   RefreshCcw,
   Save,
+  Search,
   Send,
   ShieldCheck,
   Trash2,
@@ -27,7 +28,7 @@ const dias = [
   { value: 6, label: 'Sábado' },
 ];
 const semanas = [1, 2, 3, 4];
-const permissoesDisponiveis = ['VOLUNTARIO', 'LIDER_EQUIPE', 'ADMINISTRADOR'];
+const permissoesDisponiveis = ['VOLUNTARIO', 'ADMINISTRADOR'];
 
 const statusConfig = {
   PENDENTE: { label: 'Pendente', className: 'border-amber-200 bg-amber-50 text-amber-700', icon: Clock3 },
@@ -39,6 +40,14 @@ const statusConfig = {
 const formEsporadicaInicial = { titulo: '', dataHora: '', local: '', descricao: '', equipeIds: [] };
 const formAvisoInicial = { titulo: '', mensagem: '', dataAviso: '', publico: 'TODOS', equipeIds: [], usuarioIds: [] };
 const formEquipeInicial = { nome: '' };
+const filtrosRecorrentes = [0, 6].flatMap((diaSemana) => (
+  semanas.map((semanaMes) => ({
+    value: `${diaSemana}-${semanaMes}`,
+    diaSemana,
+    semanaMes,
+    label: `${semanaMes}º ${diaSemana === 0 ? 'domingo' : 'sábado'}`,
+  }))
+));
 
 function formatarData(dataHora) {
   if (!dataHora) return 'Sem data';
@@ -56,6 +65,7 @@ function criarFormUsuario(usuario) {
     telefone: usuario.telefone || '',
     permissoes: usuario.permissoes || ['VOLUNTARIO'],
     equipeIds: usuario.equipes?.map((equipe) => equipe.id) || [],
+    liderEquipeIds: usuario.equipesLideradas?.map((equipe) => equipe.id) || [],
   };
 }
 
@@ -85,6 +95,10 @@ export default function AdminEscalas() {
   const [editandoUsuarioId, setEditandoUsuarioId] = useState(null);
   const [equipeSelecionadaId, setEquipeSelecionadaId] = useState(null);
   const [formEquipe, setFormEquipe] = useState(formEquipeInicial);
+  const [filtroRecorrente, setFiltroRecorrente] = useState('0-1');
+  const [buscaEscalas, setBuscaEscalas] = useState('');
+  const [ordemEscalas, setOrdemEscalas] = useState('equipe');
+  const [escalaEditandoId, setEscalaEditandoId] = useState(null);
   const [carregando, setCarregando] = useState(true);
   const [salvandoId, setSalvandoId] = useState(null);
   const isAdmin = usuario?.permissoes?.includes('ADMINISTRADOR');
@@ -150,21 +164,38 @@ export default function AdminEscalas() {
     navigate(rota);
   };
 
-  const lideres = useMemo(() => usuarios.filter((item) => item.permissoes?.includes('LIDER_EQUIPE')), [usuarios]);
+  const lideres = useMemo(() => usuarios.filter((item) => item.permissoes?.includes('LIDER_EQUIPE') || item.equipesLideradas?.length > 0), [usuarios]);
   const usuariosDoPainel = painelAberto === 'lideres' ? lideres : usuarios;
   const equipeSelecionada = useMemo(
     () => equipes.find((equipe) => equipe.id === equipeSelecionadaId) || null,
     [equipeSelecionadaId, equipes],
   );
 
-  const recorrentesPorEquipe = useMemo(() => {
-    const mapa = new Map();
-    for (const escala of recorrentes) {
-      const nome = escala.equipe?.nome || 'Sem equipe';
-      mapa.set(nome, [...(mapa.get(nome) || []), escala]);
-    }
-    return Array.from(mapa.entries()).map(([equipe, itens]) => ({ equipe, itens }));
-  }, [recorrentes]);
+  const recorrentesFiltradas = useMemo(() => {
+    const filtro = filtrosRecorrentes.find((item) => item.value === filtroRecorrente) || filtrosRecorrentes[0];
+    const termo = buscaEscalas.trim().toLowerCase();
+    const filtradas = recorrentes.filter((escala) => (
+      escala.diaSemana === filtro.diaSemana
+      && escala.semanaMes === filtro.semanaMes
+      && (!termo || [
+        escala.titulo,
+        escala.equipe?.nome,
+        escala.voluntarios?.map((item) => item.usuario?.nomeCompleto).join(' '),
+      ].filter(Boolean).join(' ').toLowerCase().includes(termo))
+    ));
+
+    return [...filtradas].sort((a, b) => {
+      if (ordemEscalas === 'titulo') {
+        return (a.titulo || '').localeCompare(b.titulo || '', 'pt-BR');
+      }
+
+      if (ordemEscalas === 'horario') {
+        return toTime(a.dataHora).localeCompare(toTime(b.dataHora));
+      }
+
+      return (a.equipe?.nome || '').localeCompare(b.equipe?.nome || '', 'pt-BR');
+    });
+  }, [buscaEscalas, filtroRecorrente, ordemEscalas, recorrentes]);
 
   const alterarFormUsuario = (usuarioId, campo, valor) => {
     setFormsUsuarios((atuais) => ({
@@ -180,7 +211,14 @@ export default function AdminEscalas() {
       const proximas = permissoes.includes(permissao)
         ? permissoes.filter((item) => item !== permissao)
         : [...permissoes, permissao];
-      return { ...atuais, [usuarioId]: { ...atual, permissoes: proximas } };
+      return {
+        ...atuais,
+        [usuarioId]: {
+          ...atual,
+          permissoes: proximas,
+          liderEquipeIds: proximas.includes('LIDER_EQUIPE') ? atual.liderEquipeIds || [] : [],
+        },
+      };
     });
   };
 
@@ -192,6 +230,28 @@ export default function AdminEscalas() {
         ? equipeIds.filter((id) => id !== equipeId)
         : [...equipeIds, equipeId];
       return { ...atuais, [usuarioId]: { ...atual, equipeIds: proximas } };
+    });
+  };
+
+  const alternarLiderEquipeUsuario = (usuarioId, equipeId) => {
+    setFormsUsuarios((atuais) => {
+      const atual = atuais[usuarioId] || {};
+      const liderEquipeIds = atual.liderEquipeIds || [];
+      const proximas = liderEquipeIds.includes(equipeId)
+        ? liderEquipeIds.filter((id) => id !== equipeId)
+        : [...liderEquipeIds, equipeId];
+      const permissoes = (atual.permissoes || []).filter((permissao) => permissao !== 'LIDER_EQUIPE');
+
+      return {
+        ...atuais,
+        [usuarioId]: {
+          ...atual,
+          liderEquipeIds: proximas,
+          permissoes: proximas.length > 0
+            ? [...permissoes, 'LIDER_EQUIPE']
+            : permissoes,
+        },
+      };
     });
   };
 
@@ -443,6 +503,7 @@ export default function AdminEscalas() {
                 onAlterar={alterarFormUsuario}
                 onAlternarPermissao={alternarPermissao}
                 onAlternarEquipe={alternarEquipeUsuario}
+                onAlternarLiderEquipe={alternarLiderEquipeUsuario}
                 onSalvar={salvarUsuario}
                 onExcluir={excluirUsuario}
                 editandoUsuarioId={editandoUsuarioId}
@@ -479,13 +540,21 @@ export default function AdminEscalas() {
             {painelAberto === 'escalas' && (
               <PainelEscalas
                 equipes={equipes}
-                recorrentesPorEquipe={recorrentesPorEquipe}
+                recorrentes={recorrentesFiltradas}
+                filtroRecorrente={filtroRecorrente}
+                buscaEscalas={buscaEscalas}
+                ordemEscalas={ordemEscalas}
+                escalaEditandoId={escalaEditandoId}
                 esporadicas={esporadicas}
                 formRecorrentes={formRecorrentes}
                 formEsporadica={formEsporadica}
                 salvandoId={salvandoId}
                 onAlterarRecorrente={alterarRecorrente}
                 onSalvarRecorrente={salvarRecorrente}
+                onFiltroRecorrente={setFiltroRecorrente}
+                onBuscaEscalas={setBuscaEscalas}
+                onOrdemEscalas={setOrdemEscalas}
+                onEditarEscala={setEscalaEditandoId}
                 onChangeEsporadica={setFormEsporadica}
                 onAlternarEquipe={(equipeId) => alternarEquipe('esporadica', equipeId)}
                 onCriarEsporadica={criarEsporadica}
@@ -563,7 +632,7 @@ function ProximaEscala({ escala }) {
   );
 }
 
-function PainelUsuarios({ titulo, usuarios, equipes, formsUsuarios, salvandoId, editandoUsuarioId, onEditar, onAlterar, onAlternarPermissao, onAlternarEquipe, onSalvar, onExcluir }) {
+function PainelUsuarios({ titulo, usuarios, equipes, formsUsuarios, salvandoId, editandoUsuarioId, onEditar, onAlterar, onAlternarPermissao, onAlternarEquipe, onAlternarLiderEquipe, onSalvar, onExcluir }) {
   return (
     <section className="mt-5 rounded-2xl border border-gray-200 bg-white shadow-sm">
       <div className="border-b border-gray-100 px-5 py-4">
@@ -593,7 +662,12 @@ function PainelUsuarios({ titulo, usuarios, equipes, formsUsuarios, salvandoId, 
                     ))}
                     {(usuario.equipes || []).map((equipe) => (
                       <span key={equipe.id} className="rounded border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-gray-600">
-                        {equipe.nome}
+                        Voluntário: {equipe.nome}
+                      </span>
+                    ))}
+                    {(usuario.equipesLideradas || []).map((equipe) => (
+                      <span key={equipe.id} className="rounded border border-sky-200 bg-sky-50 px-2 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-sky-700">
+                        Líder: {equipe.nome}
                       </span>
                     ))}
                   </div>
@@ -624,13 +698,28 @@ function PainelUsuarios({ titulo, usuarios, equipes, formsUsuarios, salvandoId, 
                         </label>
                       ))}
                     </GrupoChecks>
-                    <GrupoChecks titulo="Equipes">
+                    <GrupoChecks titulo="Participa como voluntário">
                       {equipes.map((equipe) => (
                         <label key={equipe.id} className="flex items-center gap-2 text-sm font-semibold text-gray-700">
                           <input type="checkbox" checked={form.equipeIds.includes(equipe.id)} onChange={() => onAlternarEquipe(usuario.id, equipe.id)} />
                           {equipe.nome}
                         </label>
                       ))}
+                    </GrupoChecks>
+                    <GrupoChecks titulo="Lidera equipe">
+                      {equipes.map((equipe) => (
+                        <label key={equipe.id} className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                          <input
+                            type="checkbox"
+                            checked={(form.liderEquipeIds || []).includes(equipe.id)}
+                            onChange={() => onAlternarLiderEquipe(usuario.id, equipe.id)}
+                          />
+                          {equipe.nome}
+                        </label>
+                      ))}
+                      <p className="sm:col-span-2 text-xs leading-5 text-gray-500">
+                        O acesso de líder é aplicado automaticamente apenas para as equipes marcadas aqui.
+                      </p>
                     </GrupoChecks>
                   </div>
                   <div className="flex items-end">
@@ -792,22 +881,143 @@ function PainelNotificacao({ equipes, usuarios, formAviso, salvandoId, onSubmit,
   );
 }
 
-function PainelEscalas({ equipes, recorrentesPorEquipe, esporadicas, formRecorrentes, formEsporadica, salvandoId, onAlterarRecorrente, onSalvarRecorrente, onChangeEsporadica, onAlternarEquipe, onCriarEsporadica }) {
+function PainelEscalas({
+  equipes,
+  recorrentes,
+  filtroRecorrente,
+  buscaEscalas,
+  ordemEscalas,
+  escalaEditandoId,
+  esporadicas,
+  formRecorrentes,
+  formEsporadica,
+  salvandoId,
+  onAlterarRecorrente,
+  onSalvarRecorrente,
+  onFiltroRecorrente,
+  onBuscaEscalas,
+  onOrdemEscalas,
+  onEditarEscala,
+  onChangeEsporadica,
+  onAlternarEquipe,
+  onCriarEsporadica,
+}) {
+  const filtroAtual = filtrosRecorrentes.find((item) => item.value === filtroRecorrente) || filtrosRecorrentes[0];
+
   return (
-    <section className="mt-5 grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
+    <section className="mt-5 grid gap-5 xl:grid-cols-[1.25fr_0.75fr]">
       <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
         <div className="border-b border-gray-100 px-5 py-4">
-          <h2 className="text-lg font-bold text-gray-950">Escalas recorrentes</h2>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <h2 className="text-lg font-bold text-gray-950">Gerenciar escalas recorrentes</h2>
+              <p className="mt-1 text-sm text-gray-500">Edite as escalas fixas filtrando por domingo ou sábado específico.</p>
+            </div>
+            <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1">
+              <button
+                type="button"
+                onClick={() => onOrdemEscalas('equipe')}
+                className={`rounded-md px-3 py-1.5 text-xs font-bold transition ${ordemEscalas === 'equipe' ? 'bg-gray-950 text-white' : 'text-gray-600 hover:bg-white'}`}
+              >
+                Equipe
+              </button>
+              <button
+                type="button"
+                onClick={() => onOrdemEscalas('titulo')}
+                className={`rounded-md px-3 py-1.5 text-xs font-bold transition ${ordemEscalas === 'titulo' ? 'bg-gray-950 text-white' : 'text-gray-600 hover:bg-white'}`}
+              >
+                Título
+              </button>
+              <button
+                type="button"
+                onClick={() => onOrdemEscalas('horario')}
+                className={`rounded-md px-3 py-1.5 text-xs font-bold transition ${ordemEscalas === 'horario' ? 'bg-gray-950 text-white' : 'text-gray-600 hover:bg-white'}`}
+              >
+                Horário
+              </button>
+            </div>
+          </div>
         </div>
-        <div className="space-y-5 p-5">
-          {recorrentesPorEquipe.map(({ equipe, itens }) => (
-            <div key={equipe}>
-              <h3 className="mb-2 text-sm font-bold uppercase tracking-[0.14em] text-gray-500">{equipe}</h3>
-              <div className="space-y-2">
-                {itens.map((escala) => {
-                  const form = formRecorrentes[escala.id] || {};
-                  return (
-                    <div key={escala.id} className="grid gap-2 rounded-md border border-gray-200 bg-gray-50 p-3 lg:grid-cols-[1.2fr_0.8fr_0.8fr_0.7fr_auto] lg:items-end">
+
+        <div className="space-y-4 p-5">
+          <div className="flex flex-wrap gap-2">
+            {filtrosRecorrentes.map((filtro) => (
+              <button
+                key={filtro.value}
+                type="button"
+                onClick={() => onFiltroRecorrente(filtro.value)}
+                className={`rounded-md border px-3 py-2 text-sm font-bold transition ${
+                  filtroRecorrente === filtro.value
+                    ? 'border-dourado-700 bg-dourado-700 text-white'
+                    : 'border-gray-200 bg-gray-50 text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                {filtro.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-center">
+            <label className="relative block">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <input
+                value={buscaEscalas}
+                onChange={(event) => onBuscaEscalas(event.target.value)}
+                className="block w-full rounded-md border border-gray-200 bg-white py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
+                placeholder="Pesquisar por equipe, título ou voluntário"
+              />
+            </label>
+            <span className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-600">
+              {recorrentes.length} escala(s) em {filtroAtual.label}
+            </span>
+          </div>
+
+          <div className="space-y-3">
+            {recorrentes.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-8 text-center text-sm text-gray-500">
+                Nenhuma escala encontrada para esse filtro.
+              </div>
+            ) : recorrentes.map((escala) => {
+              const form = formRecorrentes[escala.id] || {};
+              const editando = escalaEditandoId === escala.id;
+
+              return (
+                <div key={escala.id} className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded border border-dourado-200 bg-dourado-50 px-2 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-dourado-700">
+                          {escala.equipe?.nome || 'Sem equipe'}
+                        </span>
+                        <span className="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-gray-500">
+                          {filtroAtual.label}
+                        </span>
+                      </div>
+                      <h3 className="mt-3 text-base font-bold text-gray-950">{escala.titulo || 'Escala sem título'}</h3>
+                      <p className="mt-1 text-sm text-gray-500">{formatarData(escala.dataHora)}</p>
+                      <div className="mt-3 flex flex-wrap gap-1.5">
+                        {(escala.voluntarios || []).length === 0 ? (
+                          <span className="text-xs text-gray-500">Nenhum voluntário atribuído.</span>
+                        ) : escala.voluntarios.map((item) => (
+                          <span key={item.id} className="inline-flex items-baseline gap-1 rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700">
+                            <strong className="font-semibold">{item.usuario?.nomeCompleto}</strong>
+                            {item.usuario?.telefone && <span className="text-[11px] text-gray-400">{item.usuario.telefone}</span>}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => onEditarEscala(editando ? null : escala.id)}
+                      className="inline-flex items-center justify-center rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
+                    >
+                      {editando ? 'Fechar edição' : 'Editar'}
+                    </button>
+                  </div>
+
+                  {editando && (
+                    <div className="mt-4 grid gap-3 rounded-lg border border-gray-200 bg-white p-4 lg:grid-cols-[1.3fr_0.8fr_0.8fr_0.7fr_auto] lg:items-end">
                       <Campo label="Título" value={form.titulo || ''} onChange={(value) => onAlterarRecorrente(escala.id, 'titulo', value)} />
                       <Select label="Dia" value={form.diaSemana ?? 0} options={dias} onChange={(value) => onAlterarRecorrente(escala.id, 'diaSemana', Number(value))} />
                       <Select label="Fim de semana" value={form.semanaMes || 1} options={semanas.map((semana) => ({ value: semana, label: `${semana}º` }))} onChange={(value) => onAlterarRecorrente(escala.id, 'semanaMes', Number(value))} />
@@ -817,13 +1027,14 @@ function PainelEscalas({ equipes, recorrentesPorEquipe, esporadicas, formRecorre
                         Salvar
                       </button>
                     </div>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
+
       <div className="space-y-5">
         <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
           <div className="border-b border-gray-100 px-5 py-4">

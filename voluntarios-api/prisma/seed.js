@@ -156,6 +156,11 @@ async function main() {
             .filter(Boolean)
             .map((usuario) => ({ id: usuario.id })),
         },
+        lideres: {
+          set: nome === 'Filmagem' && usuariosPorEmail.get('lider@teste.com')
+            ? [{ id: usuariosPorEmail.get('lider@teste.com').id }]
+            : [],
+        },
       },
     });
   }
