@@ -87,6 +87,8 @@ function formatarEquipe(equipe, usuario) {
       voluntarios: escala.voluntarios.map((item) => ({
         id: item.id,
         status: item.status,
+        justificativaSubstituicao: item.justificativaSubstituicao,
+        substituto: item.substituto,
         usuario: {
           id: item.usuario.id,
           nomeCompleto: item.usuario.nomeCompleto,
@@ -293,7 +295,7 @@ router.post('/:equipeId/escalas', autenticar, async (req, res) => {
       return res.status(403).json({ erro: 'Você não pode gerenciar esta equipe.' });
     }
 
-    const { titulo, dataHora, voluntarioIds = [] } = req.body ?? {};
+    const { titulo, dataHora, voluntarioIds = [], substitutoIds = [] } = req.body ?? {};
 
     if (!dataHora) {
       return res.status(400).json({ erro: 'Data e horário da escala são obrigatórios.' });
@@ -310,6 +312,7 @@ router.post('/:equipeId/escalas', autenticar, async (req, res) => {
         voluntarios: {
           create: voluntarioIds.map((usuarioId) => ({
             usuarioId,
+            substituto: substitutoIds.includes(usuarioId),
             atribuidoPorId: req.usuarioAutenticado.id,
           })),
         },
@@ -337,7 +340,7 @@ router.patch('/:equipeId/escalas/:escalaId', autenticar, async (req, res) => {
       return res.status(403).json({ erro: 'Você não pode gerenciar esta equipe.' });
     }
 
-    const { titulo, dataHora, voluntarioIds = [] } = req.body ?? {};
+    const { titulo, dataHora, voluntarioIds = [], substitutoIds = [] } = req.body ?? {};
     const data = dataHora ? new Date(dataHora) : null;
 
     const escalaExistente = await prisma.escala.findFirst({
@@ -380,10 +383,13 @@ router.patch('/:equipeId/escalas/:escalaId', autenticar, async (req, res) => {
             escalaId: req.params.escalaId,
           },
         },
-        update: {},
+        update: {
+          substituto: substitutoIds.includes(usuarioId),
+        },
         create: {
           usuarioId,
           escalaId: req.params.escalaId,
+          substituto: substitutoIds.includes(usuarioId),
           atribuidoPorId: req.usuarioAutenticado.id,
         },
       });

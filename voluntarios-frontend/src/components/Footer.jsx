@@ -5,6 +5,9 @@ export function Footer() {
         <p className="text-sm text-gray-500">
           &copy; {new Date().getFullYear()} MCom. Todos os direitos reservados.
         </p>
+        <p className="text-sm text-gray-500">
+          Desenvolvido por <a href="https://www.linkedin.com/in/kevyntargino/" target="_blank" rel="noopener noreferrer" className="text-dourado-600 hover:text-dourado-800 transition-colors">Kevyn Targino</a>
+        </p>
       </div>
     </footer>
   );

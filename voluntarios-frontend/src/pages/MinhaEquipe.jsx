@@ -9,6 +9,7 @@ import {
   Trash2,
   UserPlus,
   UsersRound,
+  RefreshCcw,
 } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import { Footer } from '../components/Footer';
@@ -28,6 +29,7 @@ const formEscalaInicial = {
   titulo: '',
   dataHora: '',
   voluntarioIds: [],
+  substitutoIds: [],
 };
 
 function toDatetimeLocal(dataHora) {
@@ -187,6 +189,7 @@ export default function MinhaEquipe() {
           titulo: formEscala.titulo,
           dataHora: formEscala.dataHora,
           voluntarioIds: formEscala.voluntarioIds,
+          substitutoIds: formEscala.substitutoIds,
         }),
       });
 
@@ -204,6 +207,7 @@ export default function MinhaEquipe() {
       titulo: escala.titulo || '',
       dataHora: toDatetimeLocal(escala.dataHora),
       voluntarioIds: escala.voluntarios.map((item) => item.usuario.id),
+      substitutoIds: escala.voluntarios.filter((item) => item.substituto).map((item) => item.usuario.id),
     });
   };
 
@@ -230,8 +234,35 @@ export default function MinhaEquipe() {
       voluntarioIds: atual.voluntarioIds.includes(voluntarioId)
         ? atual.voluntarioIds.filter((id) => id !== voluntarioId)
         : [...atual.voluntarioIds, voluntarioId],
+      substitutoIds: atual.voluntarioIds.includes(voluntarioId)
+        ? atual.substitutoIds.filter((id) => id !== voluntarioId)
+        : atual.substitutoIds,
     }));
   };
+
+  const alternarSubstituto = (voluntarioId) => {
+    setFormEscala((atual) => ({
+      ...atual,
+      voluntarioIds: atual.voluntarioIds.includes(voluntarioId)
+        ? atual.voluntarioIds
+        : [...atual.voluntarioIds, voluntarioId],
+      substitutoIds: atual.substitutoIds.includes(voluntarioId)
+        ? atual.substitutoIds.filter((id) => id !== voluntarioId)
+        : [...atual.substitutoIds, voluntarioId],
+    }));
+  };
+
+  const pedidosSubstituicao = useMemo(() => {
+    if (!equipeSelecionada) {
+      return [];
+    }
+
+    return equipeSelecionada.escalas.flatMap((escala) => (
+      escala.voluntarios
+        .filter((item) => item.status === 'PEDIU_SUBSTITUICAO')
+        .map((item) => ({ ...item, escala }))
+    ));
+  }, [equipeSelecionada]);
 
   const podeAcessar = usuario?.permissoes?.some((permissao) => ['LIDER_EQUIPE', 'ADMINISTRADOR'].includes(permissao));
 
@@ -291,6 +322,32 @@ export default function MinhaEquipe() {
         ) : equipeSelecionada ? (
           <div className="mt-5 grid gap-5 xl:grid-cols-[0.85fr_1.15fr]">
             <section className="space-y-5">
+              <Painel titulo="Pedidos de substituição" icone={RefreshCcw}>
+                {pedidosSubstituicao.length === 0 ? (
+                  <p className="text-sm text-gray-500">Nenhum pedido de substituição pendente.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {pedidosSubstituicao.map((pedido) => (
+                      <div key={pedido.id} className="rounded-md border border-sky-100 bg-sky-50 p-3">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <p className="text-sm font-bold text-gray-950">{pedido.usuario.nomeCompleto}</p>
+                            <p className="mt-1 text-xs font-semibold text-sky-700">{pedido.escala.titulo || 'Escala sem título'} - {formatarData(pedido.escala.dataHora)}</p>
+                          </div>
+                          <button type="button" onClick={() => editarEscala(pedido.escala)} className="inline-flex items-center gap-2 rounded-md bg-sky-700 px-3 py-2 text-sm font-semibold text-white transition hover:bg-sky-800">
+                            <Pencil size={15} />
+                            Editar escala
+                          </button>
+                        </div>
+                        <p className="mt-3 rounded-md bg-white px-3 py-2 text-sm text-gray-700">
+                          {pedido.justificativaSubstituicao || 'Sem justificativa informada.'}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Painel>
+
               <Painel titulo="Voluntários" icone={UsersRound}>
                 <div className="space-y-2">
                   {equipeSelecionada.voluntarios.map((voluntario) => (
@@ -345,6 +402,27 @@ export default function MinhaEquipe() {
                             onChange={() => alternarVoluntarioNaEscala(voluntario.id)}
                           />
                           {voluntario.nomeCompleto}
+                          {formEscala.substitutoIds.includes(voluntario.id) && (
+                            <span className="ml-auto rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[11px] font-semibold text-violet-700">
+                              Substituto
+                            </span>
+                          )}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="mb-2 text-sm font-semibold text-gray-700">Marcar como substituto</p>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {equipeSelecionada.voluntarios.map((voluntario) => (
+                        <label key={voluntario.id} className="flex items-center gap-2 rounded-md border border-violet-100 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-800">
+                          <input
+                            type="checkbox"
+                            checked={formEscala.substitutoIds.includes(voluntario.id)}
+                            onChange={() => alternarSubstituto(voluntario.id)}
+                          />
+                          {voluntario.nomeCompleto}
                         </label>
                       ))}
                     </div>
@@ -377,6 +455,11 @@ export default function MinhaEquipe() {
                           <p className="mt-2 text-xs text-gray-600">
                             {escala.voluntarios.length} voluntário(s): {escala.voluntarios.map((item) => item.usuario.nomeCompleto).join(', ') || 'ninguém escalado'}
                           </p>
+                          {escala.voluntarios.some((item) => item.substituto) && (
+                            <p className="mt-2 text-xs font-semibold text-violet-700">
+                              Substituto(s): {escala.voluntarios.filter((item) => item.substituto).map((item) => item.usuario.nomeCompleto).join(', ')}
+                            </p>
+                          )}
                         </div>
                         <div className="flex gap-2">
                           <button type="button" onClick={() => editarEscala(escala)} className="rounded-md border border-gray-200 bg-white p-2 text-gray-700 transition hover:bg-gray-100" title="Editar escala">

@@ -38,6 +38,8 @@ function formatarEscala(voluntarioEscala) {
   return {
     id: voluntarioEscala.id,
     status: voluntarioEscala.status,
+    justificativaSubstituicao: voluntarioEscala.justificativaSubstituicao,
+    substituto: voluntarioEscala.substituto,
     criadoEm: voluntarioEscala.criadoEm,
     atualizadoEm: voluntarioEscala.atualizadoEm,
     escala: {
@@ -65,12 +67,16 @@ function formatarEscalaCompleta(escala, usuarioId) {
     voluntarios: escala.voluntarios.map((item) => ({
       id: item.id,
       status: item.status,
+      justificativaSubstituicao: item.justificativaSubstituicao,
+      substituto: item.substituto,
       usuario: item.usuario,
     })),
     minhaParticipacao: minhaParticipacao
-      ? {
+        ? {
           id: minhaParticipacao.id,
           status: minhaParticipacao.status,
+          justificativaSubstituicao: minhaParticipacao.justificativaSubstituicao,
+          substituto: minhaParticipacao.substituto,
         }
       : null,
   };
@@ -175,11 +181,15 @@ router.get('/minhas', autenticar, async (req, res) => {
 
 router.patch('/:id/status', autenticar, async (req, res) => {
   try {
-    const { status } = req.body ?? {};
+    const { status, justificativaSubstituicao } = req.body ?? {};
     const statusPermitidos = ['PENDENTE', 'CONFIRMADA', 'PEDIU_SUBSTITUICAO'];
 
     if (!statusPermitidos.includes(status)) {
       return res.status(400).json({ erro: 'Status informado é inválido.' });
+    }
+
+    if (status === 'PEDIU_SUBSTITUICAO' && (!justificativaSubstituicao || String(justificativaSubstituicao).trim().length < 5)) {
+      return res.status(400).json({ erro: 'Informe uma justificativa para solicitar substituição.' });
     }
 
     const escalaExistente = await prisma.voluntarioEscala.findFirst({
@@ -200,7 +210,12 @@ router.patch('/:id/status', autenticar, async (req, res) => {
       where: {
         id: escalaExistente.id,
       },
-      data: { status },
+      data: {
+        status,
+        justificativaSubstituicao: status === 'PEDIU_SUBSTITUICAO'
+          ? String(justificativaSubstituicao).trim()
+          : null,
+      },
       include: {
         escala: {
           include: {

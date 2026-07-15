@@ -193,12 +193,6 @@ export default function Login() {
           </div>
         </div>
 
-        {/* Link Área Administrativa */}
-        <div className="mt-6 text-center">
-          <button type="button" className="text-xs font-semibold text-gray-400 hover:text-black transition-colors uppercase tracking-widest">
-            Acesso Administrativo
-          </button>
-        </div>
       </div>
     </div>
   );
