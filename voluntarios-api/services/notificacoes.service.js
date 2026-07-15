@@ -1,4 +1,29 @@
+import webpush from 'web-push';
+
 const AREAS_MCOM = ['Midia', 'Iluminação', 'Filmagem', 'Fotografia', 'DTV', 'Direção', 'Redes Sociais'];
+
+let webPushConfigurado = false;
+
+function configurarWebPush() {
+  if (webPushConfigurado) {
+    return true;
+  }
+
+  const publicKey = process.env.VAPID_PUBLIC_KEY;
+  const privateKey = process.env.VAPID_PRIVATE_KEY;
+
+  if (!publicKey || !privateKey) {
+    return false;
+  }
+
+  webpush.setVapidDetails(
+    process.env.VAPID_SUBJECT || 'mailto:admin@mcom.local',
+    publicKey,
+    privateKey,
+  );
+  webPushConfigurado = true;
+  return true;
+}
 
 function getHorarioBase(dataHora) {
   const data = dataHora ? new Date(dataHora) : null;
@@ -81,10 +106,75 @@ export async function criarNotificacoes(prisma, notificacoes) {
     return { count: 0 };
   }
 
-  return prisma.notificacao.createMany({
-    data: dados,
-    skipDuplicates: true,
+  let count = 0;
+
+  for (const item of dados) {
+    try {
+      const notificacao = await prisma.notificacao.create({ data: item });
+      count += 1;
+      enviarPushParaUsuario(prisma, notificacao).catch((erro) => {
+        console.warn('[WARN] Falha ao enviar push notification:', erro.message);
+      });
+    } catch (erro) {
+      if (erro.code !== 'P2002') {
+        throw erro;
+      }
+    }
+  }
+
+  return { count };
+}
+
+export async function enviarPushParaUsuario(prisma, notificacao) {
+  if (!configurarWebPush()) {
+    return { count: 0, skipped: true };
+  }
+
+  const subscriptions = await prisma.webPushSubscription.findMany({
+    where: {
+      usuarioId: notificacao.usuarioId,
+    },
   });
+
+  if (subscriptions.length === 0) {
+    return { count: 0 };
+  }
+
+  const payload = JSON.stringify({
+    title: notificacao.titulo,
+    body: notificacao.mensagem,
+    url: notificacao.link || '/',
+    tag: notificacao.chave,
+    notificationId: notificacao.id,
+  });
+
+  let enviados = 0;
+
+  await Promise.all(subscriptions.map(async (subscription) => {
+    try {
+      await webpush.sendNotification({
+        endpoint: subscription.endpoint,
+        keys: {
+          p256dh: subscription.p256dh,
+          auth: subscription.auth,
+        },
+      }, payload);
+      enviados += 1;
+    } catch (erro) {
+      if ([404, 410].includes(erro.statusCode)) {
+        await prisma.webPushSubscription.delete({
+          where: {
+            endpoint: subscription.endpoint,
+          },
+        }).catch(() => {});
+        return;
+      }
+
+      throw erro;
+    }
+  }));
+
+  return { count: enviados };
 }
 
 export async function notificarAviso(prisma, { aviso, usuarioIds }) {

@@ -74,6 +74,14 @@ function formatarNotificacao(notificacao) {
   };
 }
 
+function extrairChavesSubscription(subscription) {
+  const endpoint = typeof subscription?.endpoint === 'string' ? subscription.endpoint : '';
+  const p256dh = typeof subscription?.keys?.p256dh === 'string' ? subscription.keys.p256dh : '';
+  const auth = typeof subscription?.keys?.auth === 'string' ? subscription.keys.auth : '';
+
+  return { endpoint, p256dh, auth };
+}
+
 router.get('/', autenticar, async (req, res) => {
   try {
     await gerarComThrottle();
@@ -98,6 +106,67 @@ router.get('/', autenticar, async (req, res) => {
     });
   } catch (erro) {
     console.error('[ERRO LOG] GET /api/notificacoes:', erro);
+    return res.status(500).json({ erro: 'Erro interno no servidor. Tente novamente mais tarde.' });
+  }
+});
+
+router.get('/push/public-key', autenticar, async (req, res) => {
+  return res.status(200).json({
+    publicKey: process.env.VAPID_PUBLIC_KEY || '',
+    habilitado: Boolean(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY),
+  });
+});
+
+router.post('/push/subscribe', autenticar, async (req, res) => {
+  try {
+    const { endpoint, p256dh, auth } = extrairChavesSubscription(req.body?.subscription);
+
+    if (!endpoint || !p256dh || !auth) {
+      return res.status(400).json({ erro: 'Assinatura push inválida.' });
+    }
+
+    await prisma.webPushSubscription.upsert({
+      where: { endpoint },
+      update: {
+        usuarioId: req.usuarioAutenticado.id,
+        p256dh,
+        auth,
+        userAgent: req.headers['user-agent'] || null,
+      },
+      create: {
+        usuarioId: req.usuarioAutenticado.id,
+        endpoint,
+        p256dh,
+        auth,
+        userAgent: req.headers['user-agent'] || null,
+      },
+    });
+
+    return res.status(201).json({ mensagem: 'Notificações push ativadas neste dispositivo.' });
+  } catch (erro) {
+    console.error('[ERRO LOG] POST /api/notificacoes/push/subscribe:', erro);
+    return res.status(500).json({ erro: 'Erro interno no servidor. Tente novamente mais tarde.' });
+  }
+});
+
+router.delete('/push/subscribe', autenticar, async (req, res) => {
+  try {
+    const { endpoint } = extrairChavesSubscription(req.body?.subscription);
+
+    if (!endpoint) {
+      return res.status(400).json({ erro: 'Assinatura push inválida.' });
+    }
+
+    await prisma.webPushSubscription.deleteMany({
+      where: {
+        endpoint,
+        usuarioId: req.usuarioAutenticado.id,
+      },
+    });
+
+    return res.status(200).json({ mensagem: 'Notificações push desativadas neste dispositivo.' });
+  } catch (erro) {
+    console.error('[ERRO LOG] DELETE /api/notificacoes/push/subscribe:', erro);
     return res.status(500).json({ erro: 'Erro interno no servidor. Tente novamente mais tarde.' });
   }
 });

@@ -91,6 +91,7 @@ model Usuario {
   avisosRecebidos   AvisoDestinatario[]
   avisosVisualizados AvisoVisualizacao[]
   notificacoes      Notificacao[]
+  pushSubscriptions WebPushSubscription[]
   logsAtividade     LogAuditoria[]          @relation("UsuarioAuditoria")
   tokensSenha       TokenRedefinicaoSenha[]
 
@@ -275,6 +276,21 @@ model Notificacao {
 
   @@index([usuarioId, visualizada, criadoEm])
   @@map("notificacoes")
+}
+
+model WebPushSubscription {
+  id        String   @id @default(uuid()) @db.Uuid
+  usuarioId String   @map("usuario_id") @db.Uuid
+  usuario   Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh     String
+  auth      String
+  userAgent String?  @map("user_agent") @db.Text
+  criadoEm  DateTime @default(now()) @map("criado_em")
+  atualizadoEm DateTime @updatedAt @map("atualizado_em")
+
+  @@index([usuarioId])
+  @@map("web_push_subscriptions")
 }
 
 // ==========================================

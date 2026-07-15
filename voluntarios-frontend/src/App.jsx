@@ -10,6 +10,9 @@ import AdminEscalas from './pages/AdminEscalas';
 import Avisos from './pages/Avisos';
 import Manuais from './pages/Manuais';
 import { Redirect } from './components/Redirect';
+import { MobileBottomNav } from './components/MobileBottomNav';
+import { PwaInstallPrompt } from './components/PwaInstallPrompt';
+import { PushNotificationManager } from './components/PushNotificationManager';
 
 function App() {
   const [location, setLocation] = useState(() => ({
@@ -78,31 +81,30 @@ function AppRouter() {
     return <Redirect to="/" replace />;
   }
 
+  let page = <Home />;
+
   if (pathname === '/perfil') {
-    return <Perfil />;
+    page = <Perfil />;
+  } else if (pathname === '/escalas') {
+    page = <Escalas />;
+  } else if (pathname === '/minha-equipe') {
+    page = <MinhaEquipe />;
+  } else if (pathname === '/admin' || pathname.startsWith('/admin/')) {
+    page = <AdminEscalas />;
+  } else if (pathname === '/avisos') {
+    page = <Avisos />;
+  } else if (pathname === '/manuais') {
+    page = <Manuais />;
   }
 
-  if (pathname === '/escalas') {
-    return <Escalas />;
-  }
-
-  if (pathname === '/minha-equipe') {
-    return <MinhaEquipe />;
-  }
-
-  if (pathname === '/admin' || pathname.startsWith('/admin/')) {
-    return <AdminEscalas />;
-  }
-
-  if (pathname === '/avisos') {
-    return <Avisos />;
-  }
-
-  if (pathname === '/manuais') {
-    return <Manuais />;
-  }
-
-  return <Home />;
+  return (
+    <>
+      {page}
+      <MobileBottomNav />
+      <PwaInstallPrompt />
+      <PushNotificationManager />
+    </>
+  );
 }
 
 export default App;
