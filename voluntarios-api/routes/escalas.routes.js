@@ -52,6 +52,88 @@ function formatarEscala(voluntarioEscala) {
   };
 }
 
+function formatarEscalaCompleta(escala, usuarioId) {
+  const minhaParticipacao = escala.voluntarios.find((item) => item.usuarioId === usuarioId) || null;
+
+  return {
+    id: escala.id,
+    titulo: escala.titulo,
+    tipo: escala.tipo,
+    diaSemana: escala.diaSemana,
+    dataHora: escala.dataHora,
+    equipe: escala.equipe,
+    voluntarios: escala.voluntarios.map((item) => ({
+      id: item.id,
+      status: item.status,
+      usuario: item.usuario,
+    })),
+    minhaParticipacao: minhaParticipacao
+      ? {
+          id: minhaParticipacao.id,
+          status: minhaParticipacao.status,
+        }
+      : null,
+  };
+}
+
+router.get('/', autenticar, async (req, res) => {
+  try {
+    const visao = req.query.visao === 'minhas' ? 'minhas' : 'todas';
+    const areasMCom = ['Midia', 'Iluminação', 'Filmagem', 'Fotografia', 'DTV', 'Direção', 'Redes Sociais'];
+
+    const escalas = await prisma.escala.findMany({
+      where: {
+        equipe: {
+          nome: {
+            in: areasMCom,
+          },
+        },
+        voluntarios: visao === 'minhas'
+          ? {
+              some: {
+                usuarioId: req.usuarioAutenticado.id,
+              },
+            }
+          : undefined,
+      },
+      include: {
+        equipe: {
+          select: {
+            id: true,
+            nome: true,
+          },
+        },
+        voluntarios: {
+          include: {
+            usuario: {
+              select: {
+                id: true,
+                nomeCompleto: true,
+                email: true,
+                urlFoto: true,
+              },
+            },
+          },
+          orderBy: {
+            criadoEm: 'asc',
+          },
+        },
+      },
+      orderBy: [
+        { dataHora: 'asc' },
+        { equipe: { nome: 'asc' } },
+      ],
+    });
+
+    return res.status(200).json({
+      escalas: escalas.map((escala) => formatarEscalaCompleta(escala, req.usuarioAutenticado.id)),
+    });
+  } catch (erro) {
+    console.error('[ERRO LOG] GET /api/escalas:', erro);
+    return res.status(500).json({ erro: 'Erro interno no servidor. Tente novamente mais tarde.' });
+  }
+});
+
 router.get('/minhas', autenticar, async (req, res) => {
   try {
     const escalas = await prisma.voluntarioEscala.findMany({
@@ -100,10 +182,23 @@ router.patch('/:id/status', autenticar, async (req, res) => {
       return res.status(400).json({ erro: 'Status informado é inválido.' });
     }
 
-    const escalaAtualizada = await prisma.voluntarioEscala.update({
+    const escalaExistente = await prisma.voluntarioEscala.findFirst({
       where: {
         id: req.params.id,
         usuarioId: req.usuarioAutenticado.id,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!escalaExistente) {
+      return res.status(404).json({ erro: 'Escala não encontrada para este usuário.' });
+    }
+
+    const escalaAtualizada = await prisma.voluntarioEscala.update({
+      where: {
+        id: escalaExistente.id,
       },
       data: { status },
       include: {
