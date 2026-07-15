@@ -53,6 +53,7 @@ const formEscalaInicial = {
 };
 const formAvisoInicial = { titulo: '', mensagem: '', dataAviso: '', publico: 'TODOS', equipeIds: [], usuarioIds: [] };
 const formEquipeInicial = { nome: '' };
+const formNovoVoluntarioInicial = { nomeCompleto: '', email: '', telefone: '', equipeIds: [] };
 const filtrosTipoEscala = [
   { value: 'TODAS', label: 'Todas' },
   { value: 'RECORRENTE', label: 'Recorrentes' },
@@ -99,6 +100,7 @@ export default function AdminEscalas() {
   const [formRecorrentes, setFormRecorrentes] = useState({});
   const [formEscala, setFormEscala] = useState(formEscalaInicial);
   const [formAviso, setFormAviso] = useState(formAvisoInicial);
+  const [formNovoVoluntario, setFormNovoVoluntario] = useState(formNovoVoluntarioInicial);
   const getPainelPelaRota = useCallback(() => {
     if (pathname === '/admin/voluntarios') return 'voluntarios';
     if (pathname === '/admin/lideres') return 'lideres';
@@ -119,6 +121,7 @@ export default function AdminEscalas() {
   const [ordemEscalas, setOrdemEscalas] = useState('proximas');
   const [escalaEditandoId, setEscalaEditandoId] = useState(null);
   const [mostrarFormEscala, setMostrarFormEscala] = useState(false);
+  const [mostrarCadastroVoluntario, setMostrarCadastroVoluntario] = useState(false);
   const [usuarioModal, setUsuarioModal] = useState(null);
   const [carregando, setCarregando] = useState(true);
   const [salvandoId, setSalvandoId] = useState(null);
@@ -341,6 +344,106 @@ export default function AdminEscalas() {
     }
   };
 
+  const alternarEquipeNovoVoluntario = (equipeId) => {
+    setFormNovoVoluntario((atual) => ({
+      ...atual,
+      equipeIds: atual.equipeIds.includes(equipeId)
+        ? atual.equipeIds.filter((id) => id !== equipeId)
+        : [...atual.equipeIds, equipeId],
+    }));
+  };
+
+  const cadastrarVoluntarioAdmin = async (event) => {
+    event.preventDefault();
+    setErro('');
+    setSucesso('');
+    setSalvandoId('novo-voluntario');
+
+    try {
+      const resposta = await fetch(buildApiUrl('/api/admin/usuarios'), {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(formNovoVoluntario),
+      });
+      const dados = await resposta.json();
+
+      if (!resposta.ok) throw new Error(dados.erro || 'Não foi possível cadastrar o voluntário.');
+
+      setSucesso(dados.senhaTemporaria
+        ? `${dados.mensagem || 'Voluntário cadastrado.'} Senha temporária: ${dados.senhaTemporaria}`
+        : dados.mensagem || 'Voluntário cadastrado.');
+      setFormNovoVoluntario(formNovoVoluntarioInicial);
+      setMostrarCadastroVoluntario(false);
+      await carregarDados();
+    } catch (error) {
+      setErro(error.message || 'Não foi possível cadastrar o voluntário.');
+    } finally {
+      setSalvandoId(null);
+    }
+  };
+
+  const atualizarVinculoEquipe = async ({ usuarioId, equipeId, tipo, adicionar }) => {
+    const usuarioAtual = usuarios.find((item) => item.id === usuarioId);
+
+    if (!usuarioAtual) {
+      setErro('Usuário não encontrado para atualizar vínculo.');
+      return;
+    }
+
+    const alternarId = (lista, id, deveAdicionar) => {
+      const ids = new Set(lista);
+      if (deveAdicionar) ids.add(id);
+      else ids.delete(id);
+      return Array.from(ids);
+    };
+    const equipeIdsAtuais = usuarioAtual.equipes?.map((equipe) => equipe.id) || [];
+    const liderEquipeIdsAtuais = usuarioAtual.equipesLideradas?.map((equipe) => equipe.id) || [];
+    const proximosEquipeIds = tipo === 'voluntario'
+      ? alternarId(equipeIdsAtuais, equipeId, adicionar)
+      : equipeIdsAtuais;
+    const proximosLiderEquipeIds = tipo === 'lider'
+      ? alternarId(liderEquipeIdsAtuais, equipeId, adicionar)
+      : liderEquipeIdsAtuais;
+    const permissoesBase = new Set(usuarioAtual.permissoes || []);
+
+    if (tipo === 'voluntario' && adicionar) {
+      permissoesBase.add('VOLUNTARIO');
+    }
+
+    if (tipo === 'lider' && adicionar) {
+      permissoesBase.add('LIDER_EQUIPE');
+    }
+
+    const chaveSalvando = `${tipo}-${usuarioId}-${equipeId}`;
+    setErro('');
+    setSucesso('');
+    setSalvandoId(chaveSalvando);
+
+    try {
+      const resposta = await fetch(buildApiUrl(`/api/admin/usuarios/${usuarioId}`), {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nomeCompleto: usuarioAtual.nomeCompleto,
+          telefone: usuarioAtual.telefone || '',
+          permissoes: Array.from(permissoesBase),
+          equipeIds: proximosEquipeIds,
+          liderEquipeIds: proximosLiderEquipeIds,
+        }),
+      });
+      const dados = await resposta.json();
+
+      if (!resposta.ok) throw new Error(dados.erro || 'Não foi possível atualizar o vínculo.');
+
+      setSucesso(dados.mensagem || 'Vínculo atualizado com sucesso.');
+      await carregarDados();
+    } catch (error) {
+      setErro(error.message || 'Não foi possível atualizar o vínculo.');
+    } finally {
+      setSalvandoId(null);
+    }
+  };
+
   const criarEquipe = async (event) => {
     event.preventDefault();
     setErro('');
@@ -493,19 +596,20 @@ export default function AdminEscalas() {
 
   if (!isAdmin) {
     return (
-      <div className="min-h-screen bg-[#f7f4ed] text-gray-900">
+      <div className="flex min-h-screen flex-col bg-[#f7f4ed] text-gray-900">
         <Navbar />
-        <main className="mx-auto max-w-4xl px-4 py-10">
+        <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-10">
           <div className="rounded-lg border border-red-100 bg-red-50 p-5 text-red-700">Acesso restrito a administradores.</div>
         </main>
+        <Footer />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#f7f4ed] text-gray-900">
+    <div className="flex min-h-screen flex-col bg-[#f7f4ed] text-gray-900">
       <Navbar />
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
         <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
@@ -569,12 +673,20 @@ export default function AdminEscalas() {
                 editandoUsuarioId={editandoUsuarioId}
                 onEditar={setEditandoUsuarioId}
                 onAbrirUsuario={setUsuarioModal}
+                permiteCadastrar={painelAberto === 'voluntarios'}
+                mostrarCadastro={mostrarCadastroVoluntario}
+                formNovoVoluntario={formNovoVoluntario}
+                onMostrarCadastro={setMostrarCadastroVoluntario}
+                onChangeNovoVoluntario={setFormNovoVoluntario}
+                onAlternarEquipeNovoVoluntario={alternarEquipeNovoVoluntario}
+                onCadastrarVoluntario={cadastrarVoluntarioAdmin}
               />
             )}
 
             {painelAberto === 'equipes' && (
               <PainelEquipes
                 equipes={equipes}
+                usuarios={usuarios}
                 equipeSelecionada={equipeSelecionada}
                 formEquipe={formEquipe}
                 salvandoId={salvandoId}
@@ -583,6 +695,7 @@ export default function AdminEscalas() {
                 onExcluirEquipe={excluirEquipe}
                 onSelecionarEquipe={setEquipeSelecionadaId}
                 onAbrirUsuario={setUsuarioModal}
+                onAtualizarVinculo={atualizarVinculoEquipe}
               />
             )}
 
@@ -705,7 +818,29 @@ function ProximaEscala({ escala, onAbrirUsuario }) {
   );
 }
 
-function PainelUsuarios({ titulo, usuarios, equipes, formsUsuarios, salvandoId, editandoUsuarioId, onEditar, onAlterar, onAlternarPermissao, onAlternarEquipe, onAlternarLiderEquipe, onSalvar, onExcluir, onAbrirUsuario }) {
+function PainelUsuarios({
+  titulo,
+  usuarios,
+  equipes,
+  formsUsuarios,
+  salvandoId,
+  editandoUsuarioId,
+  onEditar,
+  onAlterar,
+  onAlternarPermissao,
+  onAlternarEquipe,
+  onAlternarLiderEquipe,
+  onSalvar,
+  onExcluir,
+  onAbrirUsuario,
+  permiteCadastrar = false,
+  mostrarCadastro = false,
+  formNovoVoluntario = formNovoVoluntarioInicial,
+  onMostrarCadastro,
+  onChangeNovoVoluntario,
+  onAlternarEquipeNovoVoluntario,
+  onCadastrarVoluntario,
+}) {
   const [busca, setBusca] = useState('');
   const [equipeFiltro, setEquipeFiltro] = useState('TODAS');
   const [ordem, setOrdem] = useState('nome-asc');
@@ -774,7 +909,55 @@ function PainelUsuarios({ titulo, usuarios, equipes, formsUsuarios, salvandoId, 
             </select>
           </div>
         </div>
+        {permiteCadastrar && (
+          <div className="mt-4">
+            <button
+              type="button"
+              onClick={() => onMostrarCadastro((atual) => !atual)}
+              className="inline-flex items-center justify-center gap-2 rounded-md bg-gray-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-gray-800"
+            >
+              <Plus size={16} />
+              {mostrarCadastro ? 'Fechar cadastro' : 'Cadastrar voluntário'}
+            </button>
+          </div>
+        )}
       </div>
+      {permiteCadastrar && mostrarCadastro && (
+        <form onSubmit={onCadastrarVoluntario} className="grid gap-4 border-b border-gray-100 bg-gray-50 px-5 py-5 lg:grid-cols-2">
+          <Campo label="Nome completo" value={formNovoVoluntario.nomeCompleto} onChange={(value) => onChangeNovoVoluntario((atual) => ({ ...atual, nomeCompleto: value }))} />
+          <Campo label="E-mail" type="email" value={formNovoVoluntario.email} onChange={(value) => onChangeNovoVoluntario((atual) => ({ ...atual, email: value }))} />
+          <Campo label="Telefone" value={formNovoVoluntario.telefone} onChange={(value) => onChangeNovoVoluntario((atual) => ({ ...atual, telefone: value }))} />
+          <div className="lg:col-span-2">
+            <p className="mb-3 rounded-md border border-dourado-100 bg-dourado-50 px-3 py-2 text-sm font-semibold text-dourado-800">
+              A senha inicial será gerada automaticamente como NomeDoVoluntario123.
+            </p>
+            <GrupoChecks titulo="Equipes do voluntário">
+              {equipes.map((equipe) => (
+                <label key={equipe.id} className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                  <input type="checkbox" checked={formNovoVoluntario.equipeIds.includes(equipe.id)} onChange={() => onAlternarEquipeNovoVoluntario(equipe.id)} />
+                  {equipe.nome}
+                </label>
+              ))}
+            </GrupoChecks>
+          </div>
+          <div className="flex flex-wrap gap-2 lg:col-span-2">
+            <button disabled={salvandoId === 'novo-voluntario'} className="inline-flex items-center justify-center gap-2 rounded-md bg-gray-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-gray-800 disabled:opacity-60">
+              {salvandoId === 'novo-voluntario' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus size={16} />}
+              Adicionar voluntário
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onMostrarCadastro(false);
+                onChangeNovoVoluntario(formNovoVoluntarioInicial);
+              }}
+              className="rounded-md border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+            >
+              Cancelar
+            </button>
+          </div>
+        </form>
+      )}
       <div className="divide-y divide-gray-100">
         {usuariosFiltrados.length === 0 ? (
           <div className="px-5 py-10 text-center text-sm text-gray-500">
@@ -882,8 +1065,31 @@ function PainelUsuarios({ titulo, usuarios, equipes, formsUsuarios, salvandoId, 
   );
 }
 
-function PainelEquipes({ equipes, equipeSelecionada, formEquipe, salvandoId, onChangeEquipe, onCriarEquipe, onExcluirEquipe, onSelecionarEquipe, onAbrirUsuario }) {
+function PainelEquipes({ equipes, usuarios, equipeSelecionada, formEquipe, salvandoId, onChangeEquipe, onCriarEquipe, onExcluirEquipe, onSelecionarEquipe, onAbrirUsuario, onAtualizarVinculo }) {
   const equipeAtiva = equipeSelecionada || equipes[0] || null;
+  const [novoLiderId, setNovoLiderId] = useState('');
+  const [novoVoluntarioId, setNovoVoluntarioId] = useState('');
+  const lideresDisponiveis = useMemo(() => (
+    usuarios.filter((usuario) => !usuario.equipesLideradas?.some((equipe) => equipe.id === equipeAtiva?.id))
+  ), [equipeAtiva?.id, usuarios]);
+  const voluntariosDisponiveis = useMemo(() => (
+    usuarios.filter((usuario) => !usuario.equipes?.some((equipe) => equipe.id === equipeAtiva?.id))
+  ), [equipeAtiva?.id, usuarios]);
+
+  useEffect(() => {
+    setNovoLiderId('');
+    setNovoVoluntarioId('');
+  }, [equipeAtiva?.id]);
+
+  const adicionarLider = () => {
+    if (!novoLiderId || !equipeAtiva) return;
+    onAtualizarVinculo({ usuarioId: novoLiderId, equipeId: equipeAtiva.id, tipo: 'lider', adicionar: true });
+  };
+
+  const adicionarVoluntario = () => {
+    if (!novoVoluntarioId || !equipeAtiva) return;
+    onAtualizarVinculo({ usuarioId: novoVoluntarioId, equipeId: equipeAtiva.id, tipo: 'voluntario', adicionar: true });
+  };
 
   return (
     <section className="mt-5 space-y-5">
@@ -945,22 +1151,96 @@ function PainelEquipes({ equipes, equipeSelecionada, formEquipe, salvandoId, onC
             </div>
             <div className="grid gap-5 p-5 lg:grid-cols-2">
               <div>
-                <h3 className="text-sm font-bold uppercase tracking-[0.14em] text-gray-500">Liderança</h3>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                  <h3 className="text-sm font-bold uppercase tracking-[0.14em] text-gray-500">Liderança</h3>
+                  <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                    <select
+                      value={novoLiderId}
+                      onChange={(event) => setNovoLiderId(event.target.value)}
+                      className="min-w-0 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
+                    >
+                      <option value="">Adicionar líder</option>
+                      {lideresDisponiveis.map((usuario) => (
+                        <option key={usuario.id} value={usuario.id}>{usuario.nomeCompleto}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      disabled={!novoLiderId || salvandoId?.startsWith('lider-')}
+                      onClick={adicionarLider}
+                      className="inline-flex items-center justify-center gap-2 rounded-md bg-sky-700 px-3 py-2 text-sm font-semibold text-white transition hover:bg-sky-800 disabled:opacity-50"
+                    >
+                      <Plus size={15} />
+                      Adicionar
+                    </button>
+                  </div>
+                </div>
                 <div className="mt-3 space-y-2">
                   {(equipeAtiva.lideres || []).length === 0 ? (
                     <p className="text-sm text-gray-500">Nenhum líder cadastrado nesta equipe.</p>
                   ) : equipeAtiva.lideres.map((lider) => (
-                    <Contato key={lider.id} pessoa={lider} onAbrirUsuario={onAbrirUsuario} />
+                    <Contato
+                      key={lider.id}
+                      pessoa={lider}
+                      onAbrirUsuario={onAbrirUsuario}
+                      acaoExtra={(
+                        <button
+                          type="button"
+                          disabled={salvandoId === `lider-${lider.id}-${equipeAtiva.id}`}
+                          onClick={() => onAtualizarVinculo({ usuarioId: lider.id, equipeId: equipeAtiva.id, tipo: 'lider', adicionar: false })}
+                          className="rounded-md border border-red-100 bg-white px-2.5 py-1.5 text-xs font-bold text-red-600 transition hover:bg-red-50 disabled:opacity-50"
+                        >
+                          Remover líder
+                        </button>
+                      )}
+                    />
                   ))}
                 </div>
               </div>
               <div>
-                <h3 className="text-sm font-bold uppercase tracking-[0.14em] text-gray-500">Voluntários</h3>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                  <h3 className="text-sm font-bold uppercase tracking-[0.14em] text-gray-500">Voluntários</h3>
+                  <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                    <select
+                      value={novoVoluntarioId}
+                      onChange={(event) => setNovoVoluntarioId(event.target.value)}
+                      className="min-w-0 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
+                    >
+                      <option value="">Adicionar voluntário</option>
+                      {voluntariosDisponiveis.map((usuario) => (
+                        <option key={usuario.id} value={usuario.id}>{usuario.nomeCompleto}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      disabled={!novoVoluntarioId || salvandoId?.startsWith('voluntario-')}
+                      onClick={adicionarVoluntario}
+                      className="inline-flex items-center justify-center gap-2 rounded-md bg-gray-950 px-3 py-2 text-sm font-semibold text-white transition hover:bg-gray-800 disabled:opacity-50"
+                    >
+                      <Plus size={15} />
+                      Adicionar
+                    </button>
+                  </div>
+                </div>
                 <div className="mt-3 space-y-2">
                   {(equipeAtiva.voluntarios || []).length === 0 ? (
                     <p className="text-sm text-gray-500">Nenhum voluntário cadastrado nesta equipe.</p>
                   ) : equipeAtiva.voluntarios.map((voluntario) => (
-                    <Contato key={voluntario.id} pessoa={voluntario} onAbrirUsuario={onAbrirUsuario} />
+                    <Contato
+                      key={voluntario.id}
+                      pessoa={voluntario}
+                      onAbrirUsuario={onAbrirUsuario}
+                      acaoExtra={(
+                        <button
+                          type="button"
+                          disabled={salvandoId === `voluntario-${voluntario.id}-${equipeAtiva.id}`}
+                          onClick={() => onAtualizarVinculo({ usuarioId: voluntario.id, equipeId: equipeAtiva.id, tipo: 'voluntario', adicionar: false })}
+                          className="rounded-md border border-red-100 bg-white px-2.5 py-1.5 text-xs font-bold text-red-600 transition hover:bg-red-50 disabled:opacity-50"
+                        >
+                          Remover
+                        </button>
+                      )}
+                    />
                   ))}
                 </div>
               </div>
@@ -972,19 +1252,22 @@ function PainelEquipes({ equipes, equipeSelecionada, formEquipe, salvandoId, onC
   );
 }
 
-function Contato({ pessoa, onAbrirUsuario }) {
+function Contato({ pessoa, onAbrirUsuario, acaoExtra = null }) {
   return (
-    <div className="flex items-start gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
-      <UsuarioInfoButton usuario={pessoa} onClick={onAbrirUsuario} />
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-          <p className="text-sm font-bold text-gray-950">{pessoa.nomeCompleto}</p>
-          {pessoa.telefone && (
-            <span className="text-[11px] font-medium text-gray-400">{pessoa.telefone}</span>
-          )}
+    <div className="flex flex-col gap-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex min-w-0 items-start gap-2">
+        <UsuarioInfoButton usuario={pessoa} onClick={onAbrirUsuario} />
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            <p className="text-sm font-bold text-gray-950">{pessoa.nomeCompleto}</p>
+            {pessoa.telefone && (
+              <span className="text-[11px] font-medium text-gray-400">{pessoa.telefone}</span>
+            )}
+          </div>
+          <p className="mt-1 text-xs text-gray-500">{pessoa.email}</p>
         </div>
-        <p className="mt-1 text-xs text-gray-500">{pessoa.email}</p>
       </div>
+      {acaoExtra}
     </div>
   );
 }
@@ -1077,8 +1360,8 @@ function PainelEscalas({
   const eventosListagem = [...eventosEsporadicos, ...eventosRecorrentes];
 
   return (
-    <section className={`mt-5 grid gap-5 ${mostrarFormEscala ? 'xl:grid-cols-[1.35fr_0.65fr]' : ''}`}>
-      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
+    <section className={`mt-5 grid min-w-0 gap-5 ${mostrarFormEscala ? 'xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]' : ''}`}>
+      <div className="min-w-0 rounded-2xl border border-gray-200 bg-white shadow-sm">
         <div className="border-b border-gray-100 px-5 py-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div>
@@ -1201,7 +1484,7 @@ function PainelEscalas({
                   key={`futuro-${evento.id}`}
                   type="button"
                   onClick={() => onBuscaEscalas(evento.titulo)}
-                  className="min-w-[250px] max-w-[280px] rounded-xl border border-gray-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-gray-300"
+                  className="min-w-[230px] max-w-[260px] shrink-0 rounded-xl border border-gray-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-gray-300"
                 >
                   <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] ${
                     evento.tipo === 'ESPORADICA'
@@ -1235,16 +1518,16 @@ function PainelEscalas({
                   )}
                 </div>
                 {eventosListagem.map((evento, index) => {
-              const mostrarTituloRecorrente = evento.tipo === 'RECORRENTE' && eventosListagem[index - 1]?.tipo !== 'RECORRENTE';
+                  const mostrarTituloRecorrente = evento.tipo === 'RECORRENTE' && eventosListagem[index - 1]?.tipo !== 'RECORRENTE';
 
-              return (
-                <React.Fragment key={evento.id}>
-                  {mostrarTituloRecorrente && (
-                    <p className="pt-2 text-xs font-bold uppercase tracking-[0.14em] text-gray-500">Escalas recorrentes</p>
-                  )}
-                <div className="rounded-2xl border border-gray-200 bg-gradient-to-br from-white to-gray-50 p-5 shadow-sm">
-                  <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="min-w-0">
+                  return (
+                    <React.Fragment key={evento.id}>
+                      {mostrarTituloRecorrente && (
+                        <p className="pt-2 text-xs font-bold uppercase tracking-[0.14em] text-gray-500">Escalas recorrentes</p>
+                      )}
+                <div className="min-w-0 overflow-hidden rounded-2xl border border-gray-200 bg-gradient-to-br from-white to-gray-50 p-4 shadow-sm sm:p-5">
+                  <div className="flex min-w-0 flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="min-w-0 max-w-full">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="rounded-full border border-dourado-200 bg-dourado-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-dourado-700">
                           {evento.areas.length} área(s)
@@ -1258,7 +1541,7 @@ function PainelEscalas({
                           {evento.tipo === 'ESPORADICA' ? 'Esporádica' : 'Recorrente'}
                         </span>
                       </div>
-                      <h3 className="mt-3 text-xl font-bold text-gray-950">{evento.titulo}</h3>
+                      <h3 className="mt-3 break-words text-xl font-bold text-gray-950">{evento.titulo}</h3>
                       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
                         <span>{formatarData(evento.dataHora)}</span>
                         {evento.local && <span>Local: {evento.local}</span>}
@@ -1267,13 +1550,13 @@ function PainelEscalas({
                         )}
                       </div>
                       {evento.descricao && (
-                        <p className="mt-3 max-w-2xl text-sm leading-6 text-gray-600">{evento.descricao}</p>
+                        <p className="mt-3 max-w-2xl break-words text-sm leading-6 text-gray-600">{evento.descricao}</p>
                       )}
                     </div>
                   </div>
 
-                  <div className="mt-5 overflow-hidden rounded-xl border border-gray-200 bg-white">
-                    <table className="w-full text-left text-sm">
+                  <div className="mt-5 max-w-full overflow-x-auto rounded-xl border border-gray-200 bg-white">
+                    <table className="min-w-[680px] text-left text-sm">
                       <thead className="bg-gray-50 text-xs font-bold uppercase tracking-[0.14em] text-gray-400">
                         <tr>
                           <th className="px-3 py-3">Função</th>
@@ -1300,9 +1583,9 @@ function PainelEscalas({
                                     <div className="flex items-start gap-2">
                                       <UsuarioInfoButton usuario={item.usuario} onClick={onAbrirUsuario} />
                                       <div className="min-w-0">
-                                        <span className="font-semibold">{item.usuario.nomeCompleto}</span>
+                                        <span className="break-words font-semibold">{item.usuario.nomeCompleto}</span>
                                         {item.usuario.telefone && (
-                                          <span className="ml-2 text-[11px] font-medium text-gray-400">{item.usuario.telefone}</span>
+                                          <span className="ml-2 whitespace-nowrap text-[11px] font-medium text-gray-400">{item.usuario.telefone}</span>
                                         )}
                                       </div>
                                     </div>
@@ -1350,7 +1633,7 @@ function PainelEscalas({
                     const form = formRecorrentes[area.id] || {};
 
                     return escalaEditandoId === area.id && area.tipo === 'RECORRENTE' ? (
-                      <div key={`${area.id}-edicao`} className="mt-4 grid gap-3 rounded-lg border border-gray-200 bg-white p-4 lg:grid-cols-[1.3fr_0.8fr_0.8fr_0.7fr_auto] lg:items-end">
+                      <div key={`${area.id}-edicao`} className="mt-4 grid min-w-0 gap-3 rounded-lg border border-gray-200 bg-white p-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,0.7fr)_auto] lg:items-end">
                         <Campo label="Título" value={form.titulo || ''} onChange={(value) => onAlterarRecorrente(area.id, 'titulo', value)} />
                         <Select label="Dia" value={form.diaSemana ?? 0} options={dias} onChange={(value) => onAlterarRecorrente(area.id, 'diaSemana', Number(value))} />
                         <Select label="Fim de semana" value={form.semanaMes || 1} options={semanas.map((semana) => ({ value: semana, label: `${semana}º` }))} onChange={(value) => onAlterarRecorrente(area.id, 'semanaMes', Number(value))} />
@@ -1363,9 +1646,9 @@ function PainelEscalas({
                     ) : null;
                   })}
                 </div>
-                </React.Fragment>
-              );
-            })}
+                    </React.Fragment>
+                  );
+                })}
               </>
             )}
           </div>
@@ -1373,7 +1656,7 @@ function PainelEscalas({
       </div>
 
       {mostrarFormEscala && (
-      <div className="space-y-5">
+      <div className="min-w-0 space-y-5">
         <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
           <form onSubmit={onCriarEsporadica} className="space-y-4 p-5">
             <div className="flex flex-col gap-3 border-b border-gray-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
@@ -1500,11 +1783,11 @@ function GrupoChecks({ titulo, children }) {
   );
 }
 
-function Campo({ label, value, onChange, type = 'text' }) {
+function Campo({ label, value, onChange, type = 'text', placeholder = '' }) {
   return (
     <label className="block">
       <span className="text-sm font-semibold text-gray-700">{label}</span>
-      <input type={type} value={value} onChange={(event) => onChange(event.target.value)} className="mt-2 block w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10" />
+      <input type={type} value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} className="mt-2 block w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10" />
     </label>
   );
 }

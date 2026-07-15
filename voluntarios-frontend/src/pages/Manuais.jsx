@@ -5,9 +5,9 @@ import { Footer } from '../components/Footer';
 
 export default function Manuais() {
   return (
-    <div className="min-h-screen bg-[#f7f4ed] text-gray-900">
+    <div className="flex min-h-screen flex-col bg-[#f7f4ed] text-gray-900">
       <Navbar />
-      <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
+      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
         <section className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
           <div className="flex items-start gap-3">
             <div className="rounded-md bg-dourado-50 p-3 text-dourado-700">

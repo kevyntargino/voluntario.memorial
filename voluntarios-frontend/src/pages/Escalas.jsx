@@ -234,10 +234,10 @@ export default function Escalas() {
   const totalVoluntarios = escalasVisiveis.reduce((total, escala) => total + (escala.voluntarios?.length || 0), 0);
 
   return (
-    <div className="min-h-screen bg-[#f7f4ed] text-gray-900">
+    <div className="flex min-h-screen flex-col bg-[#f7f4ed] text-gray-900">
       <Navbar />
 
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
         <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div>

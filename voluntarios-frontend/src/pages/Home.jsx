@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Bell, CalendarDays, ClipboardList, LogOut, ShieldCheck, UserCircle2 } from 'lucide-react';
+import { Bell, CalendarDays, ClipboardList, LogOut } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import { Footer } from '../components/Footer';
 import { useAuth } from '../context/AuthContext';
@@ -74,10 +74,10 @@ export default function Home() {
   ]), [totalAvisos]);
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(212,175,55,0.12),_transparent_34%),linear-gradient(180deg,#faf7f0_0%,#f5efe1_100%)] text-gray-900">
+    <div className="flex min-h-screen flex-col bg-[radial-gradient(circle_at_top,_rgba(212,175,55,0.12),_transparent_34%),linear-gradient(180deg,#faf7f0_0%,#f5efe1_100%)] text-gray-900">
       <Navbar />
 
-      <main className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+      <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-10 sm:px-6 lg:px-8">
         <section className="overflow-hidden rounded-[2rem] border border-black/5 bg-white/80 shadow-[0_30px_100px_rgba(17,24,39,0.12)] backdrop-blur">
           <div className="grid gap-10 px-6 py-8 lg:grid-cols-[1.3fr_0.9fr] lg:px-10 lg:py-12">
             <div>
@@ -93,16 +93,6 @@ export default function Home() {
                 Aqui está um panorama rápido da sua conta. Use este espaço como ponto de partida para ver escalas, avisos e tarefas importantes.
               </p>
 
-              <div className="mt-8 flex flex-wrap gap-3">
-                <button onClick={() => navigate('/perfil')} className="inline-flex items-center gap-2 rounded-full bg-gray-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-gray-800">
-                  <ShieldCheck size={16} />
-                  Ver meu perfil
-                </button>
-                <button onClick={() => navigate('/perfil')} className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-5 py-3 text-sm font-semibold text-gray-700 transition hover:border-gray-300 hover:bg-gray-50">
-                  <UserCircle2 size={16} />
-                  Atualizar dados
-                </button>
-              </div>
             </div>
 
             <aside className="rounded-[1.75rem] border border-gray-200/70 bg-gradient-to-br from-gray-950 to-gray-800 p-6 text-white shadow-2xl shadow-gray-950/20">

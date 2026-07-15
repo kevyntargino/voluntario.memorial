@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Mail, Lock, Eye, EyeOff, ArrowRight, Loader2 } from 'lucide-react';
+import { Footer } from '../components/Footer';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
 import { buildApiUrl } from '../lib/api';
@@ -70,7 +71,8 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans text-gray-900">
+    <div className="flex min-h-screen flex-col bg-gray-50 font-sans text-gray-900">
+      <main className="flex flex-1 flex-col justify-center px-4 py-12 sm:px-6 lg:px-8">
       
       {/* Cabeçalho */}
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center mb-8">
@@ -194,6 +196,8 @@ export default function Login() {
         </div>
 
       </div>
+      </main>
+      <Footer />
     </div>
   );
 }

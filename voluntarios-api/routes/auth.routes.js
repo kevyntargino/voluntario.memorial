@@ -214,4 +214,63 @@ router.patch('/me', autenticar, async (req, res) => {
   }
 });
 
+router.patch('/me/senha', autenticar, async (req, res) => {
+  try {
+    const { senhaAtual, novaSenha, confirmarNovaSenha } = req.body ?? {};
+
+    if (!senhaAtual || !novaSenha || !confirmarNovaSenha) {
+      return res.status(400).json({ erro: 'Informe a senha atual, a nova senha e a confirmação.' });
+    }
+
+    if (String(novaSenha).length < 6) {
+      return res.status(400).json({ erro: 'A nova senha deve ter pelo menos 6 dígitos.' });
+    }
+
+    if (String(novaSenha) !== String(confirmarNovaSenha)) {
+      return res.status(400).json({ erro: 'A nova senha e a confirmação precisam ser iguais.' });
+    }
+
+    const usuario = await prisma.usuario.findUnique({
+      where: { id: req.usuarioAutenticado.id },
+      select: {
+        id: true,
+        senhaHash: true,
+      },
+    });
+
+    if (!usuario) {
+      return res.status(404).json({ erro: 'Usuário não encontrado.' });
+    }
+
+    const senhaAtualValida = await bcrypt.compare(String(senhaAtual), usuario.senhaHash);
+
+    if (!senhaAtualValida) {
+      return res.status(400).json({ erro: 'Senha atual incorreta.' });
+    }
+
+    const senhaHash = await bcrypt.hash(String(novaSenha), 10);
+
+    await prisma.usuario.update({
+      where: { id: req.usuarioAutenticado.id },
+      data: { senhaHash },
+    });
+
+    await prisma.logAuditoria.create({
+      data: {
+        acao: 'REDEFINICAO_SENHA',
+        descricao: 'Usuário alterou a própria senha.',
+        usuarioId: req.usuarioAutenticado.id,
+        ipOrigem: req.headers['x-forwarded-for']?.toString().split(',')[0]?.trim() || req.socket.remoteAddress || null,
+      },
+    }).catch((auditError) => {
+      console.warn('[WARN] Falha ao registrar alteração de senha na auditoria:', auditError.message);
+    });
+
+    return res.status(200).json({ mensagem: 'Senha alterada com sucesso.' });
+  } catch (erro) {
+    console.error('[ERRO LOG] PATCH /me/senha:', erro);
+    return res.status(500).json({ erro: 'Erro interno no servidor. Tente novamente mais tarde.' });
+  }
+});
+
 export default router;

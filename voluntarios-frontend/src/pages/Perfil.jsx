@@ -130,10 +130,10 @@ export default function Perfil() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f7f4ed] text-gray-900">
+    <div className="flex min-h-screen flex-col bg-[#f7f4ed] text-gray-900">
       <Navbar />
 
-      <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
         <button
           type="button"
           onClick={() => navigate('/')}

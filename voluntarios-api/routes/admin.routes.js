@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
@@ -352,6 +353,75 @@ router.delete('/equipes/:id', autenticar, exigirAdmin, async (req, res) => {
     }
 
     console.error('[ERRO LOG] DELETE /api/admin/equipes/:id:', erro);
+    return res.status(500).json({ erro: 'Erro interno no servidor. Tente novamente mais tarde.' });
+  }
+});
+
+router.post('/usuarios', autenticar, exigirAdmin, async (req, res) => {
+  try {
+    const { nomeCompleto, email, telefone, equipeIds = [] } = req.body ?? {};
+    const emailNormalizado = typeof email === 'string' ? email.trim().toLowerCase() : '';
+    const equipeIdsValidos = Array.isArray(equipeIds) ? Array.from(new Set(equipeIds)) : [];
+    const nomeLimpo = typeof nomeCompleto === 'string' ? nomeCompleto.trim() : '';
+
+    if (nomeLimpo.length < 3 || !emailNormalizado) {
+      return res.status(400).json({ erro: 'Nome completo e e-mail são obrigatórios.' });
+    }
+
+    if (equipeIdsValidos.length > 0) {
+      const totalEquipes = await prisma.equipe.count({
+        where: {
+          id: {
+            in: equipeIdsValidos,
+          },
+        },
+      });
+
+      if (totalEquipes !== equipeIdsValidos.length) {
+        return res.status(400).json({ erro: 'Uma ou mais equipes selecionadas são inválidas.' });
+      }
+    }
+
+    const senhaTemporaria = `${nomeLimpo.replace(/\s+/g, '')}123`;
+    const senhaHash = await bcrypt.hash(senhaTemporaria, 10);
+    const usuario = await prisma.usuario.create({
+      data: {
+        nomeCompleto: nomeLimpo,
+        email: emailNormalizado,
+        telefone: typeof telefone === 'string' && telefone.trim() ? telefone.trim() : null,
+        senhaHash,
+        permissoes: ['VOLUNTARIO'],
+        equipes: {
+          connect: equipeIdsValidos.map((id) => ({ id })),
+        },
+      },
+      include: {
+        equipes: {
+          select: {
+            id: true,
+            nome: true,
+          },
+        },
+        equipesLideradas: {
+          select: {
+            id: true,
+            nome: true,
+          },
+        },
+      },
+    });
+
+    return res.status(201).json({
+      mensagem: 'Voluntário cadastrado com sucesso.',
+      senhaTemporaria,
+      usuario: formatarUsuario(usuario),
+    });
+  } catch (erro) {
+    if (erro.code === 'P2002') {
+      return res.status(409).json({ erro: 'Já existe um usuário com esse e-mail.' });
+    }
+
+    console.error('[ERRO LOG] POST /api/admin/usuarios:', erro);
     return res.status(500).json({ erro: 'Erro interno no servidor. Tente novamente mais tarde.' });
   }
 });

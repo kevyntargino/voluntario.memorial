@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   Clock3,
   Loader2,
-  Plus,
   Save,
   Trash2,
   UserPlus,
@@ -19,13 +18,6 @@ import { UsuarioInfoButton, UsuarioModal } from '../components/UsuarioModal';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
 import { buildApiUrl } from '../lib/api';
-
-const formVoluntarioInicial = {
-  nomeCompleto: '',
-  email: '',
-  telefone: '',
-  senha: '',
-};
 
 const formEscalaInicial = {
   id: null,
@@ -70,12 +62,10 @@ export default function MinhaEquipe() {
   const [sucesso, setSucesso] = useState('');
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
-  const [formVoluntario, setFormVoluntario] = useState(formVoluntarioInicial);
   const [formEscala, setFormEscala] = useState(formEscalaInicial);
   const [substitutosSelecionados, setSubstitutosSelecionados] = useState({});
   const [filtroEscala, setFiltroEscala] = useState(filtrosRecorrentes[0].chave);
   const [usuarioModal, setUsuarioModal] = useState(null);
-  const [mostrarCadastroVoluntario, setMostrarCadastroVoluntario] = useState(false);
   const [mostrarAtribuirVoluntarios, setMostrarAtribuirVoluntarios] = useState(false);
 
   const carregarEquipes = useCallback(async () => {
@@ -187,26 +177,6 @@ export default function MinhaEquipe() {
 
     setSucesso(dados.mensagem || 'Alteração salva com sucesso.');
     return dados;
-  };
-
-  const cadastrarVoluntario = async (event) => {
-    event.preventDefault();
-    setErro('');
-    setSucesso('');
-    setSalvando(true);
-
-    try {
-      await requestEquipe(`/api/equipes/${equipeId}/voluntarios`, {
-        method: 'POST',
-        body: JSON.stringify(formVoluntario),
-      });
-      setFormVoluntario(formVoluntarioInicial);
-      setMostrarCadastroVoluntario(false);
-    } catch (error) {
-      setErro(error.message);
-    } finally {
-      setSalvando(false);
-    }
   };
 
   const removerVoluntario = async (voluntarioId) => {
@@ -346,22 +316,23 @@ export default function MinhaEquipe() {
 
   if (!podeAcessar) {
     return (
-      <div className="min-h-screen bg-[#f7f4ed] text-gray-900">
+      <div className="flex min-h-screen flex-col bg-[#f7f4ed] text-gray-900">
         <Navbar />
-        <main className="mx-auto max-w-4xl px-4 py-10">
+        <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-10">
           <div className="rounded-lg border border-red-100 bg-red-50 p-5 text-red-700">
             Acesso restrito a líderes de equipe.
           </div>
         </main>
+        <Footer />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#f7f4ed] text-gray-900">
+    <div className="flex min-h-screen flex-col bg-[#f7f4ed] text-gray-900">
       <Navbar />
 
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
         <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
@@ -379,7 +350,6 @@ export default function MinhaEquipe() {
                 setFormEscala(formEscalaInicial);
                 setFiltroEscala(filtrosRecorrentes[0].chave);
                 setMostrarAtribuirVoluntarios(false);
-                setMostrarCadastroVoluntario(false);
               }}
               className="rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm font-semibold outline-none focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
             >
@@ -503,16 +473,8 @@ export default function MinhaEquipe() {
                 <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="text-sm font-semibold text-gray-700">{equipeSelecionada.voluntarios.length} voluntário(s) cadastrado(s)</p>
-                    <p className="mt-1 text-xs text-gray-500">Cadastre ou consulte os dados dos voluntários da equipe.</p>
+                    <p className="mt-1 text-xs text-gray-500">Consulte os dados dos voluntários da equipe.</p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setMostrarCadastroVoluntario((atual) => !atual)}
-                    className="inline-flex items-center justify-center gap-2 rounded-md bg-gray-950 px-3 py-2 text-sm font-semibold text-white transition hover:bg-gray-800"
-                  >
-                    <UserPlus size={15} />
-                    {mostrarCadastroVoluntario ? 'Fechar cadastro' : 'Cadastrar voluntário'}
-                  </button>
                 </div>
                 <div className="space-y-2">
                   {equipeSelecionada.voluntarios.map((voluntario) => (
@@ -543,32 +505,6 @@ export default function MinhaEquipe() {
                 </div>
               </Painel>
 
-              {mostrarCadastroVoluntario && (
-                <Painel titulo="Cadastrar voluntário" icone={UserPlus}>
-                  <form onSubmit={cadastrarVoluntario} className="space-y-3">
-                    <Campo label="Nome completo" value={formVoluntario.nomeCompleto} onChange={(value) => setFormVoluntario((atual) => ({ ...atual, nomeCompleto: value }))} />
-                    <Campo label="E-mail" type="email" value={formVoluntario.email} onChange={(value) => setFormVoluntario((atual) => ({ ...atual, email: value }))} />
-                    <Campo label="Telefone" value={formVoluntario.telefone} onChange={(value) => setFormVoluntario((atual) => ({ ...atual, telefone: value }))} />
-                    <Campo label="Senha temporária" value={formVoluntario.senha} placeholder="Mcom@123" onChange={(value) => setFormVoluntario((atual) => ({ ...atual, senha: value }))} />
-                    <div className="flex flex-wrap gap-2">
-                      <button disabled={salvando} className="inline-flex flex-1 items-center justify-center gap-2 rounded-md bg-gray-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-gray-800 disabled:opacity-60">
-                        <Plus size={16} />
-                        Adicionar à equipe
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setMostrarCadastroVoluntario(false);
-                          setFormVoluntario(formVoluntarioInicial);
-                        }}
-                        className="rounded-md border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
-                      >
-                        Cancelar
-                      </button>
-                    </div>
-                  </form>
-                </Painel>
-              )}
             </section>
 
             <section className="space-y-5">
@@ -841,21 +777,6 @@ function Painel({ titulo, icone: Icon, badge, children }) {
       </div>
       <div className="p-5">{children}</div>
     </section>
-  );
-}
-
-function Campo({ label, value, onChange, type = 'text', placeholder = '' }) {
-  return (
-    <label className="block">
-      <span className="text-sm font-semibold text-gray-700">{label}</span>
-      <input
-        type={type}
-        value={value}
-        placeholder={placeholder}
-        onChange={(event) => onChange(event.target.value)}
-        className="mt-2 block w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
-      />
-    </label>
   );
 }
 
