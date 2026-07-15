@@ -287,6 +287,90 @@ router.delete('/:equipeId/voluntarios/:usuarioId', autenticar, async (req, res) 
   }
 });
 
+router.post('/:equipeId/substituicoes/:participacaoId/atribuir', autenticar, async (req, res) => {
+  try {
+    const usuario = await getUsuarioComEquipes(req.usuarioAutenticado.id);
+
+    if (!podeGerenciar(usuario, req.params.equipeId)) {
+      return res.status(403).json({ erro: 'Você não pode gerenciar esta equipe.' });
+    }
+
+    const { substitutoId } = req.body ?? {};
+
+    if (!substitutoId) {
+      return res.status(400).json({ erro: 'Selecione um voluntário substituto.' });
+    }
+
+    const pedido = await prisma.voluntarioEscala.findFirst({
+      where: {
+        id: req.params.participacaoId,
+        status: 'PEDIU_SUBSTITUICAO',
+        escala: {
+          equipeId: req.params.equipeId,
+        },
+      },
+      select: {
+        escalaId: true,
+        usuarioId: true,
+      },
+    });
+
+    if (!pedido) {
+      return res.status(404).json({ erro: 'Solicitação de substituição não encontrada.' });
+    }
+
+    if (pedido.usuarioId === substitutoId) {
+      return res.status(400).json({ erro: 'O substituto precisa ser outro voluntário.' });
+    }
+
+    const substitutoNaEquipe = await prisma.equipe.findFirst({
+      where: {
+        id: req.params.equipeId,
+        voluntarios: {
+          some: {
+            id: substitutoId,
+          },
+        },
+      },
+      select: { id: true },
+    });
+
+    if (!substitutoNaEquipe) {
+      return res.status(400).json({ erro: 'O substituto precisa estar cadastrado nesta equipe.' });
+    }
+
+    await prisma.voluntarioEscala.upsert({
+      where: {
+        usuarioId_escalaId: {
+          usuarioId: substitutoId,
+          escalaId: pedido.escalaId,
+        },
+      },
+      update: {
+        substituto: true,
+        status: 'PENDENTE',
+      },
+      create: {
+        usuarioId: substitutoId,
+        escalaId: pedido.escalaId,
+        substituto: true,
+        status: 'PENDENTE',
+        atribuidoPorId: req.usuarioAutenticado.id,
+      },
+    });
+
+    const equipe = await carregarEquipe(req.params.equipeId, usuario);
+
+    return res.status(200).json({
+      mensagem: 'Substituto atribuído com sucesso.',
+      equipe,
+    });
+  } catch (erro) {
+    console.error('[ERRO LOG] POST /api/equipes/:equipeId/substituicoes/:participacaoId/atribuir:', erro);
+    return res.status(500).json({ erro: 'Erro interno no servidor. Tente novamente mais tarde.' });
+  }
+});
+
 router.post('/:equipeId/escalas', autenticar, async (req, res) => {
   try {
     const usuario = await getUsuarioComEquipes(req.usuarioAutenticado.id);

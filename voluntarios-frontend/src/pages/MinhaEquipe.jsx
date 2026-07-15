@@ -10,6 +10,7 @@ import {
   UserPlus,
   UsersRound,
   RefreshCcw,
+  Bell,
 } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import { Footer } from '../components/Footer';
@@ -65,6 +66,7 @@ export default function MinhaEquipe() {
   const [salvando, setSalvando] = useState(false);
   const [formVoluntario, setFormVoluntario] = useState(formVoluntarioInicial);
   const [formEscala, setFormEscala] = useState(formEscalaInicial);
+  const [substitutosSelecionados, setSubstitutosSelecionados] = useState({});
 
   const carregarEquipes = useCallback(async () => {
     setErro('');
@@ -228,6 +230,35 @@ export default function MinhaEquipe() {
     }
   };
 
+  const atribuirSubstituto = async (pedidoId) => {
+    const substitutoId = substitutosSelecionados[pedidoId];
+
+    if (!substitutoId) {
+      setErro('Selecione um voluntário para substituir.');
+      return;
+    }
+
+    setErro('');
+    setSucesso('');
+    setSalvando(true);
+
+    try {
+      await requestEquipe(`/api/equipes/${equipeId}/substituicoes/${pedidoId}/atribuir`, {
+        method: 'POST',
+        body: JSON.stringify({ substitutoId }),
+      });
+      setSubstitutosSelecionados((atuais) => {
+        const proximos = { ...atuais };
+        delete proximos[pedidoId];
+        return proximos;
+      });
+    } catch (error) {
+      setErro(error.message);
+    } finally {
+      setSalvando(false);
+    }
+  };
+
   const alternarVoluntarioNaEscala = (voluntarioId) => {
     setFormEscala((atual) => ({
       ...atual,
@@ -322,7 +353,11 @@ export default function MinhaEquipe() {
         ) : equipeSelecionada ? (
           <div className="mt-5 grid gap-5 xl:grid-cols-[0.85fr_1.15fr]">
             <section className="space-y-5">
-              <Painel titulo="Pedidos de substituição" icone={RefreshCcw}>
+              <Painel
+                titulo="Solicitações de substituição"
+                icone={Bell}
+                badge={pedidosSubstituicao.length}
+              >
                 {pedidosSubstituicao.length === 0 ? (
                   <p className="text-sm text-gray-500">Nenhum pedido de substituição pendente.</p>
                 ) : (
@@ -334,14 +369,42 @@ export default function MinhaEquipe() {
                             <p className="text-sm font-bold text-gray-950">{pedido.usuario.nomeCompleto}</p>
                             <p className="mt-1 text-xs font-semibold text-sky-700">{pedido.escala.titulo || 'Escala sem título'} - {formatarData(pedido.escala.dataHora)}</p>
                           </div>
-                          <button type="button" onClick={() => editarEscala(pedido.escala)} className="inline-flex items-center gap-2 rounded-md bg-sky-700 px-3 py-2 text-sm font-semibold text-white transition hover:bg-sky-800">
-                            <Pencil size={15} />
-                            Editar escala
-                          </button>
+                          <div className="inline-flex items-center gap-2 rounded-md bg-white px-2.5 py-1.5 text-xs font-bold text-sky-700">
+                            <RefreshCcw size={14} />
+                            Pedido aberto
+                          </div>
                         </div>
                         <p className="mt-3 rounded-md bg-white px-3 py-2 text-sm text-gray-700">
                           {pedido.justificativaSubstituicao || 'Sem justificativa informada.'}
                         </p>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
+                          <select
+                            value={substitutosSelecionados[pedido.id] || ''}
+                            onChange={(event) => setSubstitutosSelecionados((atuais) => ({
+                              ...atuais,
+                              [pedido.id]: event.target.value,
+                            }))}
+                            className="rounded-md border border-sky-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/10"
+                          >
+                            <option value="">Selecionar substituto</option>
+                            {equipeSelecionada.voluntarios
+                              .filter((voluntario) => voluntario.id !== pedido.usuario.id)
+                              .map((voluntario) => (
+                                <option key={voluntario.id} value={voluntario.id}>
+                                  {voluntario.nomeCompleto}
+                                </option>
+                              ))}
+                          </select>
+                          <button
+                            type="button"
+                            disabled={salvando}
+                            onClick={() => atribuirSubstituto(pedido.id)}
+                            className="inline-flex items-center justify-center gap-2 rounded-md bg-sky-700 px-3 py-2 text-sm font-semibold text-white transition hover:bg-sky-800 disabled:opacity-60"
+                          >
+                            <UserPlus size={15} />
+                            Atribuir
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -488,12 +551,19 @@ export default function MinhaEquipe() {
   );
 }
 
-function Painel({ titulo, icone: Icon, children }) {
+function Painel({ titulo, icone: Icon, badge, children }) {
   return (
     <section className="rounded-lg border border-gray-200 bg-white shadow-sm">
-      <div className="flex items-center gap-2 border-b border-gray-100 px-5 py-4">
-        <Icon className="h-5 w-5 text-dourado-600" />
-        <h2 className="text-lg font-bold text-gray-950">{titulo}</h2>
+      <div className="flex items-center justify-between gap-2 border-b border-gray-100 px-5 py-4">
+        <div className="flex items-center gap-2">
+          <Icon className="h-5 w-5 text-dourado-600" />
+          <h2 className="text-lg font-bold text-gray-950">{titulo}</h2>
+        </div>
+        {typeof badge === 'number' && badge > 0 && (
+          <span className="rounded-full bg-sky-700 px-2.5 py-1 text-xs font-bold text-white">
+            {badge}
+          </span>
+        )}
       </div>
       <div className="p-5">{children}</div>
     </section>
