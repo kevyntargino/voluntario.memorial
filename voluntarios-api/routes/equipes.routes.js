@@ -65,6 +65,95 @@ function podeGerenciar(usuario, equipeId) {
     && usuario.equipes.some((equipe) => equipe.id === equipeId);
 }
 
+function getHorarioBase(dataHora) {
+  const data = dataHora ? new Date(dataHora) : null;
+
+  return {
+    horas: data && !Number.isNaN(data.getTime()) ? data.getUTCHours() : 18,
+    minutos: data && !Number.isNaN(data.getTime()) ? data.getUTCMinutes() : 0,
+  };
+}
+
+function getDataUtc(ano, mes, dia, horas = 18, minutos = 0) {
+  return new Date(Date.UTC(ano, mes, dia, horas, minutos, 0, 0));
+}
+
+function getOcorrenciaNoMes(ano, mes, diaSemana, semanaMes, dataHora) {
+  const { horas, minutos } = getHorarioBase(dataHora);
+  const ocorrencias = [];
+
+  for (let dia = 1; dia <= 31; dia += 1) {
+    const data = getDataUtc(ano, mes, dia, horas, minutos);
+
+    if (data.getUTCMonth() !== mes) {
+      break;
+    }
+
+    if (data.getUTCDay() === diaSemana) {
+      ocorrencias.push(data);
+    }
+  }
+
+  return ocorrencias[semanaMes - 1] || null;
+}
+
+function getProximaOcorrencia(escala) {
+  if (escala.tipo !== 'RECORRENTE' || escala.diaSemana === null || escala.diaSemana === undefined || !escala.semanaMes) {
+    return escala.dataHora;
+  }
+
+  const agora = new Date();
+
+  for (let offsetMes = 0; offsetMes < 18; offsetMes += 1) {
+    const dataBase = getDataUtc(agora.getUTCFullYear(), agora.getUTCMonth() + offsetMes, 1);
+    const ocorrencia = getOcorrenciaNoMes(
+      dataBase.getUTCFullYear(),
+      dataBase.getUTCMonth(),
+      escala.diaSemana,
+      escala.semanaMes,
+      escala.dataHora,
+    );
+
+    if (ocorrencia && ocorrencia >= agora) {
+      return ocorrencia;
+    }
+  }
+
+  return escala.dataHora;
+}
+
+function datasIguais(dataA, dataB) {
+  if (!dataA || !dataB) {
+    return false;
+  }
+
+  return new Date(dataA).toISOString() === new Date(dataB).toISOString();
+}
+
+function formatarParticipacao(item, dataOcorrencia) {
+  const temOcorrenciaEspecifica = Boolean(item.dataOcorrenciaSubstituicao);
+
+  if (item.substituto && temOcorrenciaEspecifica && !datasIguais(item.dataOcorrenciaSubstituicao, dataOcorrencia)) {
+    return null;
+  }
+
+  const usarStatusEspecifico = !temOcorrenciaEspecifica || datasIguais(item.dataOcorrenciaSubstituicao, dataOcorrencia);
+
+  return {
+    id: item.id,
+    status: usarStatusEspecifico ? item.status : 'PENDENTE',
+    justificativaSubstituicao: usarStatusEspecifico ? item.justificativaSubstituicao : null,
+    dataOcorrenciaSubstituicao: item.dataOcorrenciaSubstituicao,
+    substituto: usarStatusEspecifico ? item.substituto : false,
+    usuario: {
+      id: item.usuario.id,
+      nomeCompleto: item.usuario.nomeCompleto,
+      email: item.usuario.email,
+      urlFoto: item.usuario.urlFoto,
+    },
+  };
+}
+
 function formatarEquipe(equipe, usuario) {
   return {
     id: equipe.id,
@@ -78,25 +167,21 @@ function formatarEquipe(equipe, usuario) {
       urlFoto: voluntario.urlFoto,
       permissoes: voluntario.permissoes,
     })),
-    escalas: equipe.escalas.map((escala) => ({
-      id: escala.id,
-      titulo: escala.titulo,
-      tipo: escala.tipo,
-      diaSemana: escala.diaSemana,
-      dataHora: escala.dataHora,
-      voluntarios: escala.voluntarios.map((item) => ({
-        id: item.id,
-        status: item.status,
-        justificativaSubstituicao: item.justificativaSubstituicao,
-        substituto: item.substituto,
-        usuario: {
-          id: item.usuario.id,
-          nomeCompleto: item.usuario.nomeCompleto,
-          email: item.usuario.email,
-          urlFoto: item.usuario.urlFoto,
-        },
-      })),
-    })),
+    escalas: equipe.escalas.map((escala) => {
+      const dataOcorrencia = getProximaOcorrencia(escala);
+
+      return {
+        id: escala.id,
+        titulo: escala.titulo,
+        tipo: escala.tipo,
+        diaSemana: escala.diaSemana,
+        semanaMes: escala.semanaMes,
+        dataHora: dataOcorrencia,
+        voluntarios: escala.voluntarios
+          .map((item) => formatarParticipacao(item, dataOcorrencia))
+          .filter(Boolean),
+      };
+    }),
   };
 }
 
@@ -116,6 +201,12 @@ async function carregarEquipe(equipeId, usuario) {
         },
       },
       escalas: {
+        where: {
+          OR: [
+            { tipo: 'RECORRENTE' },
+            { dataHora: { gte: new Date() } },
+          ],
+        },
         orderBy: [{ dataHora: 'asc' }, { criadoEm: 'asc' }],
         include: {
           voluntarios: {
@@ -167,6 +258,12 @@ router.get('/minhas', autenticar, async (req, res) => {
           },
         },
         escalas: {
+          where: {
+            OR: [
+              { tipo: 'RECORRENTE' },
+              { dataHora: { gte: new Date() } },
+            ],
+          },
           orderBy: [{ dataHora: 'asc' }, { criadoEm: 'asc' }],
           include: {
             voluntarios: {
@@ -312,6 +409,8 @@ router.post('/:equipeId/substituicoes/:participacaoId/atribuir', autenticar, asy
       select: {
         escalaId: true,
         usuarioId: true,
+        dataOcorrenciaSubstituicao: true,
+        escala: true,
       },
     });
 
@@ -339,25 +438,41 @@ router.post('/:equipeId/substituicoes/:participacaoId/atribuir', autenticar, asy
       return res.status(400).json({ erro: 'O substituto precisa estar cadastrado nesta equipe.' });
     }
 
-    await prisma.voluntarioEscala.upsert({
-      where: {
-        usuarioId_escalaId: {
+    const dataOcorrenciaSubstituicao = pedido.dataOcorrenciaSubstituicao || getProximaOcorrencia(pedido.escala);
+
+    await prisma.$transaction([
+      prisma.voluntarioEscala.update({
+        where: {
+          id: req.params.participacaoId,
+        },
+        data: {
+          status: 'AUSENTE',
+          dataOcorrenciaSubstituicao,
+        },
+      }),
+      prisma.voluntarioEscala.upsert({
+        where: {
+          usuarioId_escalaId: {
+            usuarioId: substitutoId,
+            escalaId: pedido.escalaId,
+          },
+        },
+        update: {
+          substituto: true,
+          status: 'PENDENTE',
+          dataOcorrenciaSubstituicao,
+          atribuidoPorId: req.usuarioAutenticado.id,
+        },
+        create: {
           usuarioId: substitutoId,
           escalaId: pedido.escalaId,
+          substituto: true,
+          status: 'PENDENTE',
+          dataOcorrenciaSubstituicao,
+          atribuidoPorId: req.usuarioAutenticado.id,
         },
-      },
-      update: {
-        substituto: true,
-        status: 'PENDENTE',
-      },
-      create: {
-        usuarioId: substitutoId,
-        escalaId: pedido.escalaId,
-        substituto: true,
-        status: 'PENDENTE',
-        atribuidoPorId: req.usuarioAutenticado.id,
-      },
-    });
+      }),
+    ]);
 
     const equipe = await carregarEquipe(req.params.equipeId, usuario);
 
@@ -391,6 +506,7 @@ router.post('/:equipeId/escalas', autenticar, async (req, res) => {
         titulo: typeof titulo === 'string' && titulo.trim() ? titulo.trim() : 'Escala da equipe',
         tipo: 'ESPORADICA',
         diaSemana: data.getDay(),
+        semanaMes: Math.ceil(data.getDate() / 7),
         dataHora: data,
         equipeId: req.params.equipeId,
         voluntarios: {
@@ -447,6 +563,7 @@ router.patch('/:equipeId/escalas/:escalaId', autenticar, async (req, res) => {
         titulo: typeof titulo === 'string' && titulo.trim() ? titulo.trim() : undefined,
         dataHora: data || undefined,
         diaSemana: data ? data.getDay() : undefined,
+        semanaMes: data ? Math.ceil(data.getDate() / 7) : undefined,
       },
     });
 

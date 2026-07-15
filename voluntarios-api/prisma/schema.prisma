@@ -36,6 +36,7 @@ enum StatusEscala {
   PENDENTE
   CONFIRMADA
   PEDIU_SUBSTITUICAO
+  AUSENTE
 }
 
 enum AcaoAuditoria {
@@ -119,6 +120,7 @@ model Escala {
   tipo        TipoEscala
   
   diaSemana   Int?       @map("dia_semana") // Ex: 0 = Domingo, 1 = Segunda
+  semanaMes   Int?       @map("semana_mes") // Ex: 1 = primeiro domingo/sábado do mês
   dataHora    DateTime?  @map("data_hora") 
   
   equipeId    String     @map("equipe_id") @db.Uuid
@@ -137,6 +139,7 @@ model VoluntarioEscala {
   id             String       @id @default(uuid()) @db.Uuid
   status         StatusEscala @default(PENDENTE)
   justificativaSubstituicao String? @map("justificativa_substituicao") @db.Text
+  dataOcorrenciaSubstituicao DateTime? @map("data_ocorrencia_substituicao")
   substituto     Boolean      @default(false)
   
   usuarioId      String       @map("usuario_id") @db.Uuid

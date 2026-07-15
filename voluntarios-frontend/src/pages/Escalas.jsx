@@ -38,6 +38,11 @@ const statusConfig = {
     className: 'border-sky-200 bg-sky-50 text-sky-700',
     icon: RefreshCcw,
   },
+  AUSENTE: {
+    label: 'Ausente',
+    className: 'border-red-200 bg-red-50 text-red-700',
+    icon: AlertCircle,
+  },
 };
 
 function getData(escala) {
@@ -125,7 +130,7 @@ export default function Escalas() {
     carregarEscalas();
   }, [carregarEscalas]);
 
-  const atualizarStatus = async (participacaoId, status, justificativaSubstituicao = '') => {
+  const atualizarStatus = async (participacaoId, status, justificativaSubstituicao = '', dataOcorrencia = '') => {
     setErro('');
     setAtualizandoId(participacaoId);
 
@@ -136,7 +141,7 @@ export default function Escalas() {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ status, justificativaSubstituicao }),
+        body: JSON.stringify({ status, justificativaSubstituicao, dataOcorrencia }),
       });
 
       const dados = await resposta.json();
@@ -162,10 +167,16 @@ export default function Escalas() {
             ...escala.minhaParticipacao,
             status,
             justificativaSubstituicao: status === 'PEDIU_SUBSTITUICAO' ? justificativaSubstituicao : null,
+            dataOcorrenciaSubstituicao: status === 'PEDIU_SUBSTITUICAO' ? dataOcorrencia : null,
           },
           voluntarios: escala.voluntarios.map((item) => (
             item.id === participacaoId
-              ? { ...item, status, justificativaSubstituicao: status === 'PEDIU_SUBSTITUICAO' ? justificativaSubstituicao : null }
+              ? {
+                ...item,
+                status,
+                justificativaSubstituicao: status === 'PEDIU_SUBSTITUICAO' ? justificativaSubstituicao : null,
+                dataOcorrenciaSubstituicao: status === 'PEDIU_SUBSTITUICAO' ? dataOcorrencia : null,
+              }
               : item
           )),
         };
@@ -456,7 +467,7 @@ function EscalaLinha({
               <div className="flex shrink-0 flex-wrap gap-2 lg:justify-end">
                 <button
                   type="button"
-                  disabled={atualizandoId === participacao.id || participacao.status === 'CONFIRMADA'}
+                  disabled={atualizandoId === participacao.id || ['CONFIRMADA', 'AUSENTE'].includes(participacao.status)}
                   onClick={() => onAtualizarStatus(participacao.id, 'CONFIRMADA')}
                   className="inline-flex items-center gap-2 rounded-md bg-gray-950 px-3 py-2 text-sm font-semibold text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
@@ -465,7 +476,7 @@ function EscalaLinha({
                 </button>
                 <button
                   type="button"
-                  disabled={atualizandoId === participacao.id || participacao.status === 'PEDIU_SUBSTITUICAO'}
+                  disabled={atualizandoId === participacao.id || ['PEDIU_SUBSTITUICAO', 'AUSENTE'].includes(participacao.status)}
                   onClick={() => onAbrirSubstituicao(participacao.id)}
                   className="inline-flex items-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:border-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
@@ -492,7 +503,7 @@ function EscalaLinha({
                 <button
                   type="button"
                   disabled={atualizandoId === participacao.id}
-                  onClick={() => onAtualizarStatus(participacao.id, 'PEDIU_SUBSTITUICAO', justificativa)}
+                  onClick={() => onAtualizarStatus(participacao.id, 'PEDIU_SUBSTITUICAO', justificativa, escala.dataHora)}
                   className="inline-flex items-center gap-2 rounded-md bg-sky-700 px-3 py-2 text-sm font-semibold text-white transition hover:bg-sky-800 disabled:opacity-60"
                 >
                   {atualizandoId === participacao.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw size={16} />}

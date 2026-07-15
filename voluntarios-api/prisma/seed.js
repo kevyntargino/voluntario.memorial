@@ -86,7 +86,7 @@ const voluntariosPorArea = {
   'Redes Sociais': ['gabi.redes@teste.com', 'voluntario@teste.com'],
 };
 
-function getPrimeirosDiasDoMes(diaSemana) {
+function getPrimeiroDiaDoMes(diaSemana, semanaMes) {
   const hoje = new Date();
   const ano = hoje.getFullYear();
   const mes = hoje.getMonth();
@@ -102,13 +102,9 @@ function getPrimeirosDiasDoMes(diaSemana) {
     if (data.getUTCDay() === diaSemana) {
       datas.push(data);
     }
-
-    if (datas.length === 4) {
-      break;
-    }
   }
 
-  return datas;
+  return datas[semanaMes - 1] || new Date(Date.UTC(ano, mes, 1, 18, 0, 0));
 }
 
 async function main() {
@@ -175,34 +171,61 @@ async function main() {
     },
   });
 
-  const sabados = getPrimeirosDiasDoMes(6);
-  const domingos = getPrimeirosDiasDoMes(0);
-  const datas = [...sabados, ...domingos].sort((a, b) => a.getTime() - b.getTime());
+  const recorrencias = [0, 6].flatMap((diaSemana) => (
+    [1, 2, 3, 4].map((semanaMes) => ({
+      diaSemana,
+      semanaMes,
+      dataHora: getPrimeiroDiaDoMes(diaSemana, semanaMes),
+    }))
+  ));
 
   for (const [indiceEquipe, equipe] of equipes.entries()) {
-    for (const [indiceData, data] of datas.entries()) {
-      const diaSemana = data.getUTCDay();
-      const titulo = `${equipe.nome} - ${diaSemana === 0 ? 'Domingo' : 'Sábado'} ${Math.ceil(data.getUTCDate() / 7)}º`;
+    for (const [indiceData, recorrencia] of recorrencias.entries()) {
+      const titulo = `${equipe.nome} - ${recorrencia.diaSemana === 0 ? 'Domingo' : 'Sábado'} ${recorrencia.semanaMes}º`;
       const escalaExistente = await prisma.escala.findFirst({
         where: {
           equipeId: equipe.id,
-          dataHora: data,
+          tipo: 'RECORRENTE',
+          diaSemana: recorrencia.diaSemana,
+          semanaMes: recorrencia.semanaMes,
         },
         select: {
           id: true,
         },
       });
 
-      const escala = escalaExistente || await prisma.escala.create({
-        data: {
-          titulo,
-          tipo: 'ESPORADICA',
-          diaSemana,
-          dataHora: data,
+      const escala = escalaExistente
+        ? await prisma.escala.update({
+          where: {
+            id: escalaExistente.id,
+          },
+          data: {
+            titulo,
+            dataHora: recorrencia.dataHora,
+          },
+          select: {
+            id: true,
+          },
+        })
+        : await prisma.escala.create({
+          data: {
+            titulo,
+            tipo: 'RECORRENTE',
+            diaSemana: recorrencia.diaSemana,
+            semanaMes: recorrencia.semanaMes,
+            dataHora: recorrencia.dataHora,
+            equipeId: equipe.id,
+          },
+          select: {
+            id: true,
+          },
+        });
+
+      await prisma.escala.deleteMany({
+        where: {
           equipeId: equipe.id,
-        },
-        select: {
-          id: true,
+          tipo: 'ESPORADICA',
+          titulo,
         },
       });
 
