@@ -191,10 +191,14 @@ model Manual {
   id           String    @id @default(uuid()) @db.Uuid
   titulo       String
   descricao    String?   @db.Text
+  versao       String    @default("1.0")
+  dataManual   DateTime  @default(now()) @map("data_manual")
+  oculto       Boolean   @default(false)
   arquivoUrl   String    @map("arquivo_url") 
+  arquivoKey   String?   @map("arquivo_key")
   
-  equipeId     String    @map("equipe_id") @db.Uuid
-  equipe       Equipe    @relation("EquipeManuais", fields: [equipeId], references: [id], onDelete: Cascade)
+  equipeId     String?   @map("equipe_id") @db.Uuid
+  equipe       Equipe?   @relation("EquipeManuais", fields: [equipeId], references: [id], onDelete: SetNull)
 
   criadoEm     DateTime  @default(now()) @map("criado_em")
   atualizadoEm DateTime  @updatedAt @map("atualizado_em")

@@ -6,6 +6,7 @@ import authRoutes from './routes/auth.routes.js';
 import escalasRoutes from './routes/escalas.routes.js';
 import equipesRoutes from './routes/equipes.routes.js';
 import avisosRoutes from './routes/avisos.routes.js';
+import manuaisRoutes from './routes/manuais.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 
 const app = express();
@@ -45,7 +46,7 @@ function protegerApi(req, res, next) {
 // MIDDLEWARES GLOBAIS
 // ==========================================
 app.use(cors());
-app.use(express.json({ limit: '8mb' }));
+app.use(express.json({ limit: '25mb' }));
 
 // ==========================================
 // REGISTRO DE ROTAS
@@ -56,6 +57,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/escalas', escalasRoutes);
 app.use('/api/equipes', equipesRoutes);
 app.use('/api/avisos', avisosRoutes);
+app.use('/api/manuais', manuaisRoutes);
 app.use('/api/admin', adminRoutes);
 
 // Rota de Health Check para verificar se o servidor está online

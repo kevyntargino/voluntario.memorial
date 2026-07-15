@@ -1,0 +1,9 @@
+ALTER TABLE "manuais" ADD COLUMN "versao" TEXT NOT NULL DEFAULT '1.0';
+ALTER TABLE "manuais" ADD COLUMN "data_manual" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE "manuais" ADD COLUMN "oculto" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "manuais" ADD COLUMN "arquivo_key" TEXT;
+
+ALTER TABLE "manuais" ALTER COLUMN "equipe_id" DROP NOT NULL;
+
+ALTER TABLE "manuais" DROP CONSTRAINT IF EXISTS "manuais_equipe_id_fkey";
+ALTER TABLE "manuais" ADD CONSTRAINT "manuais_equipe_id_fkey" FOREIGN KEY ("equipe_id") REFERENCES "equipes"("id") ON DELETE SET NULL ON UPDATE CASCADE;

@@ -2,9 +2,14 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
   Bell,
+  BookOpen,
   CalendarClock,
   CheckCircle2,
   Clock3,
+  Download,
+  Eye,
+  EyeOff,
+  FileText,
   Loader2,
   Megaphone,
   ArrowDownUp,
@@ -54,6 +59,7 @@ const formEscalaInicial = {
 const formAvisoInicial = { titulo: '', mensagem: '', dataAviso: '', publico: 'TODOS', equipeIds: [], usuarioIds: [] };
 const formEquipeInicial = { nome: '' };
 const formNovoVoluntarioInicial = { nomeCompleto: '', email: '', telefone: '', equipeIds: [] };
+const formManualInicial = { titulo: '', descricao: '', versao: '1.0', oculto: false, arquivo: null };
 const filtrosTipoEscala = [
   { value: 'TODAS', label: 'Todas' },
   { value: 'RECORRENTE', label: 'Recorrentes' },
@@ -88,6 +94,30 @@ function criarFormUsuario(usuario) {
   };
 }
 
+function readAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Não foi possível ler o arquivo.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function prepararArquivoPdf(file) {
+  if (!file) return null;
+
+  if (file.type !== 'application/pdf') {
+    throw new Error('Selecione um arquivo PDF.');
+  }
+
+  const base64 = await readAsDataUrl(file);
+  return {
+    fileName: file.name,
+    contentType: file.type,
+    base64,
+  };
+}
+
 export default function AdminEscalas() {
   const { token, usuario, logout } = useAuth();
   const { navigate, pathname } = useNavigation();
@@ -101,12 +131,15 @@ export default function AdminEscalas() {
   const [formEscala, setFormEscala] = useState(formEscalaInicial);
   const [formAviso, setFormAviso] = useState(formAvisoInicial);
   const [formNovoVoluntario, setFormNovoVoluntario] = useState(formNovoVoluntarioInicial);
+  const [manuais, setManuais] = useState([]);
+  const [formManual, setFormManual] = useState(formManualInicial);
   const getPainelPelaRota = useCallback(() => {
     if (pathname === '/admin/voluntarios') return 'voluntarios';
     if (pathname === '/admin/lideres') return 'lideres';
     if (pathname === '/admin/equipes') return 'equipes';
     if (pathname === '/admin/notificacoes') return 'notificacao';
     if (pathname === '/admin/escalas') return 'escalas';
+    if (pathname === '/admin/manuais') return 'manuais';
     return 'visao';
   }, [pathname]);
   const [painelAberto, setPainelAberto] = useState(() => getPainelPelaRota());
@@ -121,6 +154,8 @@ export default function AdminEscalas() {
   const [ordemEscalas, setOrdemEscalas] = useState('proximas');
   const [escalaEditandoId, setEscalaEditandoId] = useState(null);
   const [mostrarFormEscala, setMostrarFormEscala] = useState(false);
+  const [mostrarFormManual, setMostrarFormManual] = useState(false);
+  const [manualEditandoId, setManualEditandoId] = useState(null);
   const [mostrarCadastroVoluntario, setMostrarCadastroVoluntario] = useState(false);
   const [usuarioModal, setUsuarioModal] = useState(null);
   const [carregando, setCarregando] = useState(true);
@@ -132,25 +167,29 @@ export default function AdminEscalas() {
     setCarregando(true);
 
     try {
-      const [respostaDashboard, respostaEscalas] = await Promise.all([
+      const [respostaDashboard, respostaEscalas, respostaManuais] = await Promise.all([
         fetch(buildApiUrl('/api/admin/dashboard'), {
           headers: { Authorization: `Bearer ${token}` },
         }),
         fetch(buildApiUrl('/api/escalas/admin'), {
           headers: { Authorization: `Bearer ${token}` },
         }),
+        fetch(buildApiUrl('/api/manuais/admin'), {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
       ]);
       const dadosDashboard = await respostaDashboard.json();
       const dadosEscalas = await respostaEscalas.json();
+      const dadosManuais = await respostaManuais.json();
 
-      if (!respostaDashboard.ok || !respostaEscalas.ok) {
-        if (respostaDashboard.status === 401 || respostaEscalas.status === 401) {
+      if (!respostaDashboard.ok || !respostaEscalas.ok || !respostaManuais.ok) {
+        if (respostaDashboard.status === 401 || respostaEscalas.status === 401 || respostaManuais.status === 401) {
           logout();
           navigate('/login', { replace: true });
           return;
         }
 
-        throw new Error(dadosDashboard.erro || dadosEscalas.erro || 'Não foi possível carregar o painel administrativo.');
+        throw new Error(dadosDashboard.erro || dadosEscalas.erro || dadosManuais.erro || 'Não foi possível carregar o painel administrativo.');
       }
 
       setDashboard(dadosDashboard);
@@ -158,6 +197,7 @@ export default function AdminEscalas() {
       setUsuarios(dadosDashboard.usuarios || []);
       setRecorrentes(dadosEscalas.recorrentes || []);
       setEsporadicas(dadosEscalas.esporadicas || []);
+      setManuais(dadosManuais.manuais || []);
       setFormsUsuarios(Object.fromEntries((dadosDashboard.usuarios || []).map((item) => [item.id, criarFormUsuario(item)])));
       setFormRecorrentes(Object.fromEntries((dadosEscalas.recorrentes || []).map((escala) => [
         escala.id,
@@ -594,6 +634,127 @@ export default function AdminEscalas() {
     }
   };
 
+  const salvarManual = async (event) => {
+    event.preventDefault();
+    setErro('');
+    setSucesso('');
+    setSalvandoId(manualEditandoId || 'novo-manual');
+
+    try {
+      const arquivo = await prepararArquivoPdf(formManual.arquivo);
+      const resposta = await fetch(buildApiUrl(manualEditandoId ? `/api/manuais/admin/${manualEditandoId}` : '/api/manuais/admin'), {
+        method: manualEditandoId ? 'PATCH' : 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          titulo: formManual.titulo,
+          descricao: formManual.descricao,
+          versao: formManual.versao,
+          oculto: formManual.oculto,
+          arquivo,
+        }),
+      });
+      const dados = await resposta.json();
+
+      if (!resposta.ok) throw new Error(dados.erro || 'Não foi possível salvar o manual.');
+
+      setSucesso(dados.mensagem || 'Manual salvo com sucesso.');
+      setFormManual(formManualInicial);
+      setManualEditandoId(null);
+      setMostrarFormManual(false);
+      await carregarDados();
+    } catch (error) {
+      setErro(error.message || 'Não foi possível salvar o manual.');
+    } finally {
+      setSalvandoId(null);
+    }
+  };
+
+  const editarManual = (manual) => {
+    setManualEditandoId(manual.id);
+    setFormManual({
+      titulo: manual.titulo || '',
+      descricao: manual.descricao || '',
+      versao: manual.versao || '1.0',
+      oculto: Boolean(manual.oculto),
+      arquivo: null,
+    });
+    setMostrarFormManual(true);
+  };
+
+  const alternarOcultarManual = async (manual) => {
+    setErro('');
+    setSucesso('');
+    setSalvandoId(`manual-oculto-${manual.id}`);
+
+    try {
+      const resposta = await fetch(buildApiUrl(`/api/manuais/admin/${manual.id}`), {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          titulo: manual.titulo,
+          descricao: manual.descricao || '',
+          versao: manual.versao || '1.0',
+          oculto: !manual.oculto,
+        }),
+      });
+      const dados = await resposta.json();
+
+      if (!resposta.ok) throw new Error(dados.erro || 'Não foi possível atualizar a visibilidade.');
+
+      setSucesso(dados.mensagem || 'Visibilidade atualizada.');
+      await carregarDados();
+    } catch (error) {
+      setErro(error.message || 'Não foi possível atualizar a visibilidade.');
+    } finally {
+      setSalvandoId(null);
+    }
+  };
+
+  const excluirManual = async (manualId) => {
+    setErro('');
+    setSucesso('');
+    setSalvandoId(`manual-delete-${manualId}`);
+
+    try {
+      const resposta = await fetch(buildApiUrl(`/api/manuais/admin/${manualId}`), {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const dados = await resposta.json();
+
+      if (!resposta.ok) throw new Error(dados.erro || 'Não foi possível excluir o manual.');
+
+      setSucesso(dados.mensagem || 'Manual excluído.');
+      await carregarDados();
+    } catch (error) {
+      setErro(error.message || 'Não foi possível excluir o manual.');
+    } finally {
+      setSalvandoId(null);
+    }
+  };
+
+  const abrirArquivoManual = async (manual) => {
+    setErro('');
+
+    try {
+      const resposta = await fetch(buildApiUrl(`/api/manuais/${manual.id}/arquivo`), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!resposta.ok) {
+        const dados = await resposta.json().catch(() => ({}));
+        throw new Error(dados.erro || 'Não foi possível abrir o manual.');
+      }
+
+      const blob = await resposta.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank', 'noopener,noreferrer');
+      window.setTimeout(() => URL.revokeObjectURL(url), 30000);
+    } catch (error) {
+      setErro(error.message || 'Não foi possível abrir o manual.');
+    }
+  };
+
   if (!isAdmin) {
     return (
       <div className="flex min-h-screen flex-col bg-[#f7f4ed] text-gray-900">
@@ -653,6 +814,7 @@ export default function AdminEscalas() {
                   <BotaoPainel ativo={painelAberto === 'equipes'} icon={ShieldCheck} label="Ver equipes" onClick={() => abrirPainel('equipes', '/admin/equipes')} />
                   <BotaoPainel ativo={painelAberto === 'notificacao'} icon={Megaphone} label="Enviar notificação" onClick={() => abrirPainel('notificacao', '/admin/notificacoes')} />
                   <BotaoPainel ativo={painelAberto === 'escalas'} icon={CalendarClock} label="Gerenciar escalas" onClick={() => abrirPainel('escalas', '/admin/escalas')} />
+                  <BotaoPainel ativo={painelAberto === 'manuais'} icon={BookOpen} label="Gerenciar Manuais" onClick={() => abrirPainel('manuais', '/admin/manuais')} />
                 </div>
               </div>
             </section>
@@ -738,6 +900,28 @@ export default function AdminEscalas() {
                 onAbrirUsuario={setUsuarioModal}
                 mostrarFormEscala={mostrarFormEscala}
                 onMostrarFormEscala={setMostrarFormEscala}
+              />
+            )}
+
+            {painelAberto === 'manuais' && (
+              <PainelManuais
+                manuais={manuais}
+                formManual={formManual}
+                mostrarFormManual={mostrarFormManual}
+                manualEditandoId={manualEditandoId}
+                salvandoId={salvandoId}
+                onMostrarFormManual={setMostrarFormManual}
+                onChangeManual={setFormManual}
+                onSalvarManual={salvarManual}
+                onEditarManual={editarManual}
+                onCancelarManual={() => {
+                  setFormManual(formManualInicial);
+                  setManualEditandoId(null);
+                  setMostrarFormManual(false);
+                }}
+                onAlternarOcultarManual={alternarOcultarManual}
+                onExcluirManual={excluirManual}
+                onAbrirArquivoManual={abrirArquivoManual}
               />
             )}
           </>
@@ -1776,6 +1960,231 @@ function PainelEscalas({
         </div>
       </div>
 
+    </section>
+  );
+}
+
+function PainelManuais({
+  manuais,
+  formManual,
+  mostrarFormManual,
+  manualEditandoId,
+  salvandoId,
+  onMostrarFormManual,
+  onChangeManual,
+  onSalvarManual,
+  onEditarManual,
+  onCancelarManual,
+  onAlternarOcultarManual,
+  onExcluirManual,
+  onAbrirArquivoManual,
+}) {
+  const [busca, setBusca] = useState('');
+  const [filtro, setFiltro] = useState('TODOS');
+  const manuaisFiltrados = useMemo(() => {
+    const termo = busca.trim().toLowerCase();
+
+    return manuais.filter((manual) => {
+      const correspondeFiltro = filtro === 'TODOS'
+        || (filtro === 'VISIVEIS' && !manual.oculto)
+        || (filtro === 'OCULTOS' && manual.oculto);
+      const texto = [
+        manual.titulo,
+        manual.descricao,
+        manual.versao,
+        manual.dataManual ? formatarData(manual.dataManual) : '',
+      ].filter(Boolean).join(' ').toLowerCase();
+
+      return correspondeFiltro && (!termo || texto.includes(termo));
+    });
+  }, [busca, filtro, manuais]);
+
+  return (
+    <section className="mt-5 space-y-5">
+      <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-dourado-700">Biblioteca MCom</p>
+            <h2 className="mt-1 text-2xl font-bold text-gray-950">Gerenciar Manuais</h2>
+            <p className="mt-1 max-w-2xl text-sm text-gray-500">
+              Cadastre arquivos únicos em PDF, edite metadados e controle se o manual aparece para os usuários.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              onChangeManual(formManualInicial);
+              onMostrarFormManual((atual) => !atual);
+            }}
+            className="inline-flex items-center justify-center gap-2 rounded-md bg-gray-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-gray-800"
+          >
+            <Plus size={16} />
+            {mostrarFormManual ? 'Fechar cadastro' : 'Novo manual'}
+          </button>
+        </div>
+      </div>
+
+      {mostrarFormManual && (
+        <form onSubmit={onSalvarManual} className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-1 border-b border-gray-100 pb-4">
+            <h3 className="text-lg font-bold text-gray-950">{manualEditandoId ? 'Editar manual' : 'Cadastrar manual'}</h3>
+            <p className="text-sm text-gray-500">
+              A data é preenchida automaticamente pelo sistema. Ao substituir o PDF, o arquivo anterior é removido do storage.
+            </p>
+          </div>
+
+          <div className="mt-5 grid gap-4 lg:grid-cols-2">
+            <Campo label="Título" value={formManual.titulo} onChange={(value) => onChangeManual((atual) => ({ ...atual, titulo: value }))} />
+            <Campo label="Versão" value={formManual.versao} onChange={(value) => onChangeManual((atual) => ({ ...atual, versao: value }))} placeholder="Ex: 1.0" />
+            <div className="lg:col-span-2">
+              <CampoTexto label="Descrição" value={formManual.descricao} onChange={(value) => onChangeManual((atual) => ({ ...atual, descricao: value }))} />
+            </div>
+            <label className="block lg:col-span-2">
+              <span className="text-sm font-semibold text-gray-700">Arquivo PDF</span>
+              <input
+                type="file"
+                accept="application/pdf"
+                onChange={(event) => onChangeManual((atual) => ({ ...atual, arquivo: event.target.files?.[0] || null }))}
+                className="mt-2 block w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none transition file:mr-3 file:rounded-md file:border-0 file:bg-gray-950 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                {manualEditandoId ? 'Envie um novo PDF somente se quiser substituir o arquivo atual.' : 'Obrigatório para cadastrar. Tamanho máximo: 15MB.'}
+              </p>
+            </label>
+            <label className="inline-flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-700">
+              <input
+                type="checkbox"
+                checked={Boolean(formManual.oculto)}
+                onChange={(event) => onChangeManual((atual) => ({ ...atual, oculto: event.target.checked }))}
+              />
+              Cadastrar como oculto
+            </label>
+          </div>
+
+          <div className="mt-5 flex flex-wrap gap-2 border-t border-gray-100 pt-4">
+            <button
+              disabled={salvandoId === 'novo-manual' || salvandoId === manualEditandoId}
+              className="inline-flex items-center justify-center gap-2 rounded-md bg-gray-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-gray-800 disabled:opacity-60"
+            >
+              {(salvandoId === 'novo-manual' || salvandoId === manualEditandoId) ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save size={16} />}
+              {manualEditandoId ? 'Salvar manual' : 'Cadastrar manual'}
+            </button>
+            <button
+              type="button"
+              onClick={onCancelarManual}
+              className="rounded-md border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+            >
+              Cancelar
+            </button>
+          </div>
+        </form>
+      )}
+
+      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <div className="border-b border-gray-100 px-5 py-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <h3 className="text-lg font-bold text-gray-950">Manuais cadastrados</h3>
+              <p className="mt-1 text-sm text-gray-500">{manuaisFiltrados.length} manual(is) encontrado(s).</p>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-[1fr_auto] lg:min-w-[560px]">
+              <label className="relative block">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <input
+                  value={busca}
+                  onChange={(event) => setBusca(event.target.value)}
+                  className="block w-full rounded-md border border-gray-200 bg-white py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
+                  placeholder="Pesquisar por título, descrição, versão ou data"
+                />
+              </label>
+              <select
+                value={filtro}
+                onChange={(event) => setFiltro(event.target.value)}
+                className="rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm font-semibold text-gray-700 outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
+              >
+                <option value="TODOS">Todos</option>
+                <option value="VISIVEIS">Visíveis</option>
+                <option value="OCULTOS">Ocultos</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div className="divide-y divide-gray-100">
+          {manuaisFiltrados.length === 0 ? (
+            <div className="px-5 py-10 text-center text-sm text-gray-500">
+              Nenhum manual encontrado.
+            </div>
+          ) : manuaisFiltrados.map((manual) => (
+            <div key={manual.id} className="px-5 py-4">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div className="flex min-w-0 gap-3">
+                  <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-red-50 text-red-600">
+                    <FileText size={22} />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h4 className="break-words text-base font-bold text-gray-950">{manual.titulo}</h4>
+                      <span className="rounded border border-gray-200 bg-gray-50 px-2 py-0.5 text-[11px] font-bold uppercase tracking-[0.12em] text-gray-600">
+                        v{manual.versao || '1.0'}
+                      </span>
+                      <span className={`rounded border px-2 py-0.5 text-[11px] font-bold uppercase tracking-[0.12em] ${
+                        manual.oculto
+                          ? 'border-amber-200 bg-amber-50 text-amber-700'
+                          : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                      }`}
+                      >
+                        {manual.oculto ? 'Oculto' : 'Visível'}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs font-semibold text-gray-400">
+                      Data: {manual.dataManual ? formatarData(manual.dataManual) : 'Automática'}
+                    </p>
+                    {manual.descricao && (
+                      <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-600">{manual.descricao}</p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onAbrirArquivoManual(manual)}
+                    className="inline-flex items-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+                  >
+                    <Download size={15} />
+                    Abrir PDF
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onEditarManual(manual)}
+                    className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+                  >
+                    Editar
+                  </button>
+                  <button
+                    type="button"
+                    disabled={salvandoId === `manual-oculto-${manual.id}`}
+                    onClick={() => onAlternarOcultarManual(manual)}
+                    className="inline-flex items-center gap-2 rounded-md border border-amber-100 bg-white px-3 py-2 text-sm font-semibold text-amber-700 transition hover:bg-amber-50 disabled:opacity-60"
+                  >
+                    {manual.oculto ? <Eye size={15} /> : <EyeOff size={15} />}
+                    {manual.oculto ? 'Exibir' : 'Ocultar'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={salvandoId === `manual-delete-${manual.id}`}
+                    onClick={() => onExcluirManual(manual.id)}
+                    className="inline-flex items-center gap-2 rounded-md border border-red-100 bg-white px-3 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-60"
+                  >
+                    {salvandoId === `manual-delete-${manual.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 size={15} />}
+                    Excluir
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </section>
   );
 }
