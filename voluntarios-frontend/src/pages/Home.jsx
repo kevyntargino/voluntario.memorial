@@ -7,6 +7,21 @@ import { useNavigation } from '../context/NavigationContext';
 import { buildApiUrl } from '../lib/api';
 import logo from '../assets/ico.png';
 
+function estaNosProximos7Dias(dataHora) {
+  if (!dataHora) return false;
+
+  const dataEscala = new Date(dataHora);
+  if (Number.isNaN(dataEscala.getTime())) return false;
+
+  const agora = new Date();
+  const inicioHoje = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate());
+  const fimJanela = new Date(inicioHoje);
+  fimJanela.setDate(fimJanela.getDate() + 7);
+  fimJanela.setHours(23, 59, 59, 999);
+
+  return dataEscala >= inicioHoje && dataEscala <= fimJanela;
+}
+
 export default function Home() {
   const { token, usuario, logout } = useAuth();
   const { navigate } = useNavigation();
@@ -60,7 +75,10 @@ export default function Home() {
         return;
       }
 
-      const pendentes = (dados.escalas || []).filter((escala) => escala.minhaParticipacao?.status === 'PENDENTE');
+      const pendentes = (dados.escalas || []).filter((escala) => (
+        escala.minhaParticipacao?.status === 'PENDENTE'
+        && estaNosProximos7Dias(escala.dataHora)
+      ));
       setTotalConfirmacoesPendentes(pendentes.length);
     } catch {
       setTotalConfirmacoesPendentes(null);

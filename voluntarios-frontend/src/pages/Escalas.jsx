@@ -43,15 +43,6 @@ const filtrosTipo = [
 ];
 const diasCalendario = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const MODO_VISUALIZACAO_KEY = 'mcom_escalas_visualizacao';
-const coresArea = {
-  Midia: 'bg-blue-600',
-  'Iluminação': 'bg-amber-500',
-  Filmagem: 'bg-emerald-600',
-  Fotografia: 'bg-violet-600',
-  DTV: 'bg-rose-600',
-  'Direção': 'bg-cyan-600',
-  'Redes Sociais': 'bg-red-600',
-};
 
 const statusConfig = {
   PENDENTE: {
@@ -221,7 +212,7 @@ export default function Escalas() {
   const [justificativa, setJustificativa] = useState('');
   const [modoVisualizacao, setModoVisualizacao] = useState(getModoVisualizacaoInicial);
   const [mesCalendario, setMesCalendario] = useState(inicioMesAtual);
-  const [escalaModal, setEscalaModal] = useState(null);
+  const [eventoModal, setEventoModal] = useState(null);
   const [filtrosAbertos, setFiltrosAbertos] = useState(false);
 
   const carregarEscalas = useCallback(async () => {
@@ -437,17 +428,60 @@ export default function Escalas() {
   }, [areaFiltro, busca, escalasVisiveis, filtroConfirmacoes, participacaoSelecionadaId, statusFiltro, tipoFiltro]);
 
   const totalVoluntarios = escalasVisiveis.reduce((total, escala) => total + (escala.voluntarios?.length || 0), 0);
-  const ocorrenciasCalendario = useMemo(() => escalasVisiveis
-    .map((escala) => {
+  const ocorrenciasCalendario = useMemo(() => {
+    const eventos = new Map();
+
+    escalasVisiveis.forEach((escala) => {
       const data = escala.tipo === 'RECORRENTE'
         ? getOcorrenciaRecorrenteNoMes(escala, mesCalendario)
         : getData(escala);
 
-      return data ? { escala, data } : null;
-    })
-    .filter((item) => item
-      && item.data.getUTCFullYear() === mesCalendario.getUTCFullYear()
-      && item.data.getUTCMonth() === mesCalendario.getUTCMonth()), [escalasVisiveis, mesCalendario]);
+      if (!data
+        || data.getUTCFullYear() !== mesCalendario.getUTCFullYear()
+        || data.getUTCMonth() !== mesCalendario.getUTCMonth()) {
+        return;
+      }
+
+      const chaveEvento = escala.grupoEsporadicoId
+        ? `grupo:${escala.grupoEsporadicoId}:${data.toISOString()}`
+        : [
+            escala.tipo,
+            data.toISOString(),
+            normalizar(escala.titulo || 'evento'),
+            normalizar(escala.local),
+          ].join(':');
+      const eventoExistente = eventos.get(chaveEvento);
+      const area = prepararEscalaModal(escala, data);
+
+      if (eventoExistente) {
+        eventoExistente.areas.push(area);
+        return;
+      }
+
+      eventos.set(chaveEvento, {
+        id: chaveEvento,
+        titulo: escala.titulo || 'Evento sem título',
+        tipo: escala.tipo,
+        data,
+        dataHora: data.toISOString(),
+        local: escala.local,
+        descricao: escala.descricao,
+        areas: [area],
+      });
+    });
+
+    return Array.from(eventos.values())
+      .map((evento) => ({
+        evento: {
+          ...evento,
+          areas: evento.areas.sort((a, b) => (
+            (a.equipe?.nome || '').localeCompare(b.equipe?.nome || '', 'pt-BR')
+          )),
+        },
+        data: evento.data,
+      }))
+      .sort((a, b) => a.data.getTime() - b.data.getTime());
+  }, [escalasVisiveis, mesCalendario]);
   const temFiltrosAtivos = filtroConfirmacoes
     || Boolean(participacaoSelecionadaId)
     || busca.trim()
@@ -475,6 +509,13 @@ export default function Escalas() {
     navigate('/escalas', { replace: true });
   };
 
+  const alterarVisao = (valor) => {
+    setVisao(valor);
+    if (filtroConfirmacoes && valor !== 'minhas') {
+      limparFiltros();
+    }
+  };
+
   return (
     <div className="flex min-h-screen flex-col bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
       <Navbar />
@@ -485,14 +526,18 @@ export default function Escalas() {
             <div className="min-w-0">
               <p className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Escalas MCom</p>
               <h1 className="mt-1 text-2xl font-bold text-gray-950 dark:text-white sm:text-3xl">
-                {filtroConfirmacoes ? 'Confirmações pendentes' : 'Escalas por área'}
+                {filtroConfirmacoes
+                  ? 'Confirmações pendentes'
+                  : modoVisualizacao === 'calendario' ? 'Calendário de eventos' : 'Escalas por área'}
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-600 dark:text-gray-300">
                 {participacaoSelecionadaId
                   ? 'Abrimos a pendência exata enviada pela notificação para você confirmar ou solicitar substituição.'
                   : filtroConfirmacoes
                   ? 'Veja somente suas escalas que ainda aguardam confirmação.'
-                  : 'Veja os voluntários escalados para cada área nos sábados e domingos do 1º ao 4º fim de semana.'}
+                  : modoVisualizacao === 'calendario'
+                    ? 'Consulte cada evento do mês e abra seus detalhes para ver os voluntários organizados por área.'
+                    : 'Veja os voluntários escalados para cada área nos sábados e domingos do 1º ao 4º fim de semana.'}
               </p>
             </div>
 
@@ -531,12 +576,7 @@ export default function Escalas() {
                 { value: 'minhas', label: 'Somente minhas' },
               ]}
               value={visao}
-              onChange={(valor) => {
-                setVisao(valor);
-                if (filtroConfirmacoes && valor !== 'minhas') {
-                  limparFiltros();
-                }
-              }}
+              onChange={alterarVisao}
             />
 
             <SelectFiltro
@@ -670,10 +710,12 @@ export default function Escalas() {
           <CalendarioEscalas
             mes={mesCalendario}
             ocorrencias={ocorrenciasCalendario}
+            visao={visao}
+            onVisaoChange={alterarVisao}
             onMesAnterior={() => setMesCalendario((atual) => new Date(Date.UTC(atual.getUTCFullYear(), atual.getUTCMonth() - 1, 1)))}
             onProximoMes={() => setMesCalendario((atual) => new Date(Date.UTC(atual.getUTCFullYear(), atual.getUTCMonth() + 1, 1)))}
             onHoje={() => setMesCalendario(inicioMesAtual())}
-            onSelecionar={(escala, data) => setEscalaModal(prepararEscalaModal(escala, data))}
+            onSelecionar={setEventoModal}
           />
         ) : (
           <TabelaEscalas
@@ -697,7 +739,7 @@ export default function Escalas() {
         )}
       </main>
 
-      {escalaModal && <ModalEscala escala={escalaModal} onClose={() => setEscalaModal(null)} />}
+      {eventoModal && <ModalEvento evento={eventoModal} onClose={() => setEventoModal(null)} />}
 
       <Footer />
     </div>
@@ -736,7 +778,16 @@ function SeletorVisualizacao({ value, onChange }) {
   );
 }
 
-function CalendarioEscalas({ mes, ocorrencias, onMesAnterior, onProximoMes, onHoje, onSelecionar }) {
+function CalendarioEscalas({
+  mes,
+  ocorrencias,
+  visao,
+  onVisaoChange,
+  onMesAnterior,
+  onProximoMes,
+  onHoje,
+  onSelecionar,
+}) {
   const diasMes = useMemo(() => getDiasDoCalendario(mes), [mes]);
   const ocorrenciasPorDia = useMemo(() => {
     const mapa = new Map();
@@ -758,22 +809,47 @@ function CalendarioEscalas({ mes, ocorrencias, onMesAnterior, onProximoMes, onHo
 
   return (
     <section className="mt-5 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900 dark:shadow-black/20">
-      <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-3 py-4 dark:border-gray-800 sm:px-4">
+      <div className="flex flex-col gap-4 border-b border-gray-200 px-3 py-4 dark:border-gray-800 sm:flex-row sm:items-end sm:justify-between sm:px-4">
         <div>
           <p className="text-xs font-bold uppercase text-gray-500 dark:text-gray-400">Calendário</p>
           <h2 className="mt-1 text-lg font-bold capitalize text-gray-950 dark:text-white sm:text-xl">{tituloMes}</h2>
         </div>
-        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-          <button type="button" onClick={onHoje} className="grid h-10 min-w-10 place-items-center rounded-md border border-gray-300 px-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800 sm:flex sm:px-3" aria-label="Voltar para o mês atual" title="Mês atual">
-            <CalendarDays size={17} className="sm:hidden" />
-            <span className="hidden sm:inline">Hoje</span>
-          </button>
-          <button type="button" onClick={onMesAnterior} className="grid h-10 w-10 place-items-center rounded-md border border-gray-300 text-gray-600 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800" aria-label="Mês anterior" title="Mês anterior">
-            <ChevronLeft size={18} />
-          </button>
-          <button type="button" onClick={onProximoMes} className="grid h-10 w-10 place-items-center rounded-md border border-gray-300 text-gray-600 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800" aria-label="Próximo mês" title="Próximo mês">
-            <ChevronRight size={18} />
-          </button>
+        <div className="grid w-full gap-3 sm:flex sm:w-auto sm:flex-wrap sm:items-end sm:justify-end">
+          <div className="min-w-0">
+            <p className="mb-1.5 text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Escalas exibidas</p>
+            <div className="flex rounded-md border border-gray-300 bg-gray-100 p-1 dark:border-gray-700 dark:bg-gray-950">
+              {[
+                { value: 'todas', label: 'Todas' },
+                { value: 'minhas', label: 'Minhas' },
+              ].map((opcao) => (
+                <button
+                  key={opcao.value}
+                  type="button"
+                  onClick={() => onVisaoChange(opcao.value)}
+                  className={`min-h-9 flex-1 rounded px-3 py-1.5 text-sm font-semibold transition sm:flex-none ${
+                    visao === opcao.value
+                      ? 'bg-white text-gray-950 shadow-sm dark:bg-gray-700 dark:text-white'
+                      : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'
+                  }`}
+                  aria-pressed={visao === opcao.value}
+                >
+                  {opcao.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="grid grid-cols-[1fr_2.5rem_2.5rem] items-center gap-1.5 sm:flex sm:shrink-0 sm:gap-2">
+            <button type="button" onClick={onHoje} className="grid h-10 min-w-10 place-items-center rounded-md border border-gray-300 px-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800 sm:flex sm:px-3" aria-label="Voltar para o mês atual" title="Mês atual">
+              <CalendarDays size={17} className="sm:hidden" />
+              <span className="hidden sm:inline">Hoje</span>
+            </button>
+            <button type="button" onClick={onMesAnterior} className="grid h-10 w-10 place-items-center rounded-md border border-gray-300 text-gray-600 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800" aria-label="Mês anterior" title="Mês anterior">
+              <ChevronLeft size={18} />
+            </button>
+            <button type="button" onClick={onProximoMes} className="grid h-10 w-10 place-items-center rounded-md border border-gray-300 text-gray-600 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800" aria-label="Próximo mês" title="Próximo mês">
+              <ChevronRight size={18} />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -793,7 +869,7 @@ function CalendarioEscalas({ mes, ocorrencias, onMesAnterior, onProximoMes, onHo
               return (
                 <div
                   key={chave}
-                  className={`min-h-20 border-b border-r border-gray-100 p-1 dark:border-gray-800 sm:min-h-28 sm:p-2 ${pertenceAoMes ? 'bg-white dark:bg-gray-900' : 'bg-gray-50/70 dark:bg-gray-950/50'}`}
+                  className={`min-h-[4.75rem] min-w-0 border-b border-r border-gray-100 p-1 dark:border-gray-800 sm:min-h-28 sm:p-2 ${pertenceAoMes ? 'bg-white dark:bg-gray-900' : 'bg-gray-50/70 dark:bg-gray-950/50'}`}
                 >
                   <span className={`grid h-6 w-6 place-items-center rounded-full text-xs font-semibold sm:h-7 sm:w-7 sm:text-sm ${
                     isHoje
@@ -802,23 +878,34 @@ function CalendarioEscalas({ mes, ocorrencias, onMesAnterior, onProximoMes, onHo
                   }`}>
                     {dia.getUTCDate()}
                   </span>
-                  <div className="mt-1 flex flex-wrap gap-0 sm:mt-2 sm:gap-0.5">
-                    {itens.map(({ escala, data }) => {
-                      const titulo = `${escala.equipe?.nome || 'Equipe'}: ${escala.titulo || 'Escala'} - ${formatarDataCompleta(data)}`;
+                  <div className="mt-1 grid grid-cols-2 gap-0.5 sm:mt-2 sm:flex sm:flex-wrap">
+                    {itens.slice(0, 4).map(({ evento, data }) => {
+                      const titulo = `${evento.titulo} - ${formatarDataCompleta(data)} - ${evento.areas.length} área(s)`;
 
                       return (
                         <button
-                          key={`${escala.id}-${data.toISOString()}`}
+                          key={evento.id}
                           type="button"
-                          onClick={() => onSelecionar(escala, data)}
-                          className="grid h-6 w-6 place-items-center rounded-full transition hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-950 dark:hover:bg-gray-800 dark:focus:ring-white"
+                          onClick={() => onSelecionar(evento)}
+                          className="grid h-5 w-5 place-items-center rounded-full transition hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-950 dark:hover:bg-gray-800 dark:focus:ring-white sm:h-6 sm:w-6"
                           aria-label={titulo}
                           title={titulo}
                         >
-                          <span className={`h-3 w-3 rounded-full ring-2 ring-white dark:ring-gray-900 ${coresArea[escala.equipe?.nome] || 'bg-gray-600'}`} />
+                          <span className={`h-2.5 w-2.5 rounded-full ring-2 ring-white dark:ring-gray-900 sm:h-3 sm:w-3 ${evento.tipo === 'ESPORADICA' ? 'bg-amber-500' : 'bg-blue-600'}`} />
                         </button>
                       );
                     })}
+                    {itens.length > 4 && (
+                      <button
+                        type="button"
+                        onClick={() => onSelecionar(itens[0].evento)}
+                        className="grid h-5 w-5 place-items-center rounded-full text-[10px] font-bold text-gray-500 transition hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800 sm:h-6 sm:w-6"
+                        aria-label={`Mais ${itens.length - 4} evento(s) neste dia`}
+                        title={`Mais ${itens.length - 4} evento(s)`}
+                      >
+                        +{itens.length - 4}
+                      </button>
+                    )}
                   </div>
                 </div>
               );
@@ -831,21 +918,29 @@ function CalendarioEscalas({ mes, ocorrencias, onMesAnterior, onProximoMes, onHo
           Nenhuma escala encontrada neste mês com os filtros selecionados.
         </div>
       ) : (
-        <div className="flex flex-wrap gap-x-4 gap-y-2 border-t border-gray-100 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/60">
-          {Array.from(new Set(ocorrencias.map(({ escala }) => escala.equipe?.nome || 'Outras'))).map((area) => (
-            <span key={area} className="inline-flex items-center gap-2 text-xs font-semibold text-gray-600 dark:text-gray-300">
-              <span className={`h-2.5 w-2.5 rounded-full ${coresArea[area] || 'bg-gray-600'}`} />
-              {area}
+      <div className="flex flex-col gap-3 border-t border-gray-100 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/60 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+          <div className="flex flex-wrap gap-x-4 gap-y-2">
+            <span className="inline-flex items-center gap-2 text-xs font-semibold text-gray-600 dark:text-gray-300">
+              <span className="h-2.5 w-2.5 rounded-full bg-blue-600" />
+              Recorrente
             </span>
-          ))}
+            <span className="inline-flex items-center gap-2 text-xs font-semibold text-gray-600 dark:text-gray-300">
+              <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
+              Evento especial
+            </span>
+          </div>
+          <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">{ocorrencias.length} evento(s) no mês</span>
         </div>
       )}
     </section>
   );
 }
 
-function ModalEscala({ escala, onClose }) {
+function ModalEvento({ evento, onClose }) {
   const fecharRef = useRef(null);
+  const totalVoluntariosEvento = evento.areas.reduce((total, area) => (
+    total + (area.voluntarios?.length || 0)
+  ), 0);
 
   useEffect(() => {
     const fecharComEscape = (event) => {
@@ -865,13 +960,13 @@ function ModalEscala({ escala, onClose }) {
 
   return (
     <div className="fixed inset-0 z-[80] flex items-end justify-center bg-gray-950/65 sm:items-center sm:p-4 sm:backdrop-blur-sm" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <div role="dialog" aria-modal="true" aria-labelledby="modal-escala-titulo" className="max-h-[92dvh] w-full max-w-2xl overflow-y-auto rounded-t-lg border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900 sm:rounded-lg">
+      <div role="dialog" aria-modal="true" aria-labelledby="modal-evento-titulo" className="max-h-[92dvh] w-full max-w-2xl overflow-y-auto rounded-t-lg border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900 sm:rounded-lg">
         <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-gray-200 bg-white px-4 py-4 dark:border-gray-800 dark:bg-gray-900 sm:px-5">
           <div className="min-w-0">
-            <p className="text-xs font-bold uppercase text-gray-500 dark:text-gray-400">{escala.equipe?.nome || 'Equipe'}</p>
-            <h2 id="modal-escala-titulo" className="mt-1 text-xl font-bold text-gray-950 dark:text-white">{escala.titulo || 'Escala sem título'}</h2>
+            <p className="text-xs font-bold uppercase text-gray-500 dark:text-gray-400">{evento.areas.length} área(s) requisitada(s)</p>
+            <h2 id="modal-evento-titulo" className="mt-1 text-xl font-bold text-gray-950 dark:text-white">{evento.titulo}</h2>
           </div>
-          <button ref={fecharRef} type="button" onClick={onClose} className="grid h-10 w-10 shrink-0 place-items-center rounded-md border border-gray-300 text-gray-500 transition hover:bg-gray-50 hover:text-gray-900 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white" aria-label="Fechar detalhes da escala" title="Fechar">
+          <button ref={fecharRef} type="button" onClick={onClose} className="grid h-10 w-10 shrink-0 place-items-center rounded-md border border-gray-300 text-gray-500 transition hover:bg-gray-50 hover:text-gray-900 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white" aria-label="Fechar detalhes do evento" title="Fechar">
             <X size={18} />
           </button>
         </div>
@@ -882,53 +977,64 @@ function ModalEscala({ escala, onClose }) {
               <CalendarDays className="mt-0.5 h-5 w-5 text-dourado-700" />
               <div>
                 <p className="text-xs font-bold uppercase text-gray-500 dark:text-gray-400">Data e horário</p>
-                <p className="mt-1 text-sm font-semibold text-gray-800 dark:text-gray-100">{formatarDataCompleta(escala.dataHora)}</p>
+                <p className="mt-1 text-sm font-semibold text-gray-800 dark:text-gray-100">{formatarDataCompleta(evento.dataHora)}</p>
               </div>
             </div>
             <div className="flex items-start gap-3">
-              {escala.local ? <MapPin className="mt-0.5 h-5 w-5 text-dourado-700" /> : <Repeat2 className="mt-0.5 h-5 w-5 text-dourado-700" />}
+              {evento.local ? <MapPin className="mt-0.5 h-5 w-5 text-dourado-700" /> : <Repeat2 className="mt-0.5 h-5 w-5 text-dourado-700" />}
               <div>
-                <p className="text-xs font-bold uppercase text-gray-500 dark:text-gray-400">{escala.local ? 'Local' : 'Tipo'}</p>
-                <p className="mt-1 text-sm font-semibold text-gray-800 dark:text-gray-100">{escala.local || (escala.tipo === 'RECORRENTE' ? 'Escala recorrente' : 'Escala esporádica')}</p>
+                <p className="text-xs font-bold uppercase text-gray-500 dark:text-gray-400">{evento.local ? 'Local' : 'Tipo'}</p>
+                <p className="mt-1 text-sm font-semibold text-gray-800 dark:text-gray-100">{evento.local || (evento.tipo === 'RECORRENTE' ? 'Evento recorrente' : 'Evento especial')}</p>
               </div>
             </div>
           </div>
 
-          {escala.descricao && (
+          {evento.descricao && (
             <div>
               <h3 className="text-sm font-bold text-gray-950 dark:text-white">Descrição</h3>
-              <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-gray-600 dark:text-gray-300">{escala.descricao}</p>
+              <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-gray-600 dark:text-gray-300">{evento.descricao}</p>
             </div>
           )}
 
           <div>
             <div className="flex items-center justify-between gap-3">
-              <h3 className="inline-flex items-center gap-2 text-sm font-bold text-gray-950 dark:text-white"><UsersRound size={17} /> Voluntários</h3>
-              <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">{escala.voluntarios?.length || 0} escalado(s)</span>
+              <h3 className="inline-flex items-center gap-2 text-sm font-bold text-gray-950 dark:text-white"><UsersRound size={17} /> Voluntários por área</h3>
+              <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">{totalVoluntariosEvento} escalado(s)</span>
             </div>
-            {(escala.voluntarios || []).length === 0 ? (
-              <p className="mt-3 rounded-md border border-dashed border-gray-300 px-4 py-5 text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">Nenhum voluntário atribuído a esta escala.</p>
-            ) : (
-              <div className="mt-3 divide-y divide-gray-100 border-y border-gray-100 dark:divide-gray-800 dark:border-gray-800">
-                {escala.voluntarios.map((item) => {
-                  const config = statusConfig[item.status] || statusConfig.PENDENTE;
-                  const Icon = config.icon;
+            <div className="mt-3 divide-y divide-gray-200 border-y border-gray-200 dark:divide-gray-800 dark:border-gray-800">
+              {evento.areas.map((area) => (
+                <section key={area.id} className="py-4 first:pt-3 last:pb-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <h4 className="text-sm font-bold text-gray-900 dark:text-white">{area.equipe?.nome || 'Outras'}</h4>
+                    <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">{area.voluntarios?.length || 0} pessoa(s)</span>
+                  </div>
 
-                  return (
-                    <div key={item.id} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-gray-800 dark:text-gray-100">{item.usuario?.nomeCompleto || 'Voluntário'}</p>
-                        {item.usuario?.telefone && <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{formatarTelefoneExibicao(item.usuario.telefone)}</p>}
-                      </div>
-                      <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
-                        <span className={`inline-flex items-center gap-1 rounded border px-2 py-1 text-xs font-semibold ${config.className}`}><Icon size={12} /> {config.label}</span>
-                        {item.substituto && <span className="rounded border border-violet-200 bg-violet-50 px-2 py-1 text-xs font-semibold text-violet-700">Substituto</span>}
-                      </div>
+                  {(area.voluntarios || []).length === 0 ? (
+                    <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Nenhum voluntário atribuído nesta área.</p>
+                  ) : (
+                    <div className="mt-2 divide-y divide-gray-100 dark:divide-gray-800">
+                      {area.voluntarios.map((item) => {
+                        const config = statusConfig[item.status] || statusConfig.PENDENTE;
+                        const Icon = config.icon;
+
+                        return (
+                          <div key={item.id} className="flex flex-col gap-2 py-3 first:pt-2 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-gray-800 dark:text-gray-100">{item.usuario?.nomeCompleto || 'Voluntário'}</p>
+                              {item.usuario?.telefone && <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{formatarTelefoneExibicao(item.usuario.telefone)}</p>}
+                            </div>
+                            <div className="flex shrink-0 flex-wrap gap-1.5 sm:justify-end">
+                              <span className={`inline-flex items-center gap-1 rounded border px-2 py-1 text-xs font-semibold ${config.className}`}><Icon size={12} /> {config.label}</span>
+                              {item.substituto && <span className="rounded border border-violet-200 bg-violet-50 px-2 py-1 text-xs font-semibold text-violet-700 dark:border-violet-800 dark:bg-violet-950/50 dark:text-violet-200">Substituto</span>}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                  );
-                })}
-              </div>
-            )}
+                  )}
+                </section>
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -1057,7 +1163,7 @@ function EscalaLinha({
   return (
     <div
       id={participacao ? `participacao-${participacao.id}` : undefined}
-      className={`grid gap-4 px-4 py-5 transition md:grid-cols-[minmax(160px,0.8fr)_minmax(220px,1.2fr)] ${
+      className={`grid gap-4 px-3 py-4 transition sm:px-4 sm:py-5 md:grid-cols-[minmax(160px,0.8fr)_minmax(220px,1.2fr)] ${
         destaque ? 'bg-amber-50/80 ring-2 ring-inset ring-amber-300 dark:bg-amber-950/45 dark:ring-amber-500/70' : ''
       }`}
     >
@@ -1103,7 +1209,7 @@ function EscalaLinha({
                     <span className="grid h-8 w-8 shrink-0 place-items-center rounded bg-white text-sm font-bold text-gray-700 shadow-sm dark:bg-gray-800 dark:text-gray-200 dark:shadow-none">
                       {item.usuario?.nomeCompleto?.slice(0, 1) || '?'}
                     </span>
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
                         <p className="truncate text-sm font-semibold text-gray-800 dark:text-gray-100">{item.usuario?.nomeCompleto || 'Voluntário'}</p>
                         {item.usuario?.telefone && (
@@ -1128,7 +1234,7 @@ function EscalaLinha({
             </div>
 
             {participacao && (
-              <div className="grid shrink-0 grid-cols-2 gap-2 sm:flex sm:flex-wrap lg:justify-end">
+              <div className="grid shrink-0 gap-2 min-[420px]:grid-cols-2 sm:flex sm:flex-wrap lg:justify-end">
                 <button
                   type="button"
                   disabled={atualizandoId === participacao.id || ['CONFIRMADA', 'AUSENTE'].includes(participacao.status)}

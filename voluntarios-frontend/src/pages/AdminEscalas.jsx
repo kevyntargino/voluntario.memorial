@@ -239,6 +239,7 @@ export default function AdminEscalas() {
     if (pathname === '/admin/notificacoes') return 'notificacao';
     if (pathname === '/admin/escalas') return 'escalas';
     if (pathname === '/admin/manuais') return 'manuais';
+    if (pathname === '/admin/ausencias') return 'ausencias';
     return 'visao';
   }, [pathname]);
   const [painelAberto, setPainelAberto] = useState(() => getPainelPelaRota());
@@ -980,9 +981,28 @@ export default function AdminEscalas() {
         ) : (
           <>
             <section className="mt-5 grid gap-4 md:grid-cols-3">
-              <Metrica titulo="Total de voluntários" valor={dashboard?.metricas?.totalVoluntarios || 0} icon={UsersRound} />
-              <Metrica titulo="Total de equipes" valor={dashboard?.metricas?.totalEquipes || 0} icon={ShieldCheck} />
-              <Metrica titulo="Ausências nas últimas 4 escalas" valor={dashboard?.metricas?.ausenciasUltimas4 || 0} icon={AlertCircle} destaque />
+              <Metrica
+                titulo="Total de voluntários"
+                valor={dashboard?.metricas?.totalVoluntarios || 0}
+                icon={UsersRound}
+                ativo={painelAberto === 'voluntarios'}
+                onClick={() => abrirPainel('voluntarios', '/admin/voluntarios')}
+              />
+              <Metrica
+                titulo="Total de equipes"
+                valor={dashboard?.metricas?.totalEquipes || 0}
+                icon={ShieldCheck}
+                ativo={painelAberto === 'equipes'}
+                onClick={() => abrirPainel('equipes', '/admin/equipes')}
+              />
+              <Metrica
+                titulo="Ausências nas últimas 4 escalas"
+                valor={dashboard?.metricas?.ausenciasUltimas4 || 0}
+                icon={AlertCircle}
+                destaque
+                ativo={painelAberto === 'ausencias'}
+                onClick={() => abrirPainel('ausencias', '/admin/ausencias')}
+              />
             </section>
 
             <section className="mt-5 grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
@@ -1040,6 +1060,13 @@ export default function AdminEscalas() {
                 onSelecionarEquipe={setEquipeSelecionadaId}
                 onAbrirUsuario={setUsuarioModal}
                 onAtualizarVinculo={atualizarVinculoEquipe}
+              />
+            )}
+
+            {painelAberto === 'ausencias' && (
+              <PainelAusencias
+                ausencias={dashboard?.ausenciasUltimas4Detalhes || []}
+                onAbrirUsuario={setUsuarioModal}
               />
             )}
 
@@ -1124,14 +1151,33 @@ export default function AdminEscalas() {
   );
 }
 
-function Metrica({ titulo, valor, icon: Icon, destaque = false }) {
-  return (
-    <div className={`rounded-2xl border p-5 shadow-sm ${destaque ? 'border-red-100 bg-red-50' : 'border-gray-200 bg-white'}`}>
+function Metrica({ titulo, valor, icon: Icon, destaque = false, ativo = false, onClick }) {
+  const Conteudo = (
+    <>
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold uppercase tracking-[0.18em] text-gray-500">{titulo}</p>
         <Icon className={`h-5 w-5 ${destaque ? 'text-red-600' : 'text-dourado-600'}`} />
       </div>
       <p className="mt-4 text-4xl font-bold text-gray-950">{valor}</p>
+    </>
+  );
+  const className = `rounded-2xl border p-5 text-left shadow-sm transition ${
+    destaque ? 'border-red-100 bg-red-50' : 'border-gray-200 bg-white'
+  } ${onClick ? 'cursor-pointer hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-gray-950/15' : ''} ${
+    ativo ? 'ring-2 ring-gray-950/15' : ''
+  }`;
+
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className={className} aria-pressed={ativo}>
+        {Conteudo}
+      </button>
+    );
+  }
+
+  return (
+    <div className={className}>
+      {Conteudo}
     </div>
   );
 }
@@ -1697,6 +1743,87 @@ function Contato({ pessoa, onAbrirUsuario, acaoExtra = null }) {
       </div>
       {acaoExtra}
     </div>
+  );
+}
+
+function PainelAusencias({ ausencias, onAbrirUsuario }) {
+  return (
+    <section className="mt-5 rounded-2xl border border-gray-200 bg-white shadow-sm">
+      <div className="border-b border-gray-100 px-5 py-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-gray-950">Ausências nas últimas 4 escalas</h2>
+            <p className="mt-1 text-sm text-gray-500">
+              Escalas recentes com voluntários marcados como ausentes, justificativa e substituição.
+            </p>
+          </div>
+          <span className="w-fit rounded-full border border-red-100 bg-red-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.14em] text-red-700">
+            {ausencias.length} ausência{ausencias.length === 1 ? '' : 's'}
+          </span>
+        </div>
+      </div>
+
+      <div className="divide-y divide-gray-100">
+        {ausencias.length === 0 ? (
+          <div className="px-5 py-10 text-center">
+            <p className="text-base font-bold text-gray-950">Nenhuma ausência encontrada</p>
+            <p className="mt-2 text-sm text-gray-500">As últimas 4 escalas não possuem voluntários marcados como ausentes.</p>
+          </div>
+        ) : ausencias.map((ausencia) => (
+          <article key={ausencia.id} className="px-5 py-5">
+            <div className="grid gap-4 lg:grid-cols-[minmax(180px,0.8fr)_minmax(260px,1.2fr)_minmax(220px,1fr)]">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.14em] text-gray-500">Escala</p>
+                <h3 className="mt-1 text-base font-bold text-gray-950">{ausencia.escala?.titulo || 'Escala sem título'}</h3>
+                <p className="mt-1 text-sm font-semibold text-gray-500">{formatarData(ausencia.escala?.dataHora)}</p>
+                {ausencia.escala?.local && <p className="mt-1 text-xs text-gray-500">Local: {ausencia.escala.local}</p>}
+              </div>
+
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.14em] text-gray-500">Voluntário e equipe</p>
+                <div className="mt-2 flex min-w-0 items-start gap-2">
+                  <UsuarioInfoButton usuario={ausencia.voluntario} onClick={onAbrirUsuario} />
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-gray-950">{ausencia.voluntario?.nomeCompleto || 'Voluntário'}</p>
+                    <p className="mt-1 text-xs text-gray-500">{ausencia.equipe?.nome || 'Sem equipe'}</p>
+                    {ausencia.voluntario?.telefone && (
+                      <p className="mt-1 text-xs text-gray-400">{formatarTelefoneExibicao(ausencia.voluntario.telefone)}</p>
+                    )}
+                  </div>
+                </div>
+                <div className="mt-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+                  <p className="text-xs font-bold uppercase tracking-[0.14em] text-gray-500">Justificativa</p>
+                  <p className="mt-1 text-sm leading-6 text-gray-700">
+                    {ausencia.justificativa || 'Nenhuma justificativa registrada.'}
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.14em] text-gray-500">Substituição</p>
+                {ausencia.teveSubstituto ? (
+                  <div className="mt-2 space-y-2">
+                    {(ausencia.substitutos || []).map((substituto) => (
+                      <div key={substituto.id} className="flex items-start gap-2 rounded-md border border-emerald-100 bg-emerald-50 px-3 py-2">
+                        <UsuarioInfoButton usuario={substituto.usuario} onClick={onAbrirUsuario} className="h-8 w-8" />
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold text-gray-950">{substituto.usuario?.nomeCompleto || 'Substituto'}</p>
+                          <p className="mt-0.5 text-xs font-semibold text-emerald-700">Substituto atribuído</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-500">
+                    Não houve substituto registrado.
+                  </p>
+                )}
+              </div>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
   );
 }
 

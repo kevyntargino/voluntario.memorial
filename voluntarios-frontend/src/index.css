@@ -81,22 +81,42 @@
   html.dark .text-gray-600,
   html.dark .text-gray-500,
   html.dark .text-gray-400 {
-    color: #cbd5e1 !important;
+    color: #e5e7eb !important;
   }
+  html.dark .text-gray-300 {
+    color: #f3f4f6 !important;
+  }
+  html.dark .text-gray-200,
+  html.dark .text-gray-100 {
+    color: #ffffff !important;
+  }
+
   html.dark .border-gray-200,
   html.dark .border-gray-100,
+  html.dark .border-gray-300,
+  html.dark .border-gray-400,
+  html.dark .border-gray-500,
+  html.dark .border-gray-600,
+  html.dark .border-gray-700,
+  html.dark .border-gray-800,
   html.dark .border-white\/60,
   html.dark .border-white\/15,
   html.dark .border-black\/5,
   html.dark .border-dourado-100,
   html.dark .border-dourado-200 {
-    border-color: #374151 !important;
+    border-color: rgba(255, 255, 255, 0.62) !important;
+  }
+  html.dark .divide-gray-100 > :not([hidden]) ~ :not([hidden]),
+  html.dark .divide-gray-200 > :not([hidden]) ~ :not([hidden]),
+  html.dark .divide-gray-700 > :not([hidden]) ~ :not([hidden]),
+  html.dark .divide-gray-800 > :not([hidden]) ~ :not([hidden]) {
+    border-color: rgba(255, 255, 255, 0.42) !important;
   }
   html.dark input,
   html.dark select,
   html.dark textarea {
     background-color: #0f172a !important;
-    border-color: #374151 !important;
+    border-color: rgba(255, 255, 255, 0.68) !important;
     color: #f9fafb !important;
   }
   html.dark input::placeholder,
@@ -107,7 +127,15 @@
   html.dark select:disabled,
   html.dark textarea:disabled {
     background-color: #111827 !important;
-    color: #94a3b8 !important;
+    color: #d1d5db !important;
+  }
+  html.dark button.border,
+  html.dark a.border {
+    border-color: rgba(255, 255, 255, 0.68) !important;
+  }
+  html.dark button:not(:disabled):hover,
+  html.dark a:not(:disabled):hover {
+    border-color: rgba(255, 255, 255, 0.9) !important;
   }
 
   /* Paleta neutra aplicada aos pontos que antes eram dourados. */
@@ -139,7 +167,7 @@
   html.dark .text-dourado-600,
   html.dark .text-dourado-700,
   html.dark .text-dourado-800 {
-    color: #e5e7eb !important;
+    color: #ffffff !important;
   }
   html.dark .bg-dourado-700 {
     background-color: #f9fafb !important;
@@ -156,35 +184,43 @@
   }
   html.dark .text-red-600,
   html.dark .text-red-700 {
-    color: #fca5a5 !important;
+    color: #fecaca !important;
   }
   html.dark .text-amber-700,
   html.dark .text-amber-800 {
-    color: #fcd34d !important;
+    color: #fde68a !important;
   }
   html.dark .text-emerald-700,
   html.dark .text-emerald-800 {
-    color: #86efac !important;
+    color: #bbf7d0 !important;
   }
   html.dark .text-sky-700,
   html.dark .text-sky-800 {
-    color: #93c5fd !important;
+    color: #bfdbfe !important;
+  }
+  html.dark .text-violet-700,
+  html.dark .text-violet-800 {
+    color: #ddd6fe !important;
   }
   html.dark .border-red-100,
   html.dark .border-red-200 {
-    border-color: rgba(248, 113, 113, 0.35) !important;
+    border-color: rgba(254, 202, 202, 0.7) !important;
   }
   html.dark .border-amber-100,
   html.dark .border-amber-200 {
-    border-color: rgba(245, 158, 11, 0.35) !important;
+    border-color: rgba(253, 230, 138, 0.7) !important;
   }
   html.dark .border-emerald-100,
   html.dark .border-emerald-200 {
-    border-color: rgba(52, 211, 153, 0.35) !important;
+    border-color: rgba(187, 247, 208, 0.7) !important;
   }
   html.dark .border-sky-100,
   html.dark .border-sky-200 {
-    border-color: rgba(96, 165, 250, 0.35) !important;
+    border-color: rgba(191, 219, 254, 0.7) !important;
+  }
+  html.dark .border-violet-100,
+  html.dark .border-violet-200 {
+    border-color: rgba(221, 214, 254, 0.7) !important;
   }
 }
 

@@ -97,6 +97,7 @@ function formatarParticipacao(participacao) {
     id: participacao.id,
     status: participacao.status,
     substituto: participacao.substituto,
+    justificativaSubstituicao: participacao.justificativaSubstituicao,
     usuario: {
       id: participacao.usuario.id,
       nomeCompleto: participacao.usuario.nomeCompleto,
@@ -214,7 +215,33 @@ router.get('/dashboard', autenticar, exigirAdmin, async (req, res) => {
           },
         },
         include: {
-          voluntarios: true,
+          equipe: {
+            select: {
+              id: true,
+              nome: true,
+            },
+          },
+          voluntarios: {
+            include: {
+              usuario: {
+                select: {
+                  id: true,
+                  nomeCompleto: true,
+                  email: true,
+                  telefone: true,
+                  urlFoto: true,
+                  dataNascimento: true,
+                  sexo: true,
+                  permissoes: true,
+                  criadoEm: true,
+                  atualizadoEm: true,
+                  equipes: { select: { id: true, nome: true } },
+                  equipesLideradas: { select: { id: true, nome: true } },
+                },
+              },
+            },
+            orderBy: { criadoEm: 'asc' },
+          },
         },
         orderBy: {
           dataHora: 'desc',
@@ -264,6 +291,28 @@ router.get('/dashboard', autenticar, exigirAdmin, async (req, res) => {
     const ausenciasUltimas4 = ultimasEscalas.reduce((total, escala) => (
       total + escala.voluntarios.filter((item) => item.status === 'AUSENTE').length
     ), 0);
+    const ausenciasUltimas4Detalhes = ultimasEscalas.flatMap((escala) => {
+      const substitutos = escala.voluntarios.filter((item) => item.substituto).map(formatarParticipacao);
+
+      return escala.voluntarios
+        .filter((item) => item.status === 'AUSENTE')
+        .map((ausencia) => ({
+          id: ausencia.id,
+          escala: {
+            id: escala.id,
+            titulo: escala.titulo,
+            local: escala.local,
+            descricao: escala.descricao,
+            tipo: escala.tipo,
+            dataHora: escala.dataHora,
+          },
+          equipe: escala.equipe,
+          voluntario: formatarParticipacao(ausencia).usuario,
+          justificativa: ausencia.justificativaSubstituicao,
+          substitutos,
+          teveSubstituto: substitutos.length > 0,
+        }));
+    });
 
     return res.status(200).json({
       metricas: {
@@ -271,6 +320,7 @@ router.get('/dashboard', autenticar, exigirAdmin, async (req, res) => {
         totalEquipes,
         ausenciasUltimas4,
       },
+      ausenciasUltimas4Detalhes,
       equipes: equipes.map(formatarEquipe),
       usuarios: usuarios.map(formatarUsuario),
       lideres: usuarios.filter((usuario) => usuario.permissoes.includes('LIDER_EQUIPE') || usuario.equipesLideradas.length > 0).map(formatarUsuario),
