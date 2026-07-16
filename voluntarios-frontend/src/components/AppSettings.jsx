@@ -225,8 +225,8 @@ export function AppSettings() {
                   onClick={() => alterarTema(option.value)}
                   className={`rounded-xl px-3 py-2 text-sm font-bold transition ${
                     tema === option.value
-                      ? 'bg-gray-950 text-white dark:bg-white dark:text-gray-950'
-                      : 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-900'
+                      ? 'border border-gray-300 bg-gray-950 text-white dark:border-gray-600 dark:bg-gray-900 dark:text-white'
+                      : 'border border-transparent text-gray-500 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-900'
                   }`}
                 >
                   {option.label}

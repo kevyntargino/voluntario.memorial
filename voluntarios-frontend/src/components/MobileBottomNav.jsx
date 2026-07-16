@@ -31,8 +31,8 @@ export function MobileBottomNav() {
                 onClick={() => navigate(item.path)}
                 className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-bold transition ${
                   ativo
-                    ? 'bg-gray-950 text-white shadow-lg shadow-gray-950/15 dark:bg-white dark:text-gray-950'
-                    : 'text-gray-500 hover:bg-gray-100 hover:text-gray-950 dark:text-gray-400 dark:hover:bg-gray-900 dark:hover:text-white'
+                    ? 'border border-gray-200 bg-gray-950 text-white shadow-lg shadow-gray-950/15 dark:border-gray-500 dark:bg-gray-900 dark:text-white'
+                    : 'text-gray-500 hover:bg-gray-100 hover:text-gray-950 dark:text-gray-300 dark:hover:bg-gray-900 dark:hover:text-white'
                 }`}
               >
                 <Icon size={18} />
