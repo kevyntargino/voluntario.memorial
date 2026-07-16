@@ -32,6 +32,12 @@ enum TipoEscala {
   ESPORADICA
 }
 
+enum FrequenciaEvento {
+  NAO_REPETE
+  SEMANAL
+  MENSAL
+}
+
 enum StatusEscala {
   PENDENTE
   CONFIRMADA
@@ -121,10 +127,34 @@ model Equipe {
   voluntarios Usuario[] @relation("UsuarioEquipes")
   lideres     Usuario[] @relation("LiderEquipes")
   escalas     Escala[]
+  eventos     Evento[] @relation("EventoEquipes")
   manuais     Manual[]  @relation("EquipeManuais")
   avisos      Aviso[]   @relation("EquipeAvisos")
 
   @@map("equipes")
+}
+
+model Evento {
+  id          String           @id @default(uuid()) @db.Uuid
+  titulo      String
+  local       String?
+  descricao   String?          @db.Text
+  tipo        TipoEscala
+  frequencia  FrequenciaEvento @default(NAO_REPETE)
+  dataInicio  DateTime         @map("data_inicio")
+  dataFim     DateTime?        @map("data_fim")
+  diaSemana   Int?             @map("dia_semana")
+  semanaMes   Int?             @map("semana_mes")
+  ativo       Boolean          @default(true)
+
+  equipes     Equipe[]         @relation("EventoEquipes")
+  escalas     Escala[]
+  ordensCulto OrdemCulto[]
+
+  criadoEm    DateTime         @default(now()) @map("criado_em")
+  atualizadoEm DateTime        @updatedAt @map("atualizado_em")
+
+  @@map("eventos")
 }
 
 model Escala {
@@ -139,6 +169,9 @@ model Escala {
   dataHora    DateTime?  @map("data_hora") 
   grupoEsporadicoId String? @map("grupo_esporadico_id") @db.Uuid
   solicitadaPeloAdmin Boolean @default(false) @map("solicitada_pelo_admin")
+
+  eventoId    String?    @map("evento_id") @db.Uuid
+  evento      Evento?    @relation(fields: [eventoId], references: [id], onDelete: Cascade)
   
   equipeId    String     @map("equipe_id") @db.Uuid
   equipe      Equipe     @relation(fields: [equipeId], references: [id], onDelete: Cascade)
@@ -147,6 +180,9 @@ model Escala {
 
   criadoEm    DateTime   @default(now()) @map("criado_em")
   atualizadoEm DateTime  @updatedAt @map("atualizado_em")
+
+  @@unique([eventoId, equipeId, dataHora])
+  @@index([eventoId, dataHora])
 
   @@map("escalas")
 }
@@ -186,14 +222,22 @@ model OrdemCulto {
   id           String    @id @default(uuid()) @db.Uuid
   titulo       String    
   dataCulto    DateTime  @map("data_culto") @db.Date
+  dataHora     DateTime? @map("data_hora")
   conteudoText String?   @map("conteudo_text") @db.Text 
   anexoUrl     String?   @map("anexo_url") 
+  arquivoKey   String?   @map("arquivo_key")
+
+  eventoId     String?   @map("evento_id") @db.Uuid
+  evento       Evento?   @relation(fields: [eventoId], references: [id], onDelete: Cascade)
   
   criadorId    String?   @map("criador_id") @db.Uuid
   criador      Usuario?  @relation("CriadorOrdemCulto", fields: [criadorId], references: [id], onDelete: SetNull)
 
   criadoEm     DateTime  @default(now()) @map("criado_em")
   atualizadoEm DateTime  @updatedAt @map("atualizado_em")
+
+  @@unique([eventoId, dataHora])
+  @@index([eventoId, dataHora])
 
   @@map("ordens_culto")
 }

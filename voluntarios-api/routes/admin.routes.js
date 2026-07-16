@@ -5,6 +5,7 @@ import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import { normalizarTelefone } from '../utils/telefone.js';
+import { getInicioHistoricoEscalas } from '../services/eventos.service.js';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -211,6 +212,7 @@ router.get('/dashboard', autenticar, exigirAdmin, async (req, res) => {
         take: 4,
         where: {
           dataHora: {
+            gte: getInicioHistoricoEscalas(agora),
             lte: agora,
           },
         },

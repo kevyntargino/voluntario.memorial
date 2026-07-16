@@ -5,6 +5,12 @@ import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import { notificarNovaEscalaAdmin, notificarPedidoSubstituicao } from '../services/notificacoes.service.js';
+import {
+  garantirOcorrenciasEventos,
+  gerarDatasEvento,
+  getInicioHistoricoEscalas,
+  getLimiteEscalasFuturas,
+} from '../services/eventos.service.js';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -105,6 +111,33 @@ function getDataHoraRecorrente(diaSemana, semanaMes, dataHora) {
 
   return getOcorrenciaNoMes(agora.getUTCFullYear(), agora.getUTCMonth(), diaSemana, semanaMes, dataHora)
     || getDataUtc(agora.getUTCFullYear(), agora.getUTCMonth(), 1, horas, minutos);
+}
+
+function getProximaDataDaRegra(diaSemana, semanaMes, horario, frequencia) {
+  const [horasRaw, minutosRaw] = String(horario || '').split(':');
+  const horas = Number(horasRaw);
+  const minutos = Number(minutosRaw);
+
+  if (!Number.isInteger(horas) || horas < 0 || horas > 23 || !Number.isInteger(minutos) || minutos < 0 || minutos > 59) {
+    return null;
+  }
+
+  const agora = getAgoraEvento();
+
+  if (frequencia === 'SEMANAL') {
+    const diasAteOcorrencia = (diaSemana - agora.getUTCDay() + 7) % 7;
+    let ocorrencia = getDataUtc(agora.getUTCFullYear(), agora.getUTCMonth(), agora.getUTCDate() + diasAteOcorrencia, horas, minutos);
+    if (ocorrencia <= agora) ocorrencia = new Date(ocorrencia.getTime() + 7 * 86400000);
+    return ocorrencia;
+  }
+
+  for (let offsetMes = 0; offsetMes < 18; offsetMes += 1) {
+    const base = getDataUtc(agora.getUTCFullYear(), agora.getUTCMonth() + offsetMes, 1);
+    const ocorrencia = getOcorrenciaNoMes(base.getUTCFullYear(), base.getUTCMonth(), diaSemana, semanaMes, getDataUtc(base.getUTCFullYear(), base.getUTCMonth(), 1, horas, minutos));
+    if (ocorrencia && ocorrencia > agora) return ocorrencia;
+  }
+
+  return null;
 }
 
 function getHorarioBase(dataHora) {
@@ -258,6 +291,7 @@ function formatarEscalaCompleta(escala, usuarioId) {
     .filter(Boolean);
   const minhaParticipacaoBase = escala.voluntarios.find((item) => item.usuarioId === usuarioId) || null;
   const minhaParticipacao = minhaParticipacaoBase ? formatarParticipacao(minhaParticipacaoBase, dataOcorrencia, escala.tipo) : null;
+  const ordem = escala.evento?.ordensCulto?.find((item) => datasIguais(item.dataHora, dataOcorrencia)) || null;
 
   return {
     id: escala.id,
@@ -269,6 +303,14 @@ function formatarEscalaCompleta(escala, usuarioId) {
     semanaMes: escala.semanaMes,
     dataHora: dataOcorrencia,
     grupoEsporadicoId: escala.grupoEsporadicoId,
+    eventoId: escala.eventoId,
+    evento: escala.evento ? { id: escala.evento.id, titulo: escala.evento.titulo } : null,
+    ordemCulto: ordem ? {
+      id: ordem.id,
+      titulo: ordem.titulo,
+      dataHora: ordem.dataHora,
+      arquivoUrl: `/api/ordens-culto/${ordem.id}/arquivo`,
+    } : null,
     solicitadaPeloAdmin: escala.solicitadaPeloAdmin,
     equipe: escala.equipe,
     voluntarios,
@@ -287,14 +329,12 @@ function formatarEscalaCompleta(escala, usuarioId) {
 
 router.get('/', autenticar, async (req, res) => {
   try {
+    await garantirOcorrenciasEventos(prisma);
     const visao = req.query.visao === 'minhas' ? 'minhas' : 'todas';
 
     const escalas = await prisma.escala.findMany({
       where: {
-        OR: [
-          { tipo: 'RECORRENTE' },
-          { tipo: 'ESPORADICA', dataHora: { gte: new Date() } },
-        ],
+        dataHora: { gte: getInicioHistoricoEscalas() },
         voluntarios: visao === 'minhas'
           ? {
               some: {
@@ -310,6 +350,7 @@ router.get('/', autenticar, async (req, res) => {
             nome: true,
           },
         },
+        evento: { include: { ordensCulto: true } },
         voluntarios: {
           include: {
             usuario: {
@@ -355,6 +396,7 @@ router.get('/', autenticar, async (req, res) => {
 
 router.get('/admin', autenticar, exigirAdmin, async (req, res) => {
   try {
+    await garantirOcorrenciasEventos(prisma);
     const equipes = await prisma.equipe.findMany({
       orderBy: {
         nome: 'asc',
@@ -367,10 +409,7 @@ router.get('/admin', autenticar, exigirAdmin, async (req, res) => {
 
     const escalas = await prisma.escala.findMany({
       where: {
-        OR: [
-          { tipo: 'RECORRENTE' },
-          { tipo: 'ESPORADICA', dataHora: { gte: new Date() } },
-        ],
+        dataHora: { gte: getInicioHistoricoEscalas() },
       },
       include: {
         equipe: {
@@ -379,6 +418,7 @@ router.get('/admin', autenticar, exigirAdmin, async (req, res) => {
             nome: true,
           },
         },
+        evento: { include: { ordensCulto: true } },
         voluntarios: {
           include: {
             usuario: {
@@ -410,8 +450,48 @@ router.get('/admin', autenticar, exigirAdmin, async (req, res) => {
       ],
     });
 
+    const eventos = await prisma.evento.findMany({
+      where: { ativo: true },
+      include: {
+        equipes: { select: { id: true, nome: true } },
+        ordensCulto: true,
+        escalas: {
+          where: { dataHora: { gte: getInicioHistoricoEscalas() } },
+          include: {
+            equipe: { select: { id: true, nome: true } },
+            evento: { include: { ordensCulto: true } },
+            voluntarios: {
+              include: {
+                usuario: {
+                  select: {
+                    id: true, nomeCompleto: true, email: true, telefone: true, urlFoto: true,
+                    dataNascimento: true, sexo: true, permissoes: true, criadoEm: true, atualizadoEm: true,
+                    equipes: { select: { id: true, nome: true } },
+                    equipesLideradas: { select: { id: true, nome: true } },
+                  },
+                },
+              },
+              orderBy: { criadoEm: 'asc' },
+            },
+          },
+          orderBy: [{ dataHora: 'asc' }, { equipe: { nome: 'asc' } }],
+        },
+      },
+      orderBy: [{ tipo: 'asc' }, { dataInicio: 'asc' }],
+    });
+
     return res.status(200).json({
       equipes,
+      eventos: eventos.map(({ ordensCulto, ...evento }) => ({
+        ...evento,
+        ordensCulto: ordensCulto.map((ordem) => ({
+          id: ordem.id,
+          titulo: ordem.titulo,
+          dataHora: ordem.dataHora,
+          arquivoUrl: `/api/ordens-culto/${ordem.id}/arquivo`,
+        })),
+        escalas: evento.escalas.map((escala) => formatarEscalaCompleta(escala, req.usuarioAutenticado.id)),
+      })),
       recorrentes: escalas
         .filter((escala) => escala.tipo === 'RECORRENTE')
         .map((escala) => formatarEscalaCompleta(escala, req.usuarioAutenticado.id)),
@@ -421,6 +501,122 @@ router.get('/admin', autenticar, exigirAdmin, async (req, res) => {
     });
   } catch (erro) {
     console.error('[ERRO LOG] GET /api/escalas/admin:', erro);
+    return res.status(500).json({ erro: 'Erro interno no servidor. Tente novamente mais tarde.' });
+  }
+});
+
+router.post('/admin/eventos', autenticar, exigirAdmin, async (req, res) => {
+  try {
+    const {
+      titulo, tipo, frequencia, dataHora, dataHoras, dataFim, diaSemana, semanaMes,
+      horario, local, descricao, equipeIds = [],
+    } = req.body ?? {};
+    const tipoNormalizado = tipo === 'RECORRENTE' ? 'RECORRENTE' : 'ESPORADICA';
+    const frequenciaNormalizada = ['NAO_REPETE', 'SEMANAL', 'MENSAL'].includes(frequencia)
+      ? frequencia
+      : (tipoNormalizado === 'RECORRENTE' ? 'SEMANAL' : 'NAO_REPETE');
+    const diaSemanaNumero = Number(diaSemana);
+    const semanaMesNumero = Number(semanaMes);
+
+    if (typeof titulo !== 'string' || titulo.trim().length < 3) {
+      return res.status(400).json({ erro: 'Informe o nome do evento.' });
+    }
+    if (!Array.isArray(equipeIds) || equipeIds.length === 0) {
+      return res.status(400).json({ erro: 'Selecione pelo menos uma equipe/função.' });
+    }
+    if (tipoNormalizado === 'RECORRENTE' && frequenciaNormalizada === 'NAO_REPETE') {
+      return res.status(400).json({ erro: 'Um evento recorrente deve ter repetição semanal ou mensal.' });
+    }
+    if (frequenciaNormalizada !== 'NAO_REPETE' && (!Number.isInteger(diaSemanaNumero) || diaSemanaNumero < 0 || diaSemanaNumero > 6)) {
+      return res.status(400).json({ erro: 'Informe um dia da semana válido.' });
+    }
+    if (frequenciaNormalizada === 'MENSAL' && (!Number.isInteger(semanaMesNumero) || semanaMesNumero < 1 || semanaMesNumero > 5)) {
+      return res.status(400).json({ erro: 'Informe em qual semana do mês o evento acontece.' });
+    }
+
+    const datasInformadas = Array.isArray(dataHoras) && dataHoras.length > 0 ? dataHoras : [dataHora].filter(Boolean);
+    const primeiraDataInformada = tipoNormalizado === 'ESPORADICA' && dataHora
+      ? parseDataHoraEvento(dataHora)
+      : null;
+    const primeiraData = frequenciaNormalizada === 'NAO_REPETE'
+      ? parseDataHoraEvento(datasInformadas[0])
+      : (primeiraDataInformada || getProximaDataDaRegra(diaSemanaNumero, semanaMesNumero, horario, frequenciaNormalizada));
+    const fim = dataFim ? parseDataHoraEvento(`${dataFim}T23:59`) : null;
+
+    if (!primeiraData) return res.status(400).json({ erro: 'Informe uma data e um horário válidos.' });
+    if (primeiraData <= getAgoraEvento()) return res.status(400).json({ erro: 'A primeira ocorrência deve ser futura.' });
+    if (frequenciaNormalizada === 'NAO_REPETE') {
+      const datasValidas = datasInformadas.map(parseDataHoraEvento);
+      if (datasValidas.length === 0 || datasValidas.some((data) => !data || data <= getAgoraEvento())) {
+        return res.status(400).json({ erro: 'Todas as datas do evento devem ser válidas e futuras.' });
+      }
+    }
+    if (tipoNormalizado === 'ESPORADICA' && frequenciaNormalizada !== 'NAO_REPETE' && (!fim || fim < primeiraData)) {
+      return res.status(400).json({ erro: 'Eventos esporádicos repetidos precisam de uma data final.' });
+    }
+
+    const equipes = await prisma.equipe.findMany({
+      where: { id: { in: equipeIds } },
+      select: { id: true, nome: true, lideres: { select: { id: true } } },
+    });
+    if (equipes.length !== new Set(equipeIds).size) {
+      return res.status(400).json({ erro: 'Uma ou mais equipes selecionadas são inválidas.' });
+    }
+
+    const resultado = await prisma.$transaction(async (tx) => {
+      const evento = await tx.evento.create({
+        data: {
+          titulo: titulo.trim(),
+          local: typeof local === 'string' && local.trim() ? local.trim() : null,
+          descricao: typeof descricao === 'string' && descricao.trim() ? descricao.trim() : null,
+          tipo: tipoNormalizado,
+          frequencia: frequenciaNormalizada,
+          dataInicio: primeiraData,
+          dataFim: tipoNormalizado === 'ESPORADICA' ? fim : null,
+          diaSemana: tipoNormalizado === 'ESPORADICA' ? primeiraData.getUTCDay() : diaSemanaNumero,
+          semanaMes: frequenciaNormalizada === 'MENSAL'
+            ? (tipoNormalizado === 'ESPORADICA' ? getSemanaMes(primeiraData) : semanaMesNumero)
+            : null,
+          equipes: { connect: equipes.map((equipe) => ({ id: equipe.id })) },
+        },
+      });
+      const datas = frequenciaNormalizada === 'NAO_REPETE'
+        ? datasInformadas.map(parseDataHoraEvento).filter(Boolean)
+        : gerarDatasEvento(evento, getLimiteEscalasFuturas());
+
+      await tx.escala.createMany({
+        data: datas.flatMap((ocorrencia) => equipes.map((equipe) => ({
+          eventoId: evento.id,
+          titulo: evento.titulo,
+          local: evento.local,
+          descricao: evento.descricao,
+          tipo: evento.tipo,
+          dataHora: ocorrencia,
+          diaSemana: null,
+          semanaMes: null,
+          solicitadaPeloAdmin: true,
+          equipeId: equipe.id,
+        }))),
+        skipDuplicates: true,
+      });
+
+      return { evento, primeiraOcorrencia: datas[0] };
+    });
+
+    const escalasParaNotificar = await prisma.escala.findMany({
+      where: { eventoId: resultado.evento.id, dataHora: resultado.primeiraOcorrencia },
+      include: { equipe: { include: { lideres: { select: { id: true } } } } },
+    });
+    await notificarNovaEscalaAdmin(prisma, { escalas: escalasParaNotificar }).catch((notificationError) => {
+      console.warn('[WARN] Falha ao notificar líderes sobre novo evento:', notificationError.message);
+    });
+
+    return res.status(201).json({
+      mensagem: 'Evento criado e escalas geradas para as equipes selecionadas.',
+      eventoId: resultado.evento.id,
+    });
+  } catch (erro) {
+    console.error('[ERRO LOG] POST /api/escalas/admin/eventos:', erro);
     return res.status(500).json({ erro: 'Erro interno no servidor. Tente novamente mais tarde.' });
   }
 });

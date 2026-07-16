@@ -6,6 +6,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock3,
+  Eye,
+  FileText,
   List,
   Loader2,
   MapPin,
@@ -347,6 +349,32 @@ export default function Escalas() {
     }
   };
 
+  const abrirOrdemCulto = async (ordemCulto) => {
+    setErro('');
+    const janela = window.open('about:blank', '_blank');
+
+    try {
+      const resposta = await fetch(buildApiUrl(ordemCulto.arquivoUrl || `/api/ordens-culto/${ordemCulto.id}/arquivo`), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!resposta.ok) {
+        const dados = await resposta.json().catch(() => ({}));
+        throw new Error(dados.erro || 'Não foi possível abrir a ordem de culto.');
+      }
+      const url = URL.createObjectURL(await resposta.blob());
+      if (janela) {
+        janela.opener = null;
+        janela.location.href = url;
+      } else {
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }
+      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (error) {
+      janela?.close();
+      setErro(error.message || 'Não foi possível abrir a ordem de culto.');
+    }
+  };
+
   const escalasVisiveis = useMemo(() => {
     const termo = normalizar(busca);
 
@@ -432,7 +460,7 @@ export default function Escalas() {
     const eventos = new Map();
 
     escalasVisiveis.forEach((escala) => {
-      const data = escala.tipo === 'RECORRENTE'
+      const data = escala.tipo === 'RECORRENTE' && escala.diaSemana != null && escala.semanaMes != null
         ? getOcorrenciaRecorrenteNoMes(escala, mesCalendario)
         : getData(escala);
 
@@ -442,14 +470,15 @@ export default function Escalas() {
         return;
       }
 
-      const chaveEvento = escala.grupoEsporadicoId
-        ? `grupo:${escala.grupoEsporadicoId}:${data.toISOString()}`
-        : [
-            escala.tipo,
-            data.toISOString(),
-            normalizar(escala.titulo || 'evento'),
-            normalizar(escala.local),
-          ].join(':');
+      const chaveEvento = escala.eventoId
+        ? `evento:${escala.eventoId}:${data.toISOString()}`
+        : escala.grupoEsporadicoId
+          ? `grupo:${escala.grupoEsporadicoId}:${data.toISOString()}`
+          : [
+              escala.tipo,
+              data.toISOString(),
+              normalizar(escala.local),
+            ].join(':');
       const eventoExistente = eventos.get(chaveEvento);
       const area = prepararEscalaModal(escala, data);
 
@@ -735,11 +764,12 @@ export default function Escalas() {
             }}
             onChangeJustificativa={setJustificativa}
             onAtualizarStatus={atualizarStatus}
+            onAbrirOrdemCulto={abrirOrdemCulto}
           />
         )}
       </main>
 
-      {eventoModal && <ModalEvento evento={eventoModal} onClose={() => setEventoModal(null)} />}
+      {eventoModal && <ModalEvento evento={eventoModal} onClose={() => setEventoModal(null)} onAbrirOrdemCulto={abrirOrdemCulto} />}
 
       <Footer />
     </div>
@@ -880,7 +910,7 @@ function CalendarioEscalas({
                   </span>
                   <div className="mt-1 grid grid-cols-2 gap-0.5 sm:mt-2 sm:flex sm:flex-wrap">
                     {itens.slice(0, 4).map(({ evento, data }) => {
-                      const titulo = `${evento.titulo} - ${formatarDataCompleta(data)} - ${evento.areas.length} área(s)`;
+                      const titulo = `${evento.titulo} - ${formatarDataCompleta(data)} - ${evento.areas.length} função(ões)`;
 
                       return (
                         <button
@@ -936,8 +966,9 @@ function CalendarioEscalas({
   );
 }
 
-function ModalEvento({ evento, onClose }) {
+function ModalEvento({ evento, onClose, onAbrirOrdemCulto }) {
   const fecharRef = useRef(null);
+  const ordemCulto = evento.areas.find((area) => area.ordemCulto)?.ordemCulto || null;
   const totalVoluntariosEvento = evento.areas.reduce((total, area) => (
     total + (area.voluntarios?.length || 0)
   ), 0);
@@ -963,7 +994,7 @@ function ModalEvento({ evento, onClose }) {
       <div role="dialog" aria-modal="true" aria-labelledby="modal-evento-titulo" className="max-h-[92dvh] w-full max-w-2xl overflow-y-auto rounded-t-lg border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900 sm:rounded-lg">
         <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-gray-200 bg-white px-4 py-4 dark:border-gray-800 dark:bg-gray-900 sm:px-5">
           <div className="min-w-0">
-            <p className="text-xs font-bold uppercase text-gray-500 dark:text-gray-400">{evento.areas.length} área(s) requisitada(s)</p>
+            <p className="text-xs font-bold uppercase text-gray-500 dark:text-gray-400">{evento.areas.length} função(ões) requisitada(s)</p>
             <h2 id="modal-evento-titulo" className="mt-1 text-xl font-bold text-gray-950 dark:text-white">{evento.titulo}</h2>
           </div>
           <button ref={fecharRef} type="button" onClick={onClose} className="grid h-10 w-10 shrink-0 place-items-center rounded-md border border-gray-300 text-gray-500 transition hover:bg-gray-50 hover:text-gray-900 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white" aria-label="Fechar detalhes do evento" title="Fechar">
@@ -996,21 +1027,32 @@ function ModalEvento({ evento, onClose }) {
             </div>
           )}
 
+          {ordemCulto && (
+            <button
+              type="button"
+              onClick={() => onAbrirOrdemCulto(ordemCulto)}
+              className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2.5 text-sm font-bold text-gray-800 transition hover:bg-gray-50 dark:border-white/70 dark:bg-gray-950 dark:text-white dark:hover:bg-gray-800 sm:w-auto"
+            >
+              <FileText size={17} />
+              Visualizar ordem de culto
+            </button>
+          )}
+
           <div>
             <div className="flex items-center justify-between gap-3">
-              <h3 className="inline-flex items-center gap-2 text-sm font-bold text-gray-950 dark:text-white"><UsersRound size={17} /> Voluntários por área</h3>
+              <h3 className="inline-flex items-center gap-2 text-sm font-bold text-gray-950 dark:text-white"><UsersRound size={17} /> Funções e pessoas atribuídas</h3>
               <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">{totalVoluntariosEvento} escalado(s)</span>
             </div>
             <div className="mt-3 divide-y divide-gray-200 border-y border-gray-200 dark:divide-gray-800 dark:border-gray-800">
               {evento.areas.map((area) => (
                 <section key={area.id} className="py-4 first:pt-3 last:pb-3">
                   <div className="flex items-center justify-between gap-3">
-                    <h4 className="text-sm font-bold text-gray-900 dark:text-white">{area.equipe?.nome || 'Outras'}</h4>
+                    <h4 className="text-sm font-bold text-gray-900 dark:text-white">{area.equipe?.nome || 'Outras funções'}</h4>
                     <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">{area.voluntarios?.length || 0} pessoa(s)</span>
                   </div>
 
                   {(area.voluntarios || []).length === 0 ? (
-                    <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Nenhum voluntário atribuído nesta área.</p>
+                    <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Nenhuma pessoa atribuída nesta função.</p>
                   ) : (
                     <div className="mt-2 divide-y divide-gray-100 dark:divide-gray-800">
                       {area.voluntarios.map((item) => {
@@ -1105,6 +1147,7 @@ function TabelaEscalas({
   onCancelarSubstituicao,
   onChangeJustificativa,
   onAtualizarStatus,
+  onAbrirOrdemCulto,
 }) {
   const linhas = escalasPorArea.flatMap(({ area, itens }) => (
     itens.length > 0
@@ -1138,6 +1181,7 @@ function TabelaEscalas({
             onCancelarSubstituicao={onCancelarSubstituicao}
             onChangeJustificativa={onChangeJustificativa}
             onAtualizarStatus={onAtualizarStatus}
+            onAbrirOrdemCulto={onAbrirOrdemCulto}
           />
         ))}
       </div>
@@ -1156,6 +1200,7 @@ function EscalaLinha({
   onCancelarSubstituicao,
   onChangeJustificativa,
   onAtualizarStatus,
+  onAbrirOrdemCulto,
 }) {
   const participacao = escala?.minhaParticipacao;
   const justificando = participacao && substituicaoAbertaId === participacao.id;
@@ -1190,6 +1235,16 @@ function EscalaLinha({
             )}
             {escala.local && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Local: {escala.local}</p>}
             {escala.descricao && <p className="mt-2 max-w-sm text-xs leading-5 text-gray-600 dark:text-gray-300">{escala.descricao}</p>}
+            {escala.ordemCulto && (
+              <button
+                type="button"
+                onClick={() => onAbrirOrdemCulto(escala.ordemCulto)}
+                className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-2 text-xs font-bold text-gray-800 transition hover:bg-gray-50 dark:border-white/70 dark:bg-gray-950 dark:text-white dark:hover:bg-gray-800"
+              >
+                <Eye size={15} />
+                Visualizar ordem de culto
+              </button>
+            )}
           </>
         ) : (
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Nenhuma escala neste período.</p>

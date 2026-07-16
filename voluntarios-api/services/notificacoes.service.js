@@ -291,12 +291,7 @@ export async function notificarNovaEscalaAdmin(prisma, { escalas }) {
 export async function gerarNotificacoesAutomaticas(prisma, agora = getAgoraNotificacao()) {
   const participacoes = await prisma.voluntarioEscala.findMany({
     where: {
-      escala: {
-        OR: [
-          { tipo: 'RECORRENTE' },
-          { tipo: 'ESPORADICA', dataHora: { gte: agora } },
-        ],
-      },
+      escala: { dataHora: { gte: agora } },
     },
     include: {
       usuario: {

@@ -39,9 +39,14 @@ import { formatarTelefoneExibicao } from '../lib/telefone';
 
 const dias = [
   { value: 0, label: 'Domingo' },
+  { value: 1, label: 'Segunda-feira' },
+  { value: 2, label: 'Terça-feira' },
+  { value: 3, label: 'Quarta-feira' },
+  { value: 4, label: 'Quinta-feira' },
+  { value: 5, label: 'Sexta-feira' },
   { value: 6, label: 'Sábado' },
 ];
-const semanas = [1, 2, 3, 4];
+const semanas = [1, 2, 3, 4, 5];
 const permissoesDisponiveis = ['VOLUNTARIO', 'ADMINISTRADOR'];
 
 const statusConfig = {
@@ -53,8 +58,10 @@ const statusConfig = {
 
 const formEscalaInicial = {
   tipo: 'ESPORADICA',
+  frequencia: 'NAO_REPETE',
   titulo: '',
   data: '',
+  dataFim: '',
   horarios: ['09:00'],
   diaSemana: 0,
   semanaMes: 1,
@@ -107,6 +114,31 @@ function getUtcDateParts(dataHora) {
 
 function criarDataHoraInput(data, horario) {
   return `${data}T${horario}`;
+}
+
+function criarOcorrenciasDosEventos(eventos) {
+  return eventos.flatMap((evento) => {
+    const ocorrencias = new Map();
+
+    for (const escala of evento.escalas || []) {
+      const chave = escala.dataHora ? new Date(escala.dataHora).toISOString() : `sem-data-${escala.id}`;
+      const ocorrencia = ocorrencias.get(chave) || {
+        id: `${evento.id}:${chave}`,
+        eventoId: evento.id,
+        titulo: evento.titulo,
+        tipo: evento.tipo,
+        frequencia: evento.frequencia,
+        dataHora: escala.dataHora,
+        local: evento.local,
+        descricao: evento.descricao,
+        areas: [],
+      };
+      ocorrencia.areas.push(escala);
+      ocorrencias.set(chave, ocorrencia);
+    }
+
+    return Array.from(ocorrencias.values());
+  });
 }
 
 function parseDataHoraInput(dataHora) {
@@ -201,11 +233,15 @@ async function fetchComTimeout(url, options = {}, timeoutMs = 60000) {
   }
 }
 
-async function prepararArquivoPdf(file) {
+async function prepararArquivoPdf(file, tamanhoMaximoMb = 15) {
   if (!file) return null;
 
   if (file.type !== 'application/pdf') {
     throw new Error('Selecione um arquivo PDF.');
+  }
+
+  if (file.size > tamanhoMaximoMb * 1024 * 1024) {
+    throw new Error(`O PDF deve ter no máximo ${tamanhoMaximoMb}MB.`);
   }
 
   const base64 = await readAsDataUrl(file);
@@ -222,8 +258,7 @@ export default function AdminEscalas() {
   const [dashboard, setDashboard] = useState(null);
   const [equipes, setEquipes] = useState([]);
   const [usuarios, setUsuarios] = useState([]);
-  const [recorrentes, setRecorrentes] = useState([]);
-  const [esporadicas, setEsporadicas] = useState([]);
+  const [eventosCadastrados, setEventosCadastrados] = useState([]);
   const [formsUsuarios, setFormsUsuarios] = useState({});
   const [formRecorrentes, setFormRecorrentes] = useState({});
   const [formEscala, setFormEscala] = useState(formEscalaInicial);
@@ -299,8 +334,7 @@ export default function AdminEscalas() {
       setDashboard(dadosDashboard);
       setEquipes(dadosDashboard.equipes || []);
       setUsuarios(dadosDashboard.usuarios || []);
-      setRecorrentes(dadosEscalas.recorrentes || []);
-      setEsporadicas(dadosEscalas.esporadicas || []);
+      setEventosCadastrados(dadosEscalas.eventos || []);
       setManuais(dadosManuais.manuais || []);
       setAvisosAdmin(dadosAvisos.avisos || []);
       setFormsUsuarios(Object.fromEntries((dadosDashboard.usuarios || []).map((item) => [item.id, criarFormUsuario(item)])));
@@ -342,60 +376,43 @@ export default function AdminEscalas() {
 
   const eventosEscalas = useMemo(() => {
     const termo = buscaEscalas.trim().toLowerCase();
-    const todasEscalas = [...recorrentes, ...esporadicas];
-    const filtradas = todasEscalas.filter((escala) => (
-      (tipoEscalas === 'TODAS' || escala.tipo === tipoEscalas)
+    const filtrados = eventosCadastrados.filter((evento) => (
+      (tipoEscalas === 'TODAS' || evento.tipo === tipoEscalas)
       && (tipoEscalas !== 'RECORRENTE' || filtroRecorrenciaAdmin === 'TODAS' || (() => {
         const filtro = filtrosRecorrentes.find((item) => item.value === filtroRecorrenciaAdmin);
-        return !filtro || (escala.diaSemana === filtro.diaSemana && escala.semanaMes === filtro.semanaMes);
+        return !filtro || (evento.diaSemana === filtro.diaSemana && evento.semanaMes === filtro.semanaMes);
       })())
       && (!termo || [
-        escala.titulo,
-        escala.equipe?.nome,
-        escala.local,
-        escala.descricao,
-        escala.dataHora,
-        escala.dataHora ? formatarData(escala.dataHora) : '',
-        escala.voluntarios?.map((item) => item.usuario?.nomeCompleto).join(' '),
+        evento.titulo,
+        evento.local,
+        evento.descricao,
+        evento.frequencia,
+        evento.equipes?.map((equipe) => equipe.nome).join(' '),
+        evento.escalas?.map((escala) => [
+          escala.dataHora ? formatarData(escala.dataHora) : '',
+          escala.voluntarios?.map((item) => item.usuario?.nomeCompleto).join(' '),
+        ].join(' ')).join(' '),
       ].filter(Boolean).join(' ').toLowerCase().includes(termo))
     ));
-    const eventos = new Map();
 
-    for (const escala of filtradas) {
-      const data = escala.dataHora ? new Date(escala.dataHora).toISOString() : 'sem-data';
-      const tituloRecorrente = `${escala.semanaMes}º ${escala.diaSemana === 0 ? 'Domingo' : 'Sábado'}`;
-      const chave = escala.tipo === 'ESPORADICA'
-        ? `ESPORADICA:${escala.grupoEsporadicoId || escala.id}`
-        : `RECORRENTE:${JSON.stringify([
-          escala.diaSemana,
-          escala.semanaMes,
-          data,
-          escala.titulo || tituloRecorrente,
-          escala.local || '',
-          escala.descricao || '',
-        ])}`;
-      const evento = eventos.get(chave) || {
-        id: chave,
-        titulo: escala.titulo || (escala.tipo === 'RECORRENTE' ? tituloRecorrente : 'Escala sem título'),
-        tipo: escala.tipo,
-        dataHora: escala.dataHora,
-        local: escala.local,
-        descricao: escala.descricao,
-        diaSemana: escala.diaSemana,
-        semanaMes: escala.semanaMes,
-        areas: [],
+    const agora = Date.now();
+    return filtrados.map((evento) => {
+      const escalasEvento = evento.escalas || [];
+      const proximaEscala = escalasEvento.find((escala) => new Date(escala.dataHora).getTime() >= agora);
+
+      return {
+        ...evento,
+        dataHora: proximaEscala?.dataHora || escalasEvento.at(-1)?.dataHora || evento.dataInicio,
+        proximaDataHora: proximaEscala?.dataHora || null,
+        totalEscalasFuturas: escalasEvento.filter((escala) => new Date(escala.dataHora).getTime() >= agora).length,
+        areas: escalasEvento,
       };
-
-      evento.areas.push(escala);
-      eventos.set(chave, evento);
-    }
-
-    return Array.from(eventos.values()).sort((a, b) => (
+    }).sort((a, b) => (
       ordemEscalas === 'distantes'
-        ? new Date(b.dataHora || 0).getTime() - new Date(a.dataHora || 0).getTime()
-        : new Date(a.dataHora || 0).getTime() - new Date(b.dataHora || 0).getTime()
+        ? new Date(b.proximaDataHora || b.dataHora).getTime() - new Date(a.proximaDataHora || a.dataHora).getTime()
+        : new Date(a.proximaDataHora || a.dataHora).getTime() - new Date(b.proximaDataHora || b.dataHora).getTime()
     ));
-  }, [buscaEscalas, esporadicas, filtroRecorrenciaAdmin, ordemEscalas, recorrentes, tipoEscalas]);
+  }, [buscaEscalas, eventosCadastrados, filtroRecorrenciaAdmin, ordemEscalas, tipoEscalas]);
 
   const alterarFormUsuario = (usuarioId, campo, valor) => {
     setFormsUsuarios((atuais) => ({
@@ -766,12 +783,10 @@ export default function AdminEscalas() {
 
     try {
       const recorrente = formEscala.tipo === 'RECORRENTE';
-      const endpoint = recorrente
-        ? '/api/escalas/admin/recorrentes'
-        : '/api/escalas/admin/esporadicas';
+      const endpoint = '/api/escalas/admin/eventos';
       let body = formEscala;
 
-      if (!recorrente) {
+      if (!recorrente && formEscala.frequencia === 'NAO_REPETE') {
         const dataHoras = (formEscala.horarios || [])
           .filter((horario) => horario)
           .map((horario) => criarDataHoraInput(formEscala.data, horario));
@@ -789,6 +804,14 @@ export default function AdminEscalas() {
           ...formEscala,
           dataHoras,
         };
+      } else if (!recorrente) {
+        if (!formEscala.data || !formEscala.dataFim) {
+          throw new Error('Informe as datas inicial e final do evento esporádico repetido.');
+        }
+        body = {
+          ...formEscala,
+          dataHora: criarDataHoraInput(formEscala.data, formEscala.horario),
+        };
       }
 
       const resposta = await fetch(buildApiUrl(endpoint), {
@@ -797,15 +820,65 @@ export default function AdminEscalas() {
         body: JSON.stringify(body),
       });
       const dados = await resposta.json();
-      if (!resposta.ok) throw new Error(dados.erro || 'Não foi possível criar a escala.');
-      setSucesso(dados.mensagem || 'Escala criada.');
+      if (!resposta.ok) throw new Error(dados.erro || 'Não foi possível criar o evento.');
+      setSucesso(dados.mensagem || 'Evento criado.');
       setFormEscala(formEscalaInicial);
       setMostrarFormEscala(false);
       await carregarDados();
     } catch (error) {
-      setErro(error.message || 'Não foi possível criar a escala.');
+      setErro(error.message || 'Não foi possível criar o evento.');
     } finally {
       setSalvandoId(null);
+    }
+  };
+
+  const submeterOrdemCulto = async (escala, file) => {
+    if (!file) return;
+    setErro('');
+    setSucesso('');
+    setSalvandoId(`ordem-${escala.eventoId}-${escala.dataHora}`);
+
+    try {
+      const arquivo = await prepararArquivoPdf(file, 10);
+      const resposta = await fetchComTimeout(buildApiUrl('/api/ordens-culto/admin'), {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eventoId: escala.eventoId, dataHora: escala.dataHora, arquivo }),
+      }, 90000);
+      const dados = await resposta.json().catch(() => ({}));
+      if (!resposta.ok) throw new Error(dados.erro || 'Não foi possível enviar a ordem de culto.');
+      setSucesso(dados.mensagem || 'Ordem de culto enviada.');
+      await carregarDados();
+    } catch (error) {
+      setErro(error.message || 'Não foi possível enviar a ordem de culto.');
+    } finally {
+      setSalvandoId(null);
+    }
+  };
+
+  const abrirOrdemCulto = async (ordemCulto) => {
+    setErro('');
+    const janela = window.open('about:blank', '_blank');
+
+    try {
+      const resposta = await fetch(buildApiUrl(ordemCulto.arquivoUrl || `/api/ordens-culto/${ordemCulto.id}/arquivo`), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!resposta.ok) {
+        const dados = await resposta.json().catch(() => ({}));
+        throw new Error(dados.erro || 'Não foi possível abrir a ordem de culto.');
+      }
+      const url = URL.createObjectURL(await resposta.blob());
+      if (janela) {
+        janela.opener = null;
+        janela.location.href = url;
+      } else {
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }
+      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (error) {
+      janela?.close();
+      setErro(error.message || 'Não foi possível abrir a ordem de culto.');
     }
   };
 
@@ -1110,6 +1183,8 @@ export default function AdminEscalas() {
                 onAlternarEquipe={(equipeId) => alternarEquipe('esporadica', equipeId)}
                 onCriarEsporadica={criarEsporadica}
                 onAbrirUsuario={setUsuarioModal}
+                onSubmeterOrdemCulto={submeterOrdemCulto}
+                onAbrirOrdemCulto={abrirOrdemCulto}
                 mostrarFormEscala={mostrarFormEscala}
                 onMostrarFormEscala={setMostrarFormEscala}
               />
@@ -1975,20 +2050,22 @@ function PainelEscalas({
   onAlternarEquipe,
   onCriarEsporadica,
   onAbrirUsuario,
+  onSubmeterOrdemCulto,
+  onAbrirOrdemCulto,
   mostrarFormEscala,
   onMostrarFormEscala,
 }) {
   const [visualizacao, setVisualizacao] = useState('lista');
-  const agora = new Date();
-  const eventosFuturos = eventos.filter((evento) => !evento.dataHora || new Date(evento.dataHora) >= agora);
+  const ocorrenciasCalendario = criarOcorrenciasDosEventos(eventos);
+  const eventosFuturos = eventos.filter((evento) => evento.proximaDataHora);
   const eventosEsporadicos = eventos.filter((evento) => evento.tipo === 'ESPORADICA');
   const eventosRecorrentes = eventos.filter((evento) => evento.tipo === 'RECORRENTE');
   const eventosListagem = [...eventosEsporadicos, ...eventosRecorrentes];
   const tituloListagem = tipoEscalas === 'ESPORADICA'
-    ? 'Escalas esporádicas'
+    ? 'Eventos esporádicos'
     : tipoEscalas === 'RECORRENTE'
-      ? 'Escalas recorrentes'
-      : 'Escalas esporádicas';
+      ? 'Eventos recorrentes'
+      : 'Eventos esporádicos';
 
   return (
     <section className="mt-5 grid min-w-0 gap-5">
@@ -1996,9 +2073,9 @@ function PainelEscalas({
         <div className="border-b border-gray-100 px-5 py-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <h2 className="text-lg font-bold text-gray-950">Gerenciar escalas</h2>
+              <h2 className="text-lg font-bold text-gray-950">Eventos e escalas</h2>
               <p className="mt-1 text-sm text-gray-500">
-                Veja cada escala como um evento e acompanhe as pessoas escaladas por função/equipe.
+                Cadastre o evento uma vez e acompanhe dentro dele as escalas de cada data e função.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -2027,7 +2104,7 @@ function PainelEscalas({
                 className="inline-flex items-center gap-2 rounded-md bg-dourado-700 px-3 py-2 text-sm font-bold text-white transition hover:bg-dourado-800"
               >
                 <Plus size={16} />
-                {mostrarFormEscala ? 'Fechar nova escala' : 'Nova Escala'}
+                {mostrarFormEscala ? 'Fechar novo evento' : 'Novo evento'}
               </button>
             </div>
           </div>
@@ -2039,15 +2116,15 @@ function PainelEscalas({
               <form onSubmit={onCriarEsporadica} className="space-y-4 rounded-xl border border-gray-200 bg-white p-4">
                 <div className="flex flex-col gap-3 border-b border-gray-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <h2 className="text-lg font-bold text-gray-950">Nova Escala</h2>
-                    <p className="mt-1 text-sm text-gray-500">Escolha se a escala será recorrente ou esporádica e selecione as equipes envolvidas.</p>
+                    <h2 className="text-lg font-bold text-gray-950">Novo evento</h2>
+                    <p className="mt-1 text-sm text-gray-500">Defina a repetição do evento e as equipes que terão escalas em cada ocorrência.</p>
                   </div>
                   <button
                     disabled={salvandoId === 'nova-escala'}
                     className="inline-flex items-center justify-center gap-2 rounded-md bg-dourado-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
                   >
                     {salvandoId === 'nova-escala' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save size={16} />}
-                    Salvar escala
+                    Salvar evento
                   </button>
                 </div>
 
@@ -2061,7 +2138,11 @@ function PainelEscalas({
                       <button
                         key={opcao.value}
                         type="button"
-                        onClick={() => onChangeEscala((atual) => ({ ...atual, tipo: opcao.value }))}
+                        onClick={() => onChangeEscala((atual) => ({
+                          ...atual,
+                          tipo: opcao.value,
+                          frequencia: opcao.value === 'RECORRENTE' ? 'SEMANAL' : 'NAO_REPETE',
+                        }))}
                         className={`rounded-md px-3 py-2 text-sm font-bold transition ${
                           formEscala.tipo === opcao.value ? 'bg-gray-950 text-white' : 'text-gray-600 hover:bg-white'
                         }`}
@@ -2072,9 +2153,29 @@ function PainelEscalas({
                   </div>
                 </div>
 
-                <Campo label="Título" value={formEscala.titulo} onChange={(value) => onChangeEscala((atual) => ({ ...atual, titulo: value }))} />
+                <Campo label="Nome do evento" value={formEscala.titulo} onChange={(value) => onChangeEscala((atual) => ({ ...atual, titulo: value }))} />
 
-                {formEscala.tipo === 'ESPORADICA' ? (
+                <div>
+                  <span className="text-sm font-semibold text-gray-700">Repetição</span>
+                  <div className={`mt-2 grid gap-2 rounded-lg border border-gray-200 bg-gray-50 p-1 ${formEscala.tipo === 'ESPORADICA' ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                    {[
+                      ...(formEscala.tipo === 'ESPORADICA' ? [{ value: 'NAO_REPETE', label: 'Não repete' }] : []),
+                      { value: 'SEMANAL', label: 'Semanal' },
+                      { value: 'MENSAL', label: 'Mensal' },
+                    ].map((opcao) => (
+                      <button
+                        key={opcao.value}
+                        type="button"
+                        onClick={() => onChangeEscala((atual) => ({ ...atual, frequencia: opcao.value }))}
+                        className={`rounded-md px-2 py-2 text-sm font-bold transition ${formEscala.frequencia === opcao.value ? 'bg-gray-950 text-white' : 'text-gray-600 hover:bg-white'}`}
+                      >
+                        {opcao.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {formEscala.tipo === 'ESPORADICA' && formEscala.frequencia === 'NAO_REPETE' ? (
                   <div>
                     <Campo label="Data" type="date" min={hojeParaInput()} value={formEscala.data} onChange={(value) => onChangeEscala((atual) => ({ ...atual, data: value }))} />
                     <div className="mt-4">
@@ -2121,9 +2222,19 @@ function PainelEscalas({
                     </div>
                   </div>
                 ) : (
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <Select label="Dia" value={formEscala.diaSemana} options={dias} onChange={(value) => onChangeEscala((atual) => ({ ...atual, diaSemana: Number(value) }))} />
-                    <Select label="Fim de semana" value={formEscala.semanaMes} options={semanas.map((semana) => ({ value: semana, label: `${semana}º` }))} onChange={(value) => onChangeEscala((atual) => ({ ...atual, semanaMes: Number(value) }))} />
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    {formEscala.tipo === 'ESPORADICA' && (
+                      <Campo label="Data inicial" type="date" min={hojeParaInput()} value={formEscala.data} onChange={(value) => onChangeEscala((atual) => ({ ...atual, data: value }))} />
+                    )}
+                    {formEscala.tipo === 'ESPORADICA' && (
+                      <Campo label="Repetir até" type="date" min={formEscala.data || hojeParaInput()} value={formEscala.dataFim} onChange={(value) => onChangeEscala((atual) => ({ ...atual, dataFim: value }))} />
+                    )}
+                    {formEscala.tipo === 'RECORRENTE' && (
+                      <Select label="Dia" value={formEscala.diaSemana} options={dias} onChange={(value) => onChangeEscala((atual) => ({ ...atual, diaSemana: Number(value) }))} />
+                    )}
+                    {formEscala.tipo === 'RECORRENTE' && formEscala.frequencia === 'MENSAL' && (
+                      <Select label="Semana do mês" value={formEscala.semanaMes} options={semanas.map((semana) => ({ value: semana, label: `${semana}ª` }))} onChange={(value) => onChangeEscala((atual) => ({ ...atual, semanaMes: Number(value) }))} />
+                    )}
                     <Campo label="Horário" type="time" value={formEscala.horario} onChange={(value) => onChangeEscala((atual) => ({ ...atual, horario: value }))} />
                   </div>
                 )}
@@ -2132,7 +2243,7 @@ function PainelEscalas({
                   <Campo label="Local" value={formEscala.local} onChange={(value) => onChangeEscala((atual) => ({ ...atual, local: value }))} />
                   <CampoTexto label="Descrição" value={formEscala.descricao} onChange={(value) => onChangeEscala((atual) => ({ ...atual, descricao: value }))} />
                 </div>
-                <GrupoChecks titulo="Equipes solicitadas">
+                <GrupoChecks titulo="Equipes/funções do evento">
                   {equipes.map((equipe) => (
                     <label key={equipe.id} className="flex items-center gap-2 text-sm font-semibold text-gray-700">
                       <input type="checkbox" checked={formEscala.equipeIds.includes(equipe.id)} onChange={() => onAlternarEquipe(equipe.id)} />
@@ -2142,7 +2253,7 @@ function PainelEscalas({
                 </GrupoChecks>
                 <button disabled={salvandoId === 'nova-escala'} className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-gray-950 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">
                   {salvandoId === 'nova-escala' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send size={16} />}
-                  Salvar escala e enviar para líderes
+                  Criar evento e gerar escalas
                 </button>
               </form>
             </div>
@@ -2234,14 +2345,14 @@ function PainelEscalas({
           </div>
 
           {visualizacao === 'calendario' ? (
-            <CalendarioEscalas eventos={eventos} />
+            <CalendarioEscalas eventos={ocorrenciasCalendario} />
           ) : (
             <>
           <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
             <div className="flex items-end justify-between gap-3">
               <div>
-                <p className="text-xs font-bold uppercase tracking-[0.14em] text-gray-400">Próximas escalas</p>
-                <p className="mt-1 text-sm text-gray-600">Cards roláveis das próximas datas dentro dos filtros atuais.</p>
+                <p className="text-xs font-bold uppercase tracking-[0.14em] text-gray-400">Próximos eventos</p>
+                <p className="mt-1 text-sm text-gray-600">A primeira ocorrência futura de cada evento dentro dos filtros atuais.</p>
               </div>
               <span className="text-xs font-bold text-gray-400">{eventosFuturos.length} futura(s)</span>
             </div>
@@ -2267,7 +2378,7 @@ function PainelEscalas({
                   </span>
                   <p className="mt-3 line-clamp-2 text-sm font-bold text-gray-950">{evento.titulo}</p>
                   <p className="mt-2 text-xs font-semibold text-gray-500">{formatarData(evento.dataHora)}</p>
-                  <p className="mt-1 text-xs text-gray-400">{evento.areas.length} área(s)</p>
+                  <p className="mt-1 text-xs text-gray-400">{evento.totalEscalasFuturas} escala(s) futura(s)</p>
                 </button>
               ))}
             </div>
@@ -2296,14 +2407,14 @@ function PainelEscalas({
                   return (
                     <React.Fragment key={evento.id}>
                       {mostrarTituloRecorrente && (
-                        <p className="pt-2 text-xs font-bold uppercase tracking-[0.14em] text-gray-500">Escalas recorrentes</p>
+                        <p className="pt-2 text-xs font-bold uppercase tracking-[0.14em] text-gray-500">Eventos recorrentes</p>
                       )}
                 <div className="min-w-0 overflow-hidden rounded-2xl border border-gray-200 bg-gradient-to-br from-white to-gray-50 p-4 shadow-sm sm:p-5">
                   <div className="flex min-w-0 flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
                     <div className="min-w-0 max-w-full">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="rounded-full border border-dourado-200 bg-dourado-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-dourado-700">
-                          {evento.areas.length} área(s)
+                          {evento.areas.length} escala(s) no período
                         </span>
                         <span className={`rounded-full border px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] ${
                           evento.tipo === 'ESPORADICA'
@@ -2319,7 +2430,7 @@ function PainelEscalas({
                         <span>{formatarData(evento.dataHora)}</span>
                         {evento.local && <span>Local: {evento.local}</span>}
                         {evento.tipo === 'RECORRENTE' && (
-                          <span>{evento.semanaMes}º {evento.diaSemana === 0 ? 'domingo' : 'sábado'}</span>
+                          <span>{evento.frequencia === 'SEMANAL' ? 'Toda semana' : `${evento.semanaMes}ª semana do mês`}</span>
                         )}
                       </div>
                       {evento.descricao && (
@@ -2328,11 +2439,12 @@ function PainelEscalas({
                     </div>
                   </div>
 
-                  <div className="mt-5 max-w-full overflow-x-auto rounded-xl border border-gray-200 bg-white">
-                    <table className="min-w-[680px] text-left text-sm">
+                  <div className="mt-5 max-h-[560px] max-w-full overflow-auto rounded-xl border border-gray-200 bg-white">
+                    <table className="min-w-[780px] text-left text-sm">
                       <thead className="bg-gray-50 text-xs font-bold uppercase tracking-[0.14em] text-gray-400">
                         <tr>
                           <th className="px-3 py-3">Função</th>
+                          <th className="px-3 py-3">Data da escala</th>
                           <th className="px-3 py-3">Voluntário</th>
                           <th className="px-3 py-3">Status</th>
                           <th className="px-3 py-3 text-right">Ações</th>
@@ -2343,14 +2455,16 @@ function PainelEscalas({
                           const voluntarios = (area.voluntarios || []).length > 0
                             ? area.voluntarios
                             : [{ id: `${area.id}-vazio`, status: 'PENDENTE', substituto: false, usuario: null }];
+                          const primeiraEscalaDaOcorrencia = evento.areas.find((item) => item.dataHora === area.dataHora)?.id === area.id;
 
-                          return voluntarios.map((item) => {
+                          return voluntarios.map((item, itemIndex) => {
                             const config = statusConfig[item.status] || statusConfig.PENDENTE;
                             const Icon = config.icon;
 
                             return (
                               <tr key={`${area.id}-${item.id}`} className="align-top">
                                 <td className="px-3 py-3 font-bold text-gray-900">{area.equipe?.nome || 'Sem equipe'}</td>
+                                <td className="whitespace-nowrap px-3 py-3 font-semibold text-gray-600">{formatarData(area.dataHora)}</td>
                                 <td className="px-3 py-3 text-gray-700">
                                   {item.usuario ? (
                                     <div className="flex items-start gap-2">
@@ -2384,7 +2498,36 @@ function PainelEscalas({
                                   )}
                                 </td>
                                 <td className="px-3 py-3 text-right">
-                                  {area.tipo === 'RECORRENTE' && (
+                                  {itemIndex === 0 && primeiraEscalaDaOcorrencia && area.eventoId && (
+                                    <div className="flex flex-wrap justify-end gap-2">
+                                      {area.ordemCulto && (
+                                        <button
+                                          type="button"
+                                          onClick={() => onAbrirOrdemCulto(area.ordemCulto)}
+                                          className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-bold text-gray-700 transition hover:bg-gray-50"
+                                        >
+                                          <Eye size={14} />
+                                          Visualizar
+                                        </button>
+                                      )}
+                                      <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-gray-950 px-2.5 py-1.5 text-xs font-bold text-white transition hover:bg-gray-800">
+                                        {salvandoId === `ordem-${area.eventoId}-${area.dataHora}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText size={14} />}
+                                        {area.ordemCulto ? 'Substituir ordem' : 'Enviar ordem'}
+                                        <input
+                                          type="file"
+                                          accept="application/pdf"
+                                          disabled={salvandoId === `ordem-${area.eventoId}-${area.dataHora}`}
+                                          onChange={(event) => {
+                                            const file = event.target.files?.[0];
+                                            event.target.value = '';
+                                            onSubmeterOrdemCulto(area, file);
+                                          }}
+                                          className="sr-only"
+                                        />
+                                      </label>
+                                    </div>
+                                  )}
+                                  {area.tipo === 'RECORRENTE' && !area.eventoId && (
                                     <button
                                       type="button"
                                       onClick={() => onEditarEscala(escalaEditandoId === area.id ? null : area.id)}
@@ -2453,10 +2596,6 @@ function CalendarioEscalas({ eventos }) {
   const nomesSemana = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
   const eventosNaData = (data) => eventos.filter((evento) => {
-    if (evento.tipo === 'RECORRENTE') {
-      return data.getDay() === evento.diaSemana && Math.ceil(data.getDate() / 7) === evento.semanaMes;
-    }
-
     if (!evento.dataHora) return false;
     const dataEvento = getUtcDateParts(evento.dataHora);
     return dataEvento
@@ -2466,22 +2605,7 @@ function CalendarioEscalas({ eventos }) {
   });
 
   const eventosSelecionados = diaSelecionado ? eventosNaData(diaSelecionado) : [];
-  const dataEvento = (evento) => {
-    if (evento.tipo !== 'RECORRENTE' || !evento.dataHora || !diaSelecionado) {
-      return evento.dataHora;
-    }
-
-    const horario = getUtcDateParts(evento.dataHora);
-    if (!horario) return evento.dataHora;
-
-    return new Date(
-      diaSelecionado.getFullYear(),
-      diaSelecionado.getMonth(),
-      diaSelecionado.getDate(),
-      horario.horas,
-      horario.minutos,
-    );
-  };
+  const dataEvento = (evento) => evento.dataHora;
 
   useEffect(() => {
     if (!diaSelecionado) return undefined;

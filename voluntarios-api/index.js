@@ -9,10 +9,12 @@ import avisosRoutes from './routes/avisos.routes.js';
 import manuaisRoutes from './routes/manuais.routes.js';
 import notificacoesRoutes from './routes/notificacoes.routes.js';
 import adminRoutes from './routes/admin.routes.js';
+import ordensCultoRoutes from './routes/ordens-culto.routes.js';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import { gerarNotificacoesAutomaticas } from './services/notificacoes.service.js';
+import { garantirOcorrenciasEventos } from './services/eventos.service.js';
 
 const app = express();
 const pool = new Pool({
@@ -71,6 +73,7 @@ app.use('/api/avisos', avisosRoutes);
 app.use('/api/manuais', manuaisRoutes);
 app.use('/api/notificacoes', notificacoesRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/ordens-culto', ordensCultoRoutes);
 
 // Rota de Health Check para verificar se o servidor está online
 app.get('/', (req, res) => {
@@ -88,11 +91,17 @@ app.listen(PORT, () => {
 });
 
 if (process.env.NODE_ENV !== 'test') {
+  garantirOcorrenciasEventos(prisma).catch((erro) => {
+    console.warn('[WARN] Falha na manutenção inicial das escalas:', erro.message);
+  });
   gerarNotificacoesAutomaticas(prisma).catch((erro) => {
     console.warn('[WARN] Falha ao gerar notificações iniciais:', erro.message);
   });
 
   setInterval(() => {
+    garantirOcorrenciasEventos(prisma).catch((erro) => {
+      console.warn('[WARN] Falha na manutenção automática das escalas:', erro.message);
+    });
     gerarNotificacoesAutomaticas(prisma).catch((erro) => {
       console.warn('[WARN] Falha ao gerar notificações automáticas:', erro.message);
     });

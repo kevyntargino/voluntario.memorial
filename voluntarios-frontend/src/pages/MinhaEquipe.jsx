@@ -4,6 +4,7 @@ import {
   CalendarPlus,
   CheckCircle2,
   Clock3,
+  FileText,
   Loader2,
   Save,
   UserPlus,
@@ -142,6 +143,31 @@ export default function MinhaEquipe() {
       setCarregando(false);
     }
   }, [equipeUrlId, logout, navigate, token]);
+
+  const abrirOrdemCulto = async (ordemCulto) => {
+    setErro('');
+    const janela = window.open('about:blank', '_blank');
+    try {
+      const resposta = await fetch(buildApiUrl(ordemCulto.arquivoUrl || `/api/ordens-culto/${ordemCulto.id}/arquivo`), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!resposta.ok) {
+        const dados = await resposta.json().catch(() => ({}));
+        throw new Error(dados.erro || 'Não foi possível abrir a ordem de culto.');
+      }
+      const url = URL.createObjectURL(await resposta.blob());
+      if (janela) {
+        janela.opener = null;
+        janela.location.href = url;
+      } else {
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }
+      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (error) {
+      janela?.close();
+      setErro(error.message || 'Não foi possível abrir a ordem de culto.');
+    }
+  };
 
   useEffect(() => {
     carregarEquipes();
@@ -611,6 +637,12 @@ export default function MinhaEquipe() {
                             <p className="mt-1 text-xs font-semibold text-amber-700">{formatarData(escala.dataHora)}</p>
                             {escala.local && <p className="mt-1 text-xs text-gray-600">Local: {escala.local}</p>}
                             {escala.descricao && <p className="mt-2 text-sm text-gray-700">{escala.descricao}</p>}
+                            {escala.ordemCulto && (
+                              <button type="button" onClick={() => abrirOrdemCulto(escala.ordemCulto)} className="mt-3 inline-flex items-center gap-2 rounded-md border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-800">
+                                <FileText size={15} />
+                                Visualizar ordem de culto
+                              </button>
+                            )}
                           </div>
                           <button
                             type="button"
@@ -821,6 +853,12 @@ export default function MinhaEquipe() {
                             </div>
                             {escala.descricao && (
                               <p className="mt-3 text-sm leading-6 text-gray-600">{escala.descricao}</p>
+                            )}
+                            {escala.ordemCulto && (
+                              <button type="button" onClick={() => abrirOrdemCulto(escala.ordemCulto)} className="mt-3 inline-flex items-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700 transition hover:bg-gray-50">
+                                <FileText size={15} />
+                                Visualizar ordem de culto
+                              </button>
                             )}
                           </div>
                           <button

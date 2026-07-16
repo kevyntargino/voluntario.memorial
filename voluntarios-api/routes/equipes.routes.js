@@ -6,6 +6,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import { notificarSubstituto } from '../services/notificacoes.service.js';
 import { normalizarTelefone } from '../utils/telefone.js';
+import { garantirOcorrenciasEventos, getInicioHistoricoEscalas } from '../services/eventos.service.js';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -213,6 +214,7 @@ function formatarEquipe(equipe, usuario) {
     })),
     escalas: equipe.escalas.map((escala) => {
       const dataOcorrencia = getProximaOcorrencia(escala);
+      const ordem = escala.evento?.ordensCulto?.find((item) => datasIguais(item.dataHora, dataOcorrencia)) || null;
 
       return {
         id: escala.id,
@@ -225,6 +227,13 @@ function formatarEquipe(equipe, usuario) {
         dataHora: dataOcorrencia,
         grupoEsporadicoId: escala.grupoEsporadicoId,
         solicitadaPeloAdmin: escala.solicitadaPeloAdmin,
+        eventoId: escala.eventoId,
+        ordemCulto: ordem ? {
+          id: ordem.id,
+          titulo: ordem.titulo,
+          dataHora: ordem.dataHora,
+          arquivoUrl: `/api/ordens-culto/${ordem.id}/arquivo`,
+        } : null,
         voluntarios: escala.voluntarios
           .map((item) => formatarParticipacao(item, dataOcorrencia, escala.tipo))
           .filter(Boolean),
@@ -255,14 +264,10 @@ async function carregarEquipe(equipeId, usuario) {
         },
       },
       escalas: {
-        where: {
-          OR: [
-            { tipo: 'RECORRENTE' },
-            { dataHora: { gte: new Date() } },
-          ],
-        },
+        where: { dataHora: { gte: getInicioHistoricoEscalas() } },
         orderBy: [{ dataHora: 'asc' }, { criadoEm: 'asc' }],
         include: {
+          evento: { include: { ordensCulto: true } },
           voluntarios: {
             include: {
               usuario: {
@@ -294,6 +299,7 @@ async function carregarEquipe(equipeId, usuario) {
 
 router.get('/minhas', autenticar, async (req, res) => {
   try {
+    await garantirOcorrenciasEventos(prisma);
     const usuario = await getUsuarioComEquipes(req.usuarioAutenticado.id);
 
     if (!usuario || (!usuario.permissoes.includes('LIDER_EQUIPE') && !usuario.permissoes.includes('ADMINISTRADOR'))) {
@@ -326,14 +332,10 @@ router.get('/minhas', autenticar, async (req, res) => {
           },
         },
         escalas: {
-          where: {
-            OR: [
-              { tipo: 'RECORRENTE' },
-              { dataHora: { gte: new Date() } },
-            ],
-          },
+          where: { dataHora: { gte: getInicioHistoricoEscalas() } },
           orderBy: [{ dataHora: 'asc' }, { criadoEm: 'asc' }],
           include: {
+            evento: { include: { ordensCulto: true } },
             voluntarios: {
               include: {
                 usuario: {
