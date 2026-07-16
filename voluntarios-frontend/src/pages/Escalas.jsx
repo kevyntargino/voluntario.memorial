@@ -28,6 +28,7 @@ import { formatarTelefoneExibicao } from '../lib/telefone';
 
 const areas = ['Midia', 'Iluminação', 'Filmagem', 'Fotografia', 'DTV', 'Direção', 'Redes Sociais'];
 const semanas = [1, 2, 3, 4, 5];
+const opcoesItensPorPagina = [5, 10, 20, 30];
 const dias = [
   { value: 'TODOS', label: 'Todos' },
   { value: 0, label: 'Domingo' },
@@ -184,6 +185,19 @@ function normalizar(texto) {
   return String(texto || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }
 
+function contarVoluntariosUnicos(escalas) {
+  const voluntarioIds = new Set();
+
+  escalas.forEach((escala) => {
+    (escala.voluntarios || []).forEach((item) => {
+      const usuarioId = item.usuarioId || item.usuario?.id;
+      if (usuarioId) voluntarioIds.add(usuarioId);
+    });
+  });
+
+  return voluntarioIds.size;
+}
+
 function mesmaDataHora(dataA, dataB) {
   if (!dataA || !dataB) return false;
   const primeira = new Date(dataA);
@@ -226,6 +240,8 @@ export default function Escalas() {
   const [mesCalendario, setMesCalendario] = useState(inicioMesAtual);
   const [eventoModal, setEventoModal] = useState(null);
   const [filtrosAbertos, setFiltrosAbertos] = useState(false);
+  const [paginaAtual, setPaginaAtual] = useState(1);
+  const [itensPorPagina, setItensPorPagina] = useState(10);
 
   const carregarEscalas = useCallback(async () => {
     setErro('');
@@ -485,10 +501,24 @@ export default function Escalas() {
     });
   }, [areaFiltro, busca, dataEventoSelecionada, diaSelecionado, escalas, eventoSelecionadoId, filtroConfirmacoes, modoVisualizacao, ordem, participacaoSelecionadaId, semanaSelecionada, statusFiltro, tipoFiltro, visao]);
 
+  const totalPaginas = Math.max(1, Math.ceil(escalasVisiveis.length / itensPorPagina));
+  const escalasPaginadas = useMemo(() => {
+    const inicio = (paginaAtual - 1) * itensPorPagina;
+    return escalasVisiveis.slice(inicio, inicio + itensPorPagina);
+  }, [escalasVisiveis, itensPorPagina, paginaAtual]);
+
+  useEffect(() => {
+    setPaginaAtual((pagina) => Math.min(pagina, totalPaginas));
+  }, [totalPaginas]);
+
+  useEffect(() => {
+    setPaginaAtual(1);
+  }, [areaFiltro, busca, diaSelecionado, eventoSelecionadoId, filtroConfirmacoes, modoVisualizacao, ordem, participacaoSelecionadaId, semanaSelecionada, statusFiltro, tipoFiltro, visao]);
+
   const eventosLista = useMemo(() => {
     const eventos = new Map();
 
-    for (const escala of escalasVisiveis) {
+    for (const escala of escalasPaginadas) {
       const data = getData(escala);
       const dataIso = data?.toISOString() || 'sem-data';
       const chave = escala.eventoId
@@ -517,9 +547,9 @@ export default function Escalas() {
     }
 
     return Array.from(eventos.values());
-  }, [escalasVisiveis]);
+  }, [escalasPaginadas]);
 
-  const totalVoluntarios = escalasVisiveis.reduce((total, escala) => total + (escala.voluntarios?.length || 0), 0);
+  const totalVoluntarios = contarVoluntariosUnicos(escalasVisiveis);
   const ocorrenciasCalendario = useMemo(() => {
     const eventos = new Map();
 
@@ -824,6 +854,15 @@ export default function Escalas() {
           <TabelaEscalas
             eventos={eventosLista}
             temResultados={escalasVisiveis.length > 0}
+            totalItens={escalasVisiveis.length}
+            paginaAtual={paginaAtual}
+            totalPaginas={totalPaginas}
+            itensPorPagina={itensPorPagina}
+            onPaginaChange={setPaginaAtual}
+            onItensPorPaginaChange={(valor) => {
+              setItensPorPagina(Number(valor));
+              setPaginaAtual(1);
+            }}
             participacaoSelecionadaId={participacaoSelecionadaId}
             eventoSelecionadoId={eventoSelecionadoId}
             dataEventoSelecionada={dataEventoSelecionada}
@@ -1046,9 +1085,7 @@ function CalendarioEscalas({
 function ModalEvento({ evento, onClose, onAbrirOrdemCulto }) {
   const fecharRef = useRef(null);
   const ordemCulto = evento.areas.find((area) => area.ordemCulto)?.ordemCulto || null;
-  const totalVoluntariosEvento = evento.areas.reduce((total, area) => (
-    total + (area.voluntarios?.length || 0)
-  ), 0);
+  const totalVoluntariosEvento = contarVoluntariosUnicos(evento.areas);
 
   useEffect(() => {
     const fecharComEscape = (event) => {
@@ -1216,6 +1253,12 @@ function SelectFiltro({ label, options, value, onChange }) {
 function TabelaEscalas({
   eventos,
   temResultados,
+  totalItens,
+  paginaAtual,
+  totalPaginas,
+  itensPorPagina,
+  onPaginaChange,
+  onItensPorPaginaChange,
   participacaoSelecionadaId,
   eventoSelecionadoId,
   dataEventoSelecionada,
@@ -1255,7 +1298,68 @@ function TabelaEscalas({
           onAbrirOrdemCulto={onAbrirOrdemCulto}
         />
       ))}
+      <PaginacaoEscalas
+        totalItens={totalItens}
+        paginaAtual={paginaAtual}
+        totalPaginas={totalPaginas}
+        itensPorPagina={itensPorPagina}
+        onPaginaChange={onPaginaChange}
+        onItensPorPaginaChange={onItensPorPaginaChange}
+      />
     </section>
+  );
+}
+
+function PaginacaoEscalas({
+  totalItens,
+  paginaAtual,
+  totalPaginas,
+  itensPorPagina,
+  onPaginaChange,
+  onItensPorPaginaChange,
+}) {
+  const inicio = totalItens === 0 ? 0 : ((paginaAtual - 1) * itensPorPagina) + 1;
+  const fim = Math.min(totalItens, paginaAtual * itensPorPagina);
+
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+          Mostrando {inicio}-{fim} de {totalItens} escala(s)
+        </p>
+        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Página {paginaAtual} de {totalPaginas}</p>
+      </div>
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+        <SelectFiltro
+          label="Itens por página"
+          value={String(itensPorPagina)}
+          onChange={onItensPorPaginaChange}
+          options={opcoesItensPorPagina.map((quantidade) => ({
+            value: String(quantidade),
+            label: `${quantidade} escalas`,
+          }))}
+        />
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => onPaginaChange(Math.max(1, paginaAtual - 1))}
+            disabled={paginaAtual <= 1}
+            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-gray-300 px-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+          >
+            <ChevronLeft size={16} /> Anterior
+          </button>
+          <button
+            type="button"
+            onClick={() => onPaginaChange(Math.min(totalPaginas, paginaAtual + 1))}
+            disabled={paginaAtual >= totalPaginas}
+            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-gray-300 px-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+          >
+            Próxima <ChevronRight size={16} />
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
