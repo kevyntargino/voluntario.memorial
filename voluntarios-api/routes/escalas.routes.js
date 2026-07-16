@@ -9,7 +9,7 @@ import {
   notificarNovaEscalaAdmin,
   notificarPedidoSubstituicao,
 } from '../services/notificacoes.service.js';
-import { escalaEstaEncerrada } from '../utils/escalas.js';
+import { escalaEstaEncerrada, getAgoraEscalas } from '../utils/escalas.js';
 import {
   garantirOcorrenciasEventos,
   gerarDatasEvento,
@@ -337,10 +337,11 @@ router.get('/', autenticar, async (req, res) => {
   try {
     await garantirOcorrenciasEventos(prisma);
     const visao = req.query.visao === 'minhas' ? 'minhas' : 'todas';
+    const agora = getAgoraEscalas();
 
     const escalas = await prisma.escala.findMany({
       where: {
-        dataHora: { gte: getInicioHistoricoEscalas() },
+        dataHora: { gte: agora },
         voluntarios: visao === 'minhas'
           ? {
               some: {
@@ -868,6 +869,9 @@ router.get('/minhas', autenticar, async (req, res) => {
     const escalas = await prisma.voluntarioEscala.findMany({
       where: {
         usuarioId: req.usuarioAutenticado.id,
+        escala: {
+          dataHora: { gte: getAgoraEscalas() },
+        },
       },
       include: {
         escala: {

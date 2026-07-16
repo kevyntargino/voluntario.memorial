@@ -444,6 +444,8 @@ export default function Escalas() {
       ].join(' '));
       const correspondeTexto = !termo || texto.includes(termo);
 
+      if (!futura) return false;
+
       if (filtroConfirmacoes) {
         return correspondeParticipacao && correspondeConfirmacao && correspondeTipo && correspondeArea && correspondeTexto;
       }
