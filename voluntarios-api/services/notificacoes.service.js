@@ -1,8 +1,7 @@
 import webpush from 'web-push';
 
-const AREAS_MCOM = ['Midia', 'Iluminação', 'Filmagem', 'Fotografia', 'DTV', 'Direção', 'Redes Sociais'];
-
 let webPushConfigurado = false;
+const timeZoneEventos = process.env.EVENT_TIME_ZONE || 'America/Campo_Grande';
 
 function configurarWebPush() {
   if (webPushConfigurado) {
@@ -80,10 +79,49 @@ export function getProximaOcorrenciaNotificacao(escala, agora = new Date()) {
   return escala.dataHora;
 }
 
-function diasAte(data, agora = new Date()) {
+export function diasAte(data, agora = new Date()) {
   const dataDia = Date.UTC(data.getUTCFullYear(), data.getUTCMonth(), data.getUTCDate());
   const agoraDia = Date.UTC(agora.getUTCFullYear(), agora.getUTCMonth(), agora.getUTCDate());
   return Math.round((dataDia - agoraDia) / 86400000);
+}
+
+export function getAgoraNotificacao() {
+  const partes = new Intl.DateTimeFormat('en-US', {
+    timeZone: timeZoneEventos,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date());
+  const valor = Object.fromEntries(partes.map((parte) => [parte.type, parte.value]));
+
+  return getDataUtc(
+    Number(valor.year),
+    Number(valor.month) - 1,
+    Number(valor.day),
+    Number(valor.hour),
+    Number(valor.minute),
+  );
+}
+
+function datasIguais(dataA, dataB) {
+  if (!dataA || !dataB) {
+    return false;
+  }
+
+  return new Date(dataA).toISOString() === new Date(dataB).toISOString();
+}
+
+export function getStatusParticipacaoNaOcorrencia(participacao, dataOcorrencia) {
+  if (participacao.escala?.tipo !== 'RECORRENTE') {
+    return participacao.status;
+  }
+
+  return datasIguais(participacao.dataOcorrenciaStatus, dataOcorrencia)
+    ? participacao.status
+    : 'PENDENTE';
 }
 
 function formatarData(data) {
@@ -227,15 +265,33 @@ export async function notificarSubstituto(prisma, { participacao, dataOcorrencia
   }]);
 }
 
-export async function gerarNotificacoesAutomaticas(prisma) {
-  const agora = new Date();
+export async function notificarNovaEscalaAdmin(prisma, { escalas }) {
+  const notificacoes = [];
+
+  for (const escala of escalas || []) {
+    const dataOcorrencia = getProximaOcorrenciaNotificacao(escala, getAgoraNotificacao());
+    const dataTexto = dataOcorrencia ? formatarData(new Date(dataOcorrencia)) : 'uma próxima data';
+    const equipeNome = escala.equipe?.nome || 'sua equipe';
+
+    for (const lider of escala.equipe?.lideres || []) {
+      notificacoes.push({
+        usuarioId: lider.id,
+        tipo: 'ALERTA_LIDER',
+        titulo: 'Nova escala criada pelo admin',
+        mensagem: `A equipe ${equipeNome} foi requisitada para ${escala.titulo || 'uma nova escala'} em ${dataTexto}. Atribua os voluntários da equipe.`,
+        link: `/minha-equipe?equipe=${escala.equipe.id}&escala=${escala.id}`,
+        chave: `nova-escala-admin:${lider.id}:${escala.id}`,
+      });
+    }
+  }
+
+  return criarNotificacoes(prisma, notificacoes);
+}
+
+export async function gerarNotificacoesAutomaticas(prisma, agora = getAgoraNotificacao()) {
   const participacoes = await prisma.voluntarioEscala.findMany({
     where: {
-      status: 'PENDENTE',
       escala: {
-        equipe: {
-          nome: { in: AREAS_MCOM },
-        },
         OR: [
           { tipo: 'RECORRENTE' },
           { tipo: 'ESPORADICA', dataHora: { gte: agora } },
@@ -263,6 +319,7 @@ export async function gerarNotificacoesAutomaticas(prisma) {
   });
 
   const notificacoes = [];
+  const pendenciasPorEscala = new Map();
 
   for (const participacao of participacoes) {
     const dataOcorrencia = getProximaOcorrenciaNotificacao(participacao.escala, agora);
@@ -272,34 +329,57 @@ export async function gerarNotificacoesAutomaticas(prisma) {
     }
 
     const dias = diasAte(new Date(dataOcorrencia), agora);
+    const status = getStatusParticipacaoNaOcorrencia(participacao, dataOcorrencia);
 
-    if (![5, 3].includes(dias)) {
+    if (status !== 'PENDENTE') {
       continue;
     }
 
     const equipeNome = participacao.escala.equipe?.nome || 'sua equipe';
     const dataTexto = formatarData(new Date(dataOcorrencia));
 
-    notificacoes.push({
-      usuarioId: participacao.usuarioId,
-      tipo: 'CONFIRMACAO_ESCALA',
-      titulo: dias === 5 ? 'Confirme sua próxima escala' : 'Lembrete: confirme sua escala',
-      mensagem: `Sua escala em ${equipeNome} está marcada para ${dataTexto}. Confirme sua participação no painel de escalas.`,
-      link: `/escalas?filtro=confirmacoes&participacao=${participacao.id}`,
-      chave: `confirmacao:${dias}d:${participacao.id}:${new Date(dataOcorrencia).toISOString()}`,
-    });
+    if ([5, 3].includes(dias)) {
+      notificacoes.push({
+        usuarioId: participacao.usuarioId,
+        tipo: 'CONFIRMACAO_ESCALA',
+        titulo: dias === 5 ? 'Confirme sua próxima escala' : 'Lembrete: confirme sua escala',
+        mensagem: `Sua escala em ${equipeNome} está marcada para ${dataTexto}. Confirme sua participação no painel de escalas.`,
+        link: `/escalas?filtro=confirmacoes&participacao=${participacao.id}`,
+        chave: `confirmacao:${dias}d:${participacao.id}:${new Date(dataOcorrencia).toISOString()}`,
+      });
+    }
 
-    if (dias === 3) {
-      for (const lider of participacao.escala.equipe?.lideres || []) {
-        notificacoes.push({
-          usuarioId: lider.id,
-          tipo: 'ALERTA_LIDER',
-          titulo: 'Voluntário ainda não confirmou escala',
-          mensagem: `${participacao.usuario.nomeCompleto} ainda não confirmou a escala de ${equipeNome} em ${dataTexto}.`,
-          link: `/minha-equipe?equipe=${participacao.escala.equipe.id}&participacao=${participacao.id}`,
-          chave: `lider-pendente:${lider.id}:${participacao.id}:${new Date(dataOcorrencia).toISOString()}`,
-        });
-      }
+    if ([4, 2].includes(dias) && (participacao.escala.equipe?.lideres || []).length > 0) {
+      const chaveGrupo = `${participacao.escala.id}:${new Date(dataOcorrencia).toISOString()}:${dias}`;
+      const grupo = pendenciasPorEscala.get(chaveGrupo) || {
+        dias,
+        dataOcorrencia: new Date(dataOcorrencia),
+        dataTexto,
+        equipe: participacao.escala.equipe,
+        escalaId: participacao.escala.id,
+        voluntarios: [],
+      };
+
+      grupo.voluntarios.push(participacao.usuario);
+      pendenciasPorEscala.set(chaveGrupo, grupo);
+    }
+  }
+
+  for (const grupo of pendenciasPorEscala.values()) {
+    const nomes = grupo.voluntarios.map((voluntario) => voluntario.nomeCompleto);
+    const resumoNomes = nomes.length <= 3
+      ? nomes.join(', ')
+      : `${nomes.slice(0, 3).join(', ')} e mais ${nomes.length - 3}`;
+
+    for (const lider of grupo.equipe.lideres) {
+      notificacoes.push({
+        usuarioId: lider.id,
+        tipo: 'ALERTA_LIDER',
+        titulo: `${nomes.length} ${nomes.length === 1 ? 'confirmação pendente' : 'confirmações pendentes'}`,
+        mensagem: `${resumoNomes} ainda ${nomes.length === 1 ? 'não confirmou' : 'não confirmaram'} a escala de ${grupo.equipe.nome} em ${grupo.dataTexto}.`,
+        link: `/minha-equipe?equipe=${grupo.equipe.id}&escala=${grupo.escalaId}`,
+        chave: `lider-pendentes:${grupo.dias}d:${lider.id}:${grupo.escalaId}:${grupo.dataOcorrencia.toISOString()}`,
+      });
     }
   }
 

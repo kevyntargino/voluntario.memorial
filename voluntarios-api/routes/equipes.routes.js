@@ -5,6 +5,7 @@ import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import { notificarSubstituto } from '../services/notificacoes.service.js';
+import { normalizarTelefone } from '../utils/telefone.js';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -85,6 +86,11 @@ function podeGerenciar(usuario, equipeId) {
     && usuario.equipesLideradas.some((equipe) => equipe.id === equipeId);
 }
 
+function gerarSenhaTemporaria(nomeCompleto) {
+  const primeiroNome = String(nomeCompleto || '').trim().split(/\s+/)[0] || '';
+  return `${primeiroNome.toLowerCase()}123`;
+}
+
 function getHorarioBase(dataHora) {
   const data = dataHora ? new Date(dataHora) : null;
 
@@ -150,21 +156,25 @@ function datasIguais(dataA, dataB) {
   return new Date(dataA).toISOString() === new Date(dataB).toISOString();
 }
 
-function formatarParticipacao(item, dataOcorrencia) {
+function formatarParticipacao(item, dataOcorrencia, tipoEscala) {
   const temOcorrenciaEspecifica = Boolean(item.dataOcorrenciaSubstituicao);
 
   if (item.substituto && temOcorrenciaEspecifica && !datasIguais(item.dataOcorrenciaSubstituicao, dataOcorrencia)) {
     return null;
   }
 
-  const usarStatusEspecifico = !temOcorrenciaEspecifica || datasIguais(item.dataOcorrenciaSubstituicao, dataOcorrencia);
+  const usarStatusEspecifico = tipoEscala !== 'RECORRENTE'
+    || datasIguais(item.dataOcorrenciaStatus, dataOcorrencia);
+  const usarSubstituicaoEspecifica = !temOcorrenciaEspecifica
+    || datasIguais(item.dataOcorrenciaSubstituicao, dataOcorrencia);
 
   return {
     id: item.id,
     status: usarStatusEspecifico ? item.status : 'PENDENTE',
-    justificativaSubstituicao: usarStatusEspecifico ? item.justificativaSubstituicao : null,
+    justificativaSubstituicao: usarSubstituicaoEspecifica ? item.justificativaSubstituicao : null,
+    dataOcorrenciaStatus: item.dataOcorrenciaStatus,
     dataOcorrenciaSubstituicao: item.dataOcorrenciaSubstituicao,
-    substituto: usarStatusEspecifico ? item.substituto : false,
+    substituto: usarSubstituicaoEspecifica ? item.substituto : false,
     usuario: {
       id: item.usuario.id,
       nomeCompleto: item.usuario.nomeCompleto,
@@ -216,7 +226,7 @@ function formatarEquipe(equipe, usuario) {
         grupoEsporadicoId: escala.grupoEsporadicoId,
         solicitadaPeloAdmin: escala.solicitadaPeloAdmin,
         voluntarios: escala.voluntarios
-          .map((item) => formatarParticipacao(item, dataOcorrencia))
+          .map((item) => formatarParticipacao(item, dataOcorrencia, escala.tipo))
           .filter(Boolean),
       };
     }),
@@ -375,18 +385,18 @@ router.post('/:equipeId/voluntarios', autenticar, async (req, res) => {
       return res.status(400).json({ erro: 'Nome completo e e-mail são obrigatórios.' });
     }
 
-    const senhaTemporaria = `${nomeLimpo.replace(/\s+/g, '')}123`;
+    const senhaTemporaria = gerarSenhaTemporaria(nomeLimpo);
     const senhaHash = await bcrypt.hash(senhaTemporaria, 10);
     const voluntario = await prisma.usuario.upsert({
       where: { email: emailNormalizado },
       update: {
         nomeCompleto: nomeLimpo,
-        telefone: typeof telefone === 'string' && telefone.trim() ? telefone.trim() : undefined,
+        telefone: normalizarTelefone(telefone) || undefined,
       },
       create: {
         nomeCompleto: nomeLimpo,
         email: emailNormalizado,
-        telefone: typeof telefone === 'string' && telefone.trim() ? telefone.trim() : null,
+        telefone: normalizarTelefone(telefone),
         senhaHash,
         permissoes: ['VOLUNTARIO'],
       },
@@ -528,6 +538,7 @@ router.post('/:equipeId/substituicoes/:participacaoId/atribuir', autenticar, asy
         update: {
           substituto: true,
           status: 'PENDENTE',
+          dataOcorrenciaStatus: dataOcorrenciaSubstituicao,
           dataOcorrenciaSubstituicao,
           atribuidoPorId: req.usuarioAutenticado.id,
         },
@@ -536,6 +547,7 @@ router.post('/:equipeId/substituicoes/:participacaoId/atribuir', autenticar, asy
           escalaId: pedido.escalaId,
           substituto: true,
           status: 'PENDENTE',
+          dataOcorrenciaStatus: dataOcorrenciaSubstituicao,
           dataOcorrenciaSubstituicao,
           atribuidoPorId: req.usuarioAutenticado.id,
         },

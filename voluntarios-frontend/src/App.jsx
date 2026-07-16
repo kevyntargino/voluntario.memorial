@@ -14,6 +14,7 @@ import { MobileBottomNav } from './components/MobileBottomNav';
 import { PwaInstallPrompt } from './components/PwaInstallPrompt';
 import { PushNotificationManager } from './components/PushNotificationManager';
 import { AppSettings } from './components/AppSettings';
+import { ProfileCompletionNotification } from './components/ProfileCompletionNotification';
 
 function App() {
   const getInitialLocation = () => {
@@ -118,6 +119,7 @@ function AppRouter() {
   return (
     <>
       {page}
+      <ProfileCompletionNotification />
       <MobileBottomNav />
       <PwaInstallPrompt />
       <PushNotificationManager />

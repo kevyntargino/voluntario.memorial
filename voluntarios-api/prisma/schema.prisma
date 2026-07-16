@@ -155,6 +155,7 @@ model Escala {
 model VoluntarioEscala {
   id             String       @id @default(uuid()) @db.Uuid
   status         StatusEscala @default(PENDENTE)
+  dataOcorrenciaStatus DateTime? @map("data_ocorrencia_status")
   justificativaSubstituicao String? @map("justificativa_substituicao") @db.Text
   dataOcorrenciaSubstituicao DateTime? @map("data_ocorrencia_substituicao")
   substituto     Boolean      @default(false)

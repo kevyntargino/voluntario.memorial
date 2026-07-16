@@ -34,6 +34,8 @@ import { UsuarioInfoButton, UsuarioModal } from '../components/UsuarioModal';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
 import { buildApiUrl } from '../lib/api';
+import { PhoneInput } from '../components/PhoneInput';
+import { formatarTelefoneExibicao } from '../lib/telefone';
 
 const dias = [
   { value: 0, label: 'Domingo' },
@@ -81,12 +83,50 @@ const filtrosRecorrentes = [0, 6].flatMap((diaSemana) => (
 
 function formatarData(dataHora) {
   if (!dataHora) return 'Sem data';
-  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(dataHora));
+  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' }).format(new Date(dataHora));
 }
 
 function toTime(dataHora) {
   if (!dataHora) return '18:00';
   return new Date(dataHora).toISOString().slice(11, 16);
+}
+
+function getUtcDateParts(dataHora) {
+  const data = new Date(dataHora);
+  if (Number.isNaN(data.getTime())) return null;
+
+  return {
+    ano: data.getUTCFullYear(),
+    mes: data.getUTCMonth(),
+    dia: data.getUTCDate(),
+    diaSemana: data.getUTCDay(),
+    horas: data.getUTCHours(),
+    minutos: data.getUTCMinutes(),
+  };
+}
+
+function criarDataHoraInput(data, horario) {
+  return `${data}T${horario}`;
+}
+
+function parseDataHoraInput(dataHora) {
+  const match = String(dataHora || '').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+  if (!match) return null;
+
+  const [, ano, mes, dia, horas, minutos] = match.map(Number);
+  const data = new Date(Date.UTC(ano, mes - 1, dia, horas, minutos, 0, 0));
+
+  if (
+    data.getUTCFullYear() !== ano
+    || data.getUTCMonth() !== mes - 1
+    || data.getUTCDate() !== dia
+    || data.getUTCHours() !== horas
+    || data.getUTCMinutes() !== minutos
+  ) {
+    return null;
+  }
+
+  return data;
 }
 
 function hojeParaInput() {
@@ -97,6 +137,17 @@ function hojeParaInput() {
   return `${ano}-${mes}-${dia}`;
 }
 
+function agoraComoDataHoraInput() {
+  const agora = new Date();
+  const ano = agora.getFullYear();
+  const mes = String(agora.getMonth() + 1).padStart(2, '0');
+  const dia = String(agora.getDate()).padStart(2, '0');
+  const horas = String(agora.getHours()).padStart(2, '0');
+  const minutos = String(agora.getMinutes()).padStart(2, '0');
+
+  return `${ano}-${mes}-${dia}T${horas}:${minutos}`;
+}
+
 function criarFormUsuario(usuario) {
   return {
     nomeCompleto: usuario.nomeCompleto || '',
@@ -105,6 +156,11 @@ function criarFormUsuario(usuario) {
     equipeIds: usuario.equipes?.map((equipe) => equipe.id) || [],
     liderEquipeIds: usuario.equipesLideradas?.map((equipe) => equipe.id) || [],
   };
+}
+
+function gerarSenhaTemporaria(nomeCompleto) {
+  const primeiroNome = String(nomeCompleto || '').trim().split(/\s+/)[0] || '';
+  return primeiroNome ? `${primeiroNome.toLowerCase()}123` : '';
 }
 
 function readAsDataUrl(file) {
@@ -715,21 +771,22 @@ export default function AdminEscalas() {
       let body = formEscala;
 
       if (!recorrente) {
-        const datas = (formEscala.horarios || [])
+        const dataHoras = (formEscala.horarios || [])
           .filter((horario) => horario)
-          .map((horario) => new Date(`${formEscala.data}T${horario}`));
+          .map((horario) => criarDataHoraInput(formEscala.data, horario));
+        const datas = dataHoras.map(parseDataHoraInput);
 
-        if (!formEscala.data || datas.length === 0 || datas.some((data) => Number.isNaN(data.getTime()))) {
+        if (!formEscala.data || datas.length === 0 || datas.some((data) => !data)) {
           throw new Error('Informe uma data e pelo menos um horário válido.');
         }
 
-        if (datas.some((data) => data <= new Date())) {
+        if (dataHoras.some((dataHora) => dataHora <= agoraComoDataHoraInput())) {
           throw new Error('As escalas esporádicas devem ter data e horário futuros.');
         }
 
         body = {
           ...formEscala,
-          dataHoras: datas.map((data) => data.toISOString()),
+          dataHoras,
         };
       }
 
@@ -1117,7 +1174,7 @@ function ProximaEscala({ escala, onAbrirUsuario }) {
                       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                         <p className="text-sm font-semibold text-gray-800">{item.usuario.nomeCompleto}</p>
                         {item.usuario.telefone && (
-                          <span className="text-[11px] font-medium text-gray-400">{item.usuario.telefone}</span>
+                          <span className="text-[11px] font-medium text-gray-400">{formatarTelefoneExibicao(item.usuario.telefone)}</span>
                         )}
                       </div>
                     </div>
@@ -1165,6 +1222,7 @@ function PainelUsuarios({
   const [usuarioConfirmandoExclusao, setUsuarioConfirmandoExclusao] = useState(null);
   const isLideres = titulo.toLowerCase().includes('líder');
   const excluindoUsuario = Boolean(usuarioConfirmandoExclusao && salvandoId === usuarioConfirmandoExclusao.id);
+  const senhaTemporariaNovoVoluntario = gerarSenhaTemporaria(formNovoVoluntario.nomeCompleto);
   const usuariosFiltrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
 
@@ -1253,10 +1311,10 @@ function PainelUsuarios({
         <form onSubmit={onCadastrarVoluntario} className="grid gap-4 border-b border-gray-100 bg-gray-50 px-5 py-5 lg:grid-cols-2">
           <Campo label="Nome completo" value={formNovoVoluntario.nomeCompleto} onChange={(value) => onChangeNovoVoluntario((atual) => ({ ...atual, nomeCompleto: value }))} />
           <Campo label="E-mail" type="email" value={formNovoVoluntario.email} onChange={(value) => onChangeNovoVoluntario((atual) => ({ ...atual, email: value }))} />
-          <Campo label="Telefone" value={formNovoVoluntario.telefone} onChange={(value) => onChangeNovoVoluntario((atual) => ({ ...atual, telefone: value }))} />
+          <PhoneInput value={formNovoVoluntario.telefone} onChange={(telefone) => onChangeNovoVoluntario((atual) => ({ ...atual, telefone }))} />
           <div className="lg:col-span-2">
             <p className="mb-3 rounded-md border border-dourado-100 bg-dourado-50 px-3 py-2 text-sm font-semibold text-dourado-800">
-              A senha inicial será gerada automaticamente como NomeDoVoluntario123.
+              Senha inicial: {senhaTemporariaNovoVoluntario || 'digite o nome do voluntário'}
             </p>
             <GrupoChecks titulo="Equipes do voluntário">
               {equipes.map((equipe) => (
@@ -1303,7 +1361,7 @@ function PainelUsuarios({
                     <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                       <p className="text-base font-bold text-gray-950">{usuario.nomeCompleto}</p>
                       {usuario.telefone && (
-                        <span className="text-xs font-medium text-gray-400">{usuario.telefone}</span>
+                        <span className="text-xs font-medium text-gray-400">{formatarTelefoneExibicao(usuario.telefone)}</span>
                       )}
                     </div>
                     <p className="mt-1 text-sm text-gray-500">{usuario.email}</p>
@@ -1337,7 +1395,7 @@ function PainelUsuarios({
                 <div className="mt-4 grid gap-4 rounded-xl border border-gray-200 bg-gray-50 p-4 xl:grid-cols-[1fr_1fr_auto]">
                   <div className="grid gap-3 sm:grid-cols-2">
                     <Campo label="Nome" value={form.nomeCompleto} onChange={(value) => onAlterar(usuario.id, 'nomeCompleto', value)} />
-                    <Campo label="Telefone" value={form.telefone} onChange={(value) => onAlterar(usuario.id, 'telefone', value)} />
+                    <PhoneInput value={form.telefone} onChange={(telefone) => onAlterar(usuario.id, 'telefone', telefone)} />
                   </div>
                   <div className="grid gap-3">
                     <GrupoChecks titulo="Acessos">
@@ -1631,7 +1689,7 @@ function Contato({ pessoa, onAbrirUsuario, acaoExtra = null }) {
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
             <p className="text-sm font-bold text-gray-950">{pessoa.nomeCompleto}</p>
             {pessoa.telefone && (
-              <span className="text-[11px] font-medium text-gray-400">{pessoa.telefone}</span>
+              <span className="text-[11px] font-medium text-gray-400">{formatarTelefoneExibicao(pessoa.telefone)}</span>
             )}
           </div>
           <p className="mt-1 text-xs text-gray-500">{pessoa.email}</p>
@@ -2173,7 +2231,7 @@ function PainelEscalas({
                                       <div className="min-w-0">
                                         <span className="break-words font-semibold">{item.usuario.nomeCompleto}</span>
                                         {item.usuario.telefone && (
-                                          <span className="ml-2 whitespace-nowrap text-[11px] font-medium text-gray-400">{item.usuario.telefone}</span>
+                                          <span className="ml-2 whitespace-nowrap text-[11px] font-medium text-gray-400">{formatarTelefoneExibicao(item.usuario.telefone)}</span>
                                         )}
                                       </div>
                                     </div>
@@ -2273,10 +2331,11 @@ function CalendarioEscalas({ eventos }) {
     }
 
     if (!evento.dataHora) return false;
-    const dataEvento = new Date(evento.dataHora);
-    return dataEvento.getFullYear() === data.getFullYear()
-      && dataEvento.getMonth() === data.getMonth()
-      && dataEvento.getDate() === data.getDate();
+    const dataEvento = getUtcDateParts(evento.dataHora);
+    return dataEvento
+      && dataEvento.ano === data.getFullYear()
+      && dataEvento.mes === data.getMonth()
+      && dataEvento.dia === data.getDate();
   });
 
   const eventosSelecionados = diaSelecionado ? eventosNaData(diaSelecionado) : [];
@@ -2285,13 +2344,15 @@ function CalendarioEscalas({ eventos }) {
       return evento.dataHora;
     }
 
-    const horario = new Date(evento.dataHora);
+    const horario = getUtcDateParts(evento.dataHora);
+    if (!horario) return evento.dataHora;
+
     return new Date(
       diaSelecionado.getFullYear(),
       diaSelecionado.getMonth(),
       diaSelecionado.getDate(),
-      horario.getHours(),
-      horario.getMinutes(),
+      horario.horas,
+      horario.minutos,
     );
   };
 

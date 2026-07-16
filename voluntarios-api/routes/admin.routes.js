@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
+import { normalizarTelefone } from '../utils/telefone.js';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -55,6 +56,11 @@ function exigirAdmin(req, res, next) {
   }
 
   return next();
+}
+
+function gerarSenhaTemporaria(nomeCompleto) {
+  const primeiroNome = String(nomeCompleto || '').trim().split(/\s+/)[0] || '';
+  return `${primeiroNome.toLowerCase()}123`;
 }
 
 function formatarUsuario(usuario) {
@@ -382,13 +388,13 @@ router.post('/usuarios', autenticar, exigirAdmin, async (req, res) => {
       }
     }
 
-    const senhaTemporaria = `${nomeLimpo.replace(/\s+/g, '')}123`;
+    const senhaTemporaria = gerarSenhaTemporaria(nomeLimpo);
     const senhaHash = await bcrypt.hash(senhaTemporaria, 10);
     const usuario = await prisma.usuario.create({
       data: {
         nomeCompleto: nomeLimpo,
         email: emailNormalizado,
-        telefone: typeof telefone === 'string' && telefone.trim() ? telefone.trim() : null,
+        telefone: normalizarTelefone(telefone),
         senhaHash,
         permissoes: ['VOLUNTARIO'],
         equipes: {
@@ -450,7 +456,7 @@ router.patch('/usuarios/:id', autenticar, exigirAdmin, async (req, res) => {
       },
       data: {
         nomeCompleto: nomeCompleto.trim(),
-        telefone: typeof telefone === 'string' && telefone.trim() ? telefone.trim() : null,
+        telefone: normalizarTelefone(telefone),
         permissoes: permissoesValidas,
         equipes: {
           set: Array.isArray(equipeIds) ? equipeIds.map((id) => ({ id })) : [],

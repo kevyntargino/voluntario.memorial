@@ -5,6 +5,7 @@ import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
+import { normalizarTelefone } from '../utils/telefone.js';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -486,7 +487,7 @@ router.patch('/me', autenticar, async (req, res) => {
       where: { id: req.usuarioAutenticado.id },
       data: {
         nomeCompleto: nomeCompleto.trim(),
-        telefone: typeof telefone === 'string' && telefone.trim() ? telefone.trim() : null,
+        telefone: normalizarTelefone(telefone),
         urlFoto: proximaUrlFoto,
         dataNascimento: dataNascimento ? new Date(`${dataNascimento}T00:00:00.000Z`) : null,
         sexo: sexo || null,

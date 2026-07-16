@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { AlertTriangle, Loader2, Mail, Phone, ShieldCheck, Trash2, UserRound, X } from 'lucide-react';
+import { formatarTelefoneExibicao } from '../lib/telefone';
 
 function formatarData(valor, comHora = false) {
   if (!valor) return 'Não informado';
@@ -150,7 +151,7 @@ export function UsuarioModal({ usuario, onClose, podeExcluir = false, onExcluir,
               <CampoDetalhe label="Nome completo" valor={usuario.nomeCompleto} />
               <CampoDetalhe label="ID" valor={usuario.id} />
               <CampoDetalhe label="E-mail" valor={usuario.email} />
-              <CampoDetalhe label="Telefone" valor={usuario.telefone} />
+              <CampoDetalhe label="Telefone" valor={formatarTelefoneExibicao(usuario.telefone)} />
               <CampoDetalhe label="Sexo" valor={usuario.sexo ? formatarPermissao(usuario.sexo) : null} />
               <CampoDetalhe label="Nascimento" valor={formatarData(usuario.dataNascimento)} />
               <CampoDetalhe label="Criado em" valor={formatarData(usuario.criadoEm, true)} />
@@ -174,7 +175,7 @@ export function UsuarioModal({ usuario, onClose, podeExcluir = false, onExcluir,
               {usuario.telefone && (
                 <span className="inline-flex items-center gap-1.5">
                   <Phone size={13} />
-                  {usuario.telefone}
+                  {formatarTelefoneExibicao(usuario.telefone)}
                 </span>
               )}
               {(usuario.permissoes || []).length > 0 && (

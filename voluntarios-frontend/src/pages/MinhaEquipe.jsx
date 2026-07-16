@@ -18,6 +18,8 @@ import { UsuarioInfoButton, UsuarioModal } from '../components/UsuarioModal';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
 import { buildApiUrl } from '../lib/api';
+import { PhoneInput } from '../components/PhoneInput';
+import { formatarTelefoneExibicao } from '../lib/telefone';
 
 const formEscalaInicial = {
   id: null,
@@ -63,6 +65,11 @@ function normalizar(texto) {
   return String(texto || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }
 
+function gerarSenhaTemporaria(nomeCompleto) {
+  const primeiroNome = String(nomeCompleto || '').trim().split(/\s+/)[0] || '';
+  return primeiroNome ? `${primeiroNome.toLowerCase()}123` : '';
+}
+
 function formatarData(dataHora) {
   if (!dataHora) {
     return 'Sem data';
@@ -79,6 +86,7 @@ export default function MinhaEquipe() {
   const { navigate, search } = useNavigation();
   const parametros = new URLSearchParams(search || '');
   const equipeUrlId = parametros.get('equipe') || '';
+  const escalaSelecionadaId = parametros.get('escala') || '';
   const pedidoSelecionadoId = parametros.get('pedido') || '';
   const participacaoSelecionadaId = parametros.get('participacao') || '';
   const [equipes, setEquipes] = useState([]);
@@ -91,7 +99,6 @@ export default function MinhaEquipe() {
   const [substitutosSelecionados, setSubstitutosSelecionados] = useState({});
   const [filtroEscala, setFiltroEscala] = useState(filtrosRecorrentes[0].chave);
   const [usuarioModal, setUsuarioModal] = useState(null);
-  const [mostrarAtribuirVoluntarios, setMostrarAtribuirVoluntarios] = useState(false);
   const [mostrarCadastroVoluntario, setMostrarCadastroVoluntario] = useState(false);
   const [formNovoVoluntario, setFormNovoVoluntario] = useState(formNovoVoluntarioInicial);
   const [buscaEscalas, setBuscaEscalas] = useState('');
@@ -150,6 +157,36 @@ export default function MinhaEquipe() {
     () => equipes.find((equipe) => equipe.id === equipeId) || null,
     [equipeId, equipes],
   );
+  const senhaTemporariaNovoVoluntario = gerarSenhaTemporaria(formNovoVoluntario.nomeCompleto);
+
+  useEffect(() => {
+    if (!escalaSelecionadaId || !equipeSelecionada) {
+      return;
+    }
+
+    const escala = equipeSelecionada.escalas.find((item) => item.id === escalaSelecionadaId);
+
+    if (!escala) {
+      return;
+    }
+
+    setBuscaEscalas('');
+    setTipoEscalas('TODAS');
+    setStatusEscalas('TODOS');
+    setFiltroEscala(`ESPORADICA:${escala.id}`);
+    setFormEscala({
+      id: escala.id,
+      voluntarioIds: escala.voluntarios.map((item) => item.usuario.id),
+      substitutoIds: escala.voluntarios.filter((item) => item.substituto).map((item) => item.usuario.id),
+    });
+
+    window.setTimeout(() => {
+      document.getElementById(`equipe-escala-${escala.id}`)?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+    }, 120);
+  }, [equipeSelecionada, escalaSelecionadaId]);
 
   const escalasEsporadicas = useMemo(() => (
     (equipeSelecionada?.escalas || [])
@@ -278,7 +315,6 @@ export default function MinhaEquipe() {
       });
 
       setFormEscala(formEscalaInicial);
-      setMostrarAtribuirVoluntarios(false);
     } catch (error) {
       setErro(error.message);
     } finally {
@@ -293,7 +329,21 @@ export default function MinhaEquipe() {
       voluntarioIds: escala.voluntarios.map((item) => item.usuario.id),
       substitutoIds: escala.voluntarios.filter((item) => item.substituto).map((item) => item.usuario.id),
     });
-    setMostrarAtribuirVoluntarios(true);
+  };
+
+  const abrirEscalaSolicitada = (escala) => {
+    setBuscaEscalas('');
+    setTipoEscalas('TODAS');
+    setStatusEscalas('TODOS');
+    setFiltroEscala(`ESPORADICA:${escala.id}`);
+    editarEscala(escala);
+
+    window.setTimeout(() => {
+      document.getElementById(`equipe-escala-${escala.id}`)?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+    }, 120);
   };
 
   const atribuirSubstituto = async (pedidoId) => {
@@ -448,7 +498,6 @@ export default function MinhaEquipe() {
                 setEquipeId(event.target.value);
                 setFormEscala(formEscalaInicial);
                 setFiltroEscala('TODAS');
-                setMostrarAtribuirVoluntarios(false);
               }}
               className="rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm font-semibold outline-none focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
             >
@@ -524,7 +573,7 @@ export default function MinhaEquipe() {
                               .filter((voluntario) => voluntario.id !== pedido.usuario.id)
                               .map((voluntario) => (
                                 <option key={voluntario.id} value={voluntario.id}>
-                                  {voluntario.telefone ? `${voluntario.nomeCompleto} - ${voluntario.telefone}` : voluntario.nomeCompleto}
+                                  {voluntario.telefone ? `${voluntario.nomeCompleto} - ${formatarTelefoneExibicao(voluntario.telefone)}` : voluntario.nomeCompleto}
                                 </option>
                               ))}
                           </select>
@@ -565,7 +614,7 @@ export default function MinhaEquipe() {
                           </div>
                           <button
                             type="button"
-                            onClick={() => editarEscala(escala)}
+                            onClick={() => abrirEscalaSolicitada(escala)}
                             className="inline-flex items-center justify-center gap-2 rounded-md bg-amber-700 px-3 py-2 text-sm font-semibold text-white transition hover:bg-amber-800"
                           >
                             <UserPlus size={15} />
@@ -615,19 +664,11 @@ export default function MinhaEquipe() {
                           placeholder="email@exemplo.com"
                         />
                       </label>
-                      <label className="block">
-                        <span className="text-xs font-bold uppercase tracking-[0.14em] text-gray-400">Telefone</span>
-                        <input
-                          value={formNovoVoluntario.telefone}
-                          onChange={(event) => setFormNovoVoluntario((atual) => ({ ...atual, telefone: event.target.value }))}
-                          className="mt-1 block w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
-                          placeholder="Contato"
-                        />
-                      </label>
+                      <PhoneInput value={formNovoVoluntario.telefone} onChange={(telefone) => setFormNovoVoluntario((atual) => ({ ...atual, telefone }))} />
                     </div>
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <p className="text-xs font-semibold text-gray-500">
-                        A senha inicial será gerada automaticamente como NomeDoVoluntario123.
+                        Senha inicial: {senhaTemporariaNovoVoluntario || 'digite o nome do voluntário'}
                       </p>
                       <button
                         disabled={salvando}
@@ -648,7 +689,7 @@ export default function MinhaEquipe() {
                           <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
                             <p className="truncate text-sm font-bold text-gray-950">{voluntario.nomeCompleto}</p>
                             {voluntario.telefone && (
-                              <span className="text-[11px] font-medium text-gray-400">{voluntario.telefone}</span>
+                              <span className="text-[11px] font-medium text-gray-400">{formatarTelefoneExibicao(voluntario.telefone)}</span>
                             )}
                           </div>
                           <p className="truncate text-xs text-gray-500">{voluntario.email}</p>
@@ -662,94 +703,6 @@ export default function MinhaEquipe() {
             </section>
 
             <section className="space-y-5">
-              {mostrarAtribuirVoluntarios && (
-              <Painel titulo="Atribuir voluntários" icone={CalendarPlus}>
-                <form onSubmit={salvarEscala} className="space-y-4">
-                  {formEscala.id ? (
-                    <div className="rounded-md border border-dourado-100 bg-dourado-50 px-3 py-3">
-                      <p className="text-xs font-bold uppercase tracking-[0.14em] text-dourado-700">Escala selecionada</p>
-                      <p className="mt-1 text-sm font-bold text-gray-950">{formEscala.titulo || 'Escala sem título'}</p>
-                      <p className="mt-1 text-xs text-gray-600">
-                        Altere somente os voluntários atribuídos a esta escala. O evento é criado e editado pelo administrador.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="rounded-md border border-dashed border-gray-200 bg-gray-50 px-3 py-4 text-sm text-gray-500">
-                      Selecione uma escala na listagem abaixo para atribuir voluntários.
-                    </div>
-                  )}
-
-                  <div>
-                    <p className="mb-2 text-sm font-semibold text-gray-700">Voluntários escalados</p>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      {equipeSelecionada.voluntarios.map((voluntario) => (
-                        <label key={voluntario.id} className="flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-700">
-                          <input
-                            type="checkbox"
-                            checked={formEscala.voluntarioIds.includes(voluntario.id)}
-                            onChange={() => alternarVoluntarioNaEscala(voluntario.id)}
-                          />
-                          <UsuarioInfoButton usuario={voluntario} onClick={setUsuarioModal} className="h-7 w-7" />
-                          <span className="min-w-0">
-                            <span className="block truncate">{voluntario.nomeCompleto}</span>
-                            {voluntario.telefone && (
-                              <span className="block text-[11px] font-medium text-gray-400">{voluntario.telefone}</span>
-                            )}
-                          </span>
-                          {formEscala.substitutoIds.includes(voluntario.id) && (
-                            <span className="ml-auto rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[11px] font-semibold text-violet-700">
-                              Substituto
-                            </span>
-                          )}
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <p className="mb-2 text-sm font-semibold text-gray-700">Marcar como substituto</p>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      {equipeSelecionada.voluntarios.map((voluntario) => (
-                        <label key={voluntario.id} className="flex items-center gap-2 rounded-md border border-violet-100 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-800">
-                          <input
-                            type="checkbox"
-                            checked={formEscala.substitutoIds.includes(voluntario.id)}
-                            onChange={() => alternarSubstituto(voluntario.id)}
-                          />
-                          <UsuarioInfoButton usuario={voluntario} onClick={setUsuarioModal} className="h-7 w-7" />
-                          <span className="min-w-0">
-                            <span className="block truncate">{voluntario.nomeCompleto}</span>
-                            {voluntario.telefone && (
-                              <span className="block text-[11px] font-medium text-violet-500/70">{voluntario.telefone}</span>
-                            )}
-                          </span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    <button disabled={salvando || !formEscala.id} className="inline-flex items-center gap-2 rounded-md bg-gray-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-gray-800 disabled:opacity-60">
-                      <Save size={16} />
-                      Salvar atribuições
-                    </button>
-                    {formEscala.id && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setFormEscala(formEscalaInicial);
-                          setMostrarAtribuirVoluntarios(false);
-                        }}
-                        className="rounded-md border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
-                      >
-                        Cancelar
-                      </button>
-                    )}
-                  </div>
-                </form>
-              </Painel>
-              )}
-
               <Painel titulo="Escalas da equipe" icone={CalendarPlus}>
                 <div className="space-y-4">
                   <div className="grid gap-3 lg:grid-cols-[1.3fr_0.85fr_0.85fr_0.85fr]">
@@ -842,7 +795,7 @@ export default function MinhaEquipe() {
                         Nenhuma escala encontrada com os filtros selecionados.
                       </div>
                     ) : escalasFiltradas.map((escala) => (
-                      <div key={escala.id} className="rounded-2xl border border-gray-200 bg-gradient-to-br from-white to-gray-50 p-5 shadow-sm">
+                      <div id={`equipe-escala-${escala.id}`} key={escala.id} className="rounded-2xl border border-gray-200 bg-gradient-to-br from-white to-gray-50 p-5 shadow-sm">
                         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
@@ -872,14 +825,86 @@ export default function MinhaEquipe() {
                           </div>
                           <button
                             type="button"
-                            onClick={() => editarEscala(escala)}
-                            className="inline-flex items-center justify-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
+                            onClick={() => {
+                              if (formEscala.id === escala.id) {
+                                setFormEscala(formEscalaInicial);
+                              } else {
+                                editarEscala(escala);
+                              }
+                            }}
+                            className={`inline-flex items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm font-semibold transition ${
+                              formEscala.id === escala.id
+                                ? 'border-gray-950 bg-gray-950 text-white hover:bg-gray-800'
+                                : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-100'
+                            }`}
                           >
                             <UserPlus size={15} />
-                            Atribuir voluntários
+                            {formEscala.id === escala.id ? 'Fechar atribuição' : 'Atribuir voluntários'}
                           </button>
                         </div>
 
+                        {formEscala.id === escala.id ? (
+                          <form onSubmit={salvarEscala} className="mt-5 rounded-xl border border-dourado-200 bg-dourado-50/50 p-4">
+                            <div className="flex flex-col gap-2 border-b border-dourado-100 pb-3 sm:flex-row sm:items-end sm:justify-between">
+                              <div>
+                                <p className="text-xs font-bold uppercase tracking-[0.14em] text-dourado-700">Atribuir voluntários</p>
+                                <p className="mt-1 text-sm text-gray-600">Selecione quem participará desta escala e marque substitutos quando necessário.</p>
+                              </div>
+                              <span className="text-xs font-bold text-gray-500">{formEscala.voluntarioIds.length} selecionado(s)</span>
+                            </div>
+
+                            {equipeSelecionada.voluntarios.length === 0 ? (
+                              <div className="mt-4 rounded-md border border-dashed border-gray-200 bg-white px-3 py-5 text-sm text-gray-500">
+                                Nenhum voluntário cadastrado nesta equipe.
+                              </div>
+                            ) : (
+                              <div className="mt-4 grid gap-2 md:grid-cols-2">
+                                {equipeSelecionada.voluntarios.map((voluntario) => {
+                                  const escalado = formEscala.voluntarioIds.includes(voluntario.id);
+                                  const substituto = formEscala.substitutoIds.includes(voluntario.id);
+
+                                  return (
+                                    <div key={voluntario.id} className={`rounded-md border p-3 transition ${escalado ? 'border-dourado-300 bg-white' : 'border-gray-200 bg-gray-50'}`}>
+                                      <div className="flex items-start gap-2">
+                                        <input
+                                          type="checkbox"
+                                          checked={escalado}
+                                          onChange={() => alternarVoluntarioNaEscala(voluntario.id)}
+                                          className="mt-1 h-4 w-4 accent-gray-950"
+                                          aria-label={`Atribuir ${voluntario.nomeCompleto}`}
+                                        />
+                                        <UsuarioInfoButton usuario={voluntario} onClick={setUsuarioModal} className="h-7 w-7" />
+                                        <div className="min-w-0 flex-1">
+                                          <p className="truncate text-sm font-bold text-gray-900">{voluntario.nomeCompleto}</p>
+                                          {voluntario.telefone && <p className="truncate text-[11px] font-medium text-gray-400">{formatarTelefoneExibicao(voluntario.telefone)}</p>}
+                                        </div>
+                                      </div>
+                                      <label className={`mt-3 flex items-center gap-2 border-t pt-2 text-xs font-semibold ${substituto ? 'border-violet-100 text-violet-700' : 'border-gray-100 text-gray-500'}`}>
+                                        <input
+                                          type="checkbox"
+                                          checked={substituto}
+                                          onChange={() => alternarSubstituto(voluntario.id)}
+                                          className="h-4 w-4 accent-violet-600"
+                                        />
+                                        Marcar como substituto
+                                      </label>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+
+                            <div className="mt-4 flex flex-wrap gap-2 border-t border-dourado-100 pt-4">
+                              <button disabled={salvando} className="inline-flex items-center justify-center gap-2 rounded-md bg-gray-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-gray-800 disabled:opacity-60">
+                                {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save size={16} />}
+                                Salvar atribuições
+                              </button>
+                              <button type="button" disabled={salvando} onClick={() => setFormEscala(formEscalaInicial)} className="rounded-md border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-60">
+                                Cancelar
+                              </button>
+                            </div>
+                          </form>
+                        ) : (
                         <div className="mt-5 rounded-xl border border-gray-200 bg-white p-4">
                           <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
                             <div>
@@ -917,7 +942,7 @@ export default function MinhaEquipe() {
                                       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                                         <p className="text-sm font-bold text-gray-900">{item.usuario.nomeCompleto}</p>
                                         {item.usuario.telefone && (
-                                          <span className="text-[11px] font-medium text-gray-400">{item.usuario.telefone}</span>
+                                          <span className="text-[11px] font-medium text-gray-400">{formatarTelefoneExibicao(item.usuario.telefone)}</span>
                                         )}
                                         {selecionado && (
                                           <span className="rounded-full bg-gray-950 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-white">
@@ -943,6 +968,7 @@ export default function MinhaEquipe() {
                             })}
                           </div>
                         </div>
+                        )}
                       </div>
                     ))}
                   </div>

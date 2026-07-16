@@ -1,10 +1,12 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, BadgeCheck, Loader2, Mail, Pencil, Save, Trash2, UserRound } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { AlertCircle, ArrowLeft, BadgeCheck, Loader2, Mail, Pencil, Save, Trash2, UserRound } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import { Footer } from '../components/Footer';
+import { PhoneInput } from '../components/PhoneInput';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
 import { buildApiUrl } from '../lib/api';
+import { getCamposCadastroPendentes } from '../lib/perfil';
 import { uploadFotoUsuario } from '../lib/uploadFoto';
 
 const sexoOptions = [
@@ -27,7 +29,7 @@ function createFormState(usuario) {
 
 export default function Perfil() {
   const { token, usuario, atualizarUsuario, logout } = useAuth();
-  const { navigate } = useNavigation();
+  const { navigate, search } = useNavigation();
   const [form, setForm] = useState(() => createFormState(usuario));
   const [erro, setErro] = useState('');
   const [sucesso, setSucesso] = useState('');
@@ -35,6 +37,10 @@ export default function Perfil() {
   const [salvando, setSalvando] = useState(false);
   const [enviandoFoto, setEnviandoFoto] = useState(false);
   const fotoInputRef = useRef(null);
+  const focoCadastroAplicadoRef = useRef(false);
+  const completarCadastro = new URLSearchParams(search || '').get('completar') === '1';
+  const camposPendentes = useMemo(() => getCamposCadastroPendentes(form), [form]);
+  const camposPendentesSet = useMemo(() => new Set(camposPendentes.map(({ campo }) => campo)), [camposPendentes]);
 
   useEffect(() => {
     let ativo = true;
@@ -82,6 +88,21 @@ export default function Perfil() {
       ativo = false;
     };
   }, [atualizarUsuario, logout, navigate, token]);
+
+  useEffect(() => {
+    if (carregando || !completarCadastro || camposPendentes.length === 0 || focoCadastroAplicadoRef.current) return;
+
+    focoCadastroAplicadoRef.current = true;
+
+    const timeout = window.setTimeout(() => {
+      const primeiroCampo = camposPendentes[0].campo;
+      const elemento = document.querySelector(`[data-cadastro-campo="${primeiroCampo}"]`);
+      elemento?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      elemento?.focus({ preventScroll: true });
+    }, 180);
+
+    return () => window.clearTimeout(timeout);
+  }, [camposPendentes, carregando, completarCadastro]);
 
   const handleChange = (event) => {
     const { name, value } = event.target;
@@ -239,9 +260,10 @@ export default function Perfil() {
               />
               <button
                 type="button"
+                data-cadastro-campo="urlFoto"
                 disabled={enviandoFoto}
                 onClick={() => fotoInputRef.current?.click()}
-                className="group relative grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-lg bg-gray-950 text-white disabled:cursor-wait"
+                className={`group relative grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-lg bg-gray-950 text-white disabled:cursor-wait ${camposPendentesSet.has('urlFoto') && completarCadastro ? 'ring-2 ring-amber-400 ring-offset-2' : ''}`}
                 aria-label="Alterar foto de perfil"
               >
                 {form.urlFoto ? (
@@ -299,6 +321,17 @@ export default function Perfil() {
               </div>
             ) : (
               <form onSubmit={handleSubmit} className="space-y-6 px-6 py-6">
+                {camposPendentes.length > 0 && (
+                  <div className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/40 dark:text-amber-200">
+                    <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+                    <div>
+                      <p className="text-sm font-bold">Complete as informações pendentes</p>
+                      <p className="mt-1 text-xs leading-5">
+                        {camposPendentes.map(({ label }) => label).join(', ')}.
+                      </p>
+                    </div>
+                  </div>
+                )}
                 {erro && (
                   <div className="rounded-md border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
                     {erro}
@@ -332,25 +365,22 @@ export default function Perfil() {
                     />
                   </label>
 
-                  <label className="block">
-                    <span className="text-sm font-semibold text-gray-700">Telefone</span>
-                    <input
-                      name="telefone"
-                      value={form.telefone}
-                      onChange={handleChange}
-                      className="mt-2 block w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
-                      placeholder="(00) 00000-0000"
-                    />
-                  </label>
+                  <PhoneInput
+                    value={form.telefone}
+                    onChange={(telefone) => setForm((atual) => ({ ...atual, telefone }))}
+                    highlighted={camposPendentesSet.has('telefone') && completarCadastro}
+                    dataCadastroCampo="telefone"
+                  />
 
                   <label className="block">
                     <span className="text-sm font-semibold text-gray-700">Data de nascimento</span>
                     <input
                       type="date"
                       name="dataNascimento"
+                      data-cadastro-campo="dataNascimento"
                       value={form.dataNascimento}
                       onChange={handleChange}
-                      className="mt-2 block w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
+                      className={`mt-2 block w-full rounded-md border bg-white px-3 py-2.5 text-sm outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10 ${camposPendentesSet.has('dataNascimento') && completarCadastro ? 'border-amber-400 ring-2 ring-amber-200/70' : 'border-gray-200'}`}
                     />
                   </label>
 
@@ -358,9 +388,10 @@ export default function Perfil() {
                     <span className="text-sm font-semibold text-gray-700">Sexo</span>
                     <select
                       name="sexo"
+                      data-cadastro-campo="sexo"
                       value={form.sexo}
                       onChange={handleChange}
-                      className="mt-2 block w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
+                      className={`mt-2 block w-full rounded-md border bg-white px-3 py-2.5 text-sm outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10 ${camposPendentesSet.has('sexo') && completarCadastro ? 'border-amber-400 ring-2 ring-amber-200/70' : 'border-gray-200'}`}
                     >
                       {sexoOptions.map((option) => (
                         <option key={option.value} value={option.value}>

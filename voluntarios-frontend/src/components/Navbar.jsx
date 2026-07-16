@@ -1,9 +1,11 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BadgeCheck, Bell, Camera, CheckCheck, Image as ImageIcon, Loader2, LogOut, Pencil, Save, Settings, Trash2, User, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
 import { buildApiUrl } from '../lib/api';
 import { uploadFotoUsuario } from '../lib/uploadFoto';
+import { formatarTelefoneExibicao } from '../lib/telefone';
+import { PhoneInput } from './PhoneInput';
 import logo from '../assets/ico.png';
 
 const sexoOptions = [
@@ -47,10 +49,17 @@ function formatarDataNotificacao(data) {
   return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(data));
 }
 
+function extrairAvisoId(link) {
+  const match = String(link || '').match(/(?:^|[?&])aviso=([^&]+)/);
+  return match ? decodeURIComponent(match[1]) : '';
+}
+
 export default function Navbar() {
   const [notificacoesAberto, setNotificacoesAberto] = useState(false);
   const [notificacoes, setNotificacoes] = useState([]);
+  const [avisos, setAvisos] = useState([]);
   const [naoVisualizadas, setNaoVisualizadas] = useState(0);
+  const [avisosNaoVisualizados, setAvisosNaoVisualizados] = useState(0);
   const [carregandoNotificacoes, setCarregandoNotificacoes] = useState(false);
   const [tema, setTema] = useState(getTemaInicial);
   const [perfilAberto, setPerfilAberto] = useState(false);
@@ -68,6 +77,53 @@ export default function Navbar() {
   const { navigate } = useNavigation();
   const podeGerenciarEquipe = usuario?.permissoes?.some((permissao) => ['LIDER_EQUIPE', 'ADMINISTRADOR'].includes(permissao));
   const isAdmin = usuario?.permissoes?.includes('ADMINISTRADOR');
+  const avisosRepresentadosPorNotificacao = useMemo(() => new Set(
+    notificacoes
+      .filter((notificacao) => notificacao.tipo === 'AVISO')
+      .map((notificacao) => extrairAvisoId(notificacao.link))
+      .filter(Boolean)
+  ), [notificacoes]);
+  const avisosRepresentadosPorNotificacaoPendente = useMemo(() => new Set(
+    notificacoes
+      .filter((notificacao) => notificacao.tipo === 'AVISO' && !notificacao.visualizada)
+      .map((notificacao) => extrairAvisoId(notificacao.link))
+      .filter(Boolean)
+  ), [notificacoes]);
+  const avisosDuplicadosNaoVisualizados = avisos.filter((aviso) => (
+    !aviso.visualizado && avisosRepresentadosPorNotificacaoPendente.has(aviso.id)
+  )).length;
+  const totalNaoVisualizados = naoVisualizadas + Math.max(0, avisosNaoVisualizados - avisosDuplicadosNaoVisualizados);
+  const itensCentralNotificacoes = useMemo(() => {
+    const itensNotificacoes = notificacoes.map((notificacao) => ({
+      ...notificacao,
+      origem: 'notificacao',
+      chave: `notificacao-${notificacao.id}`,
+      visualizada: Boolean(notificacao.visualizada),
+      dataOrdenacao: notificacao.criadoEm,
+    }));
+    const itensAvisos = avisos
+      .filter((aviso) => {
+        const temNotificacao = avisosRepresentadosPorNotificacao.has(aviso.id);
+        const temNotificacaoPendente = avisosRepresentadosPorNotificacaoPendente.has(aviso.id);
+        return !(temNotificacao && (aviso.visualizado || temNotificacaoPendente));
+      })
+      .map((aviso) => ({
+        id: aviso.id,
+        origem: 'aviso',
+        chave: `aviso-${aviso.id}`,
+        titulo: aviso.titulo,
+        mensagem: aviso.mensagem,
+        link: `/avisos?aviso=${aviso.id}`,
+        visualizada: Boolean(aviso.visualizado),
+        lidaEm: aviso.visualizadoEm,
+        criadoEm: aviso.dataAviso || aviso.criadoEm,
+        dataOrdenacao: aviso.dataAviso || aviso.criadoEm,
+      }));
+
+    return [...itensNotificacoes, ...itensAvisos].sort((a, b) => (
+      new Date(b.dataOrdenacao || 0).getTime() - new Date(a.dataOrdenacao || 0).getTime()
+    ));
+  }, [avisos, avisosRepresentadosPorNotificacao, avisosRepresentadosPorNotificacaoPendente, notificacoes]);
 
   useEffect(() => {
     setFormPerfil(criarFormUsuario(usuario));
@@ -112,12 +168,34 @@ export default function Navbar() {
     }
   }, [token]);
 
+  const carregarAvisos = useCallback(async () => {
+    if (!token) return;
+
+    try {
+      const resposta = await fetch(buildApiUrl('/api/avisos?visualizados=todos'), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const dados = await resposta.json();
+
+      if (resposta.ok) {
+        setAvisos(dados.avisos || []);
+        setAvisosNaoVisualizados(dados.totalNaoVisualizados || 0);
+      }
+    } catch {
+      // Avisos também não devem bloquear a navegação.
+    }
+  }, [token]);
+
   useEffect(() => {
     carregarNotificacoes();
-    const interval = window.setInterval(carregarNotificacoes, 60 * 1000);
+    carregarAvisos();
+    const interval = window.setInterval(() => {
+      carregarNotificacoes();
+      carregarAvisos();
+    }, 60 * 1000);
 
     return () => window.clearInterval(interval);
-  }, [carregarNotificacoes]);
+  }, [carregarAvisos, carregarNotificacoes]);
 
   useEffect(() => {
     if (!token || typeof EventSource === 'undefined') {
@@ -132,6 +210,7 @@ export default function Navbar() {
         const dados = JSON.parse(event.data);
         setNotificacoes(dados.notificacoes || []);
         setNaoVisualizadas(dados.naoVisualizadas || 0);
+        carregarAvisos();
         setCarregandoNotificacoes(false);
       } catch {
         carregarNotificacoes();
@@ -148,7 +227,7 @@ export default function Navbar() {
     };
 
     return () => source.close();
-  }, [carregarNotificacoes, token]);
+  }, [carregarAvisos, carregarNotificacoes, token]);
 
   const handleLogout = () => {
     logout();
@@ -173,38 +252,81 @@ export default function Navbar() {
     setNotificacoesAberto((atual) => !atual);
     setPerfilAberto(false);
     carregarNotificacoes();
+    carregarAvisos();
   };
 
-  const visualizarNotificacao = async (notificacao) => {
-    if (!notificacao.visualizada) {
-      setNotificacoes((atuais) => atuais.map((item) => (
-        item.id === notificacao.id ? { ...item, visualizada: true, lidaEm: new Date().toISOString() } : item
-      )));
-      setNaoVisualizadas((total) => Math.max(0, total - 1));
+  const visualizarItemCentral = async (itemCentral) => {
+    if (!itemCentral.visualizada) {
+      const agora = new Date().toISOString();
 
-      fetch(buildApiUrl(`/api/notificacoes/${notificacao.id}/visualizar`), {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${token}` },
-      }).catch(() => {});
+      if (itemCentral.origem === 'aviso') {
+        setAvisos((atuais) => atuais.map((item) => (
+          item.id === itemCentral.id ? { ...item, visualizado: true, visualizadoEm: agora } : item
+        )));
+        setAvisosNaoVisualizados((total) => Math.max(0, total - 1));
+
+        fetch(buildApiUrl(`/api/avisos/${itemCentral.id}/visualizar`), {
+          method: 'PATCH',
+          headers: { Authorization: `Bearer ${token}` },
+        }).catch(() => carregarAvisos());
+      } else {
+        setNotificacoes((atuais) => atuais.map((item) => (
+          item.id === itemCentral.id ? { ...item, visualizada: true, lidaEm: agora } : item
+        )));
+        setNaoVisualizadas((total) => Math.max(0, total - 1));
+
+        fetch(buildApiUrl(`/api/notificacoes/${itemCentral.id}/visualizar`), {
+          method: 'PATCH',
+          headers: { Authorization: `Bearer ${token}` },
+        }).catch(() => {});
+
+        if (itemCentral.tipo === 'AVISO') {
+          const avisoId = extrairAvisoId(itemCentral.link);
+
+          if (avisoId) {
+            setAvisos((atuais) => atuais.map((item) => (
+              item.id === avisoId ? { ...item, visualizado: true, visualizadoEm: agora } : item
+            )));
+            setAvisosNaoVisualizados((total) => Math.max(0, total - 1));
+
+            fetch(buildApiUrl(`/api/avisos/${avisoId}/visualizar`), {
+              method: 'PATCH',
+              headers: { Authorization: `Bearer ${token}` },
+            }).catch(() => carregarAvisos());
+          }
+        }
+      }
     }
 
-    if (notificacao.link) {
-      navigate(notificacao.link);
+    if (itemCentral.link) {
+      navigate(itemCentral.link);
       setNotificacoesAberto(false);
     }
   };
 
   const visualizarTodas = async () => {
-    setNotificacoes((atuais) => atuais.map((item) => ({ ...item, visualizada: true, lidaEm: item.lidaEm || new Date().toISOString() })));
+    const agora = new Date().toISOString();
+    const avisosPendentes = avisos.filter((aviso) => !aviso.visualizado);
+
+    setNotificacoes((atuais) => atuais.map((item) => ({ ...item, visualizada: true, lidaEm: item.lidaEm || agora })));
+    setAvisos((atuais) => atuais.map((item) => ({ ...item, visualizado: true, visualizadoEm: item.visualizadoEm || agora })));
     setNaoVisualizadas(0);
+    setAvisosNaoVisualizados(0);
 
     try {
-      await fetch(buildApiUrl('/api/notificacoes/visualizar-todas'), {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      await Promise.all([
+        fetch(buildApiUrl('/api/notificacoes/visualizar-todas'), {
+          method: 'PATCH',
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        ...avisosPendentes.map((aviso) => fetch(buildApiUrl(`/api/avisos/${aviso.id}/visualizar`), {
+          method: 'PATCH',
+          headers: { Authorization: `Bearer ${token}` },
+        })),
+      ]);
     } catch {
       carregarNotificacoes();
+      carregarAvisos();
     }
   };
 
@@ -398,9 +520,6 @@ export default function Navbar() {
             <button type="button" onClick={() => irPara('/escalas')} className="font-sans text-gray-600 hover:text-gray-950 transition-colors font-medium dark:text-gray-300 dark:hover:text-white">
               Escalas
             </button>
-            <button type="button" onClick={() => irPara('/avisos')} className="font-sans text-gray-600 hover:text-gray-950 transition-colors font-medium dark:text-gray-300 dark:hover:text-white">
-              Avisos
-            </button>
             <button type="button" onClick={() => irPara('/manuais')} className="font-sans text-gray-600 hover:text-gray-950 transition-colors font-medium dark:text-gray-300 dark:hover:text-white">
               Manuais
             </button>
@@ -426,9 +545,9 @@ export default function Navbar() {
               aria-label="Abrir notificações"
             >
               <Bell size={18} />
-              {naoVisualizadas > 0 && (
+              {totalNaoVisualizados > 0 && (
                 <span className="absolute -right-1 -top-1 grid min-h-5 min-w-5 place-items-center rounded-full bg-gray-950 px-1 text-[10px] font-bold text-white">
-                  {naoVisualizadas > 9 ? '9+' : naoVisualizadas}
+                  {totalNaoVisualizados > 99 ? '99+' : totalNaoVisualizados}
                 </span>
               )}
             </button>
@@ -462,9 +581,9 @@ export default function Navbar() {
               aria-label="Abrir notificações"
             >
               <Bell size={18} />
-              {naoVisualizadas > 0 && (
+              {totalNaoVisualizados > 0 && (
                 <span className="absolute -right-1 -top-1 grid min-h-5 min-w-5 place-items-center rounded-full bg-gray-950 px-1 text-[10px] font-bold text-white">
-                  {naoVisualizadas > 9 ? '9+' : naoVisualizadas}
+                  {totalNaoVisualizados > 99 ? '99+' : totalNaoVisualizados}
                 </span>
               )}
             </button>
@@ -490,14 +609,14 @@ export default function Navbar() {
             <div>
               <h2 className="text-base font-bold text-gray-950 dark:text-white">Notificações</h2>
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                {naoVisualizadas > 0 ? `${naoVisualizadas} não visualizada(s)` : 'Tudo visualizado por aqui.'}
+                {totalNaoVisualizados > 0 ? `${totalNaoVisualizados} não visualizada(s)` : 'Tudo visualizado por aqui.'}
               </p>
             </div>
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={visualizarTodas}
-                disabled={naoVisualizadas === 0}
+                disabled={totalNaoVisualizados === 0}
                 className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
               >
                 <CheckCheck size={14} />
@@ -515,27 +634,32 @@ export default function Navbar() {
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Carregando notificações...
               </div>
-            ) : notificacoes.length === 0 ? (
+            ) : itensCentralNotificacoes.length === 0 ? (
               <div className="px-5 py-8 text-sm text-gray-500 dark:text-gray-400">
-                Nenhuma notificação por enquanto.
+                Nenhum aviso ou notificação por enquanto.
               </div>
             ) : (
               <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                {notificacoes.map((notificacao) => (
+                {itensCentralNotificacoes.map((itemCentral) => (
                   <button
-                    key={notificacao.id}
+                    key={itemCentral.chave}
                     type="button"
-                    onClick={() => visualizarNotificacao(notificacao)}
+                    onClick={() => visualizarItemCentral(itemCentral)}
                     className={`block w-full px-5 py-4 text-left transition hover:bg-gray-50 dark:hover:bg-gray-900 ${
-                      notificacao.visualizada ? 'bg-white dark:bg-gray-950' : 'bg-gray-50 dark:bg-gray-900/80'
+                      itemCentral.visualizada ? 'bg-white dark:bg-gray-950' : 'bg-gray-50 dark:bg-gray-900/80'
                     }`}
                   >
                     <div className="flex items-start gap-3">
-                      <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${notificacao.visualizada ? 'bg-gray-300 dark:bg-gray-600' : 'bg-gray-950 dark:bg-white'}`} />
+                      <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${itemCentral.visualizada ? 'bg-gray-300 dark:bg-gray-600' : 'bg-gray-950 dark:bg-white'}`} />
                       <div className="min-w-0">
-                        <p className="text-sm font-bold text-gray-950 dark:text-white">{notificacao.titulo}</p>
-                        <p className="mt-1 text-sm leading-5 text-gray-600 dark:text-gray-300">{notificacao.mensagem}</p>
-                        <p className="mt-2 text-xs font-semibold text-gray-400 dark:text-gray-500">{formatarDataNotificacao(notificacao.criadoEm)}</p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-bold text-gray-950 dark:text-white">{itemCentral.titulo}</p>
+                          <span className="rounded-full border border-gray-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                            {itemCentral.origem === 'aviso' ? 'Aviso' : 'Notificação'}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-sm leading-5 text-gray-600 dark:text-gray-300">{itemCentral.mensagem}</p>
+                        <p className="mt-2 text-xs font-semibold text-gray-400 dark:text-gray-500">{formatarDataNotificacao(itemCentral.criadoEm)}</p>
                       </div>
                     </div>
                   </button>
@@ -659,7 +783,7 @@ export default function Navbar() {
                 <div className="grid gap-2 rounded-2xl border border-gray-200 bg-gray-50 p-4 text-sm dark:border-gray-800 dark:bg-gray-900">
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-gray-500 dark:text-gray-400">Telefone</span>
-                    <span className="font-semibold text-gray-900 dark:text-gray-100">{usuario?.telefone || 'Não informado'}</span>
+                    <span className="font-semibold text-gray-900 dark:text-gray-100">{formatarTelefoneExibicao(usuario?.telefone) || 'Não informado'}</span>
                   </div>
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-gray-500 dark:text-gray-400">Nascimento</span>
@@ -698,7 +822,7 @@ export default function Navbar() {
                   <div className="grid gap-3 sm:grid-cols-2">
                     <CampoPerfil label="Nome completo" value={formPerfil.nomeCompleto} onChange={(value) => setFormPerfil((atual) => ({ ...atual, nomeCompleto: value }))} />
                     <CampoPerfil label="E-mail" disabled value={usuario?.email || ''} onChange={() => {}} />
-                    <CampoPerfil label="Telefone" value={formPerfil.telefone} onChange={(value) => setFormPerfil((atual) => ({ ...atual, telefone: value }))} />
+                    <PhoneInput value={formPerfil.telefone} onChange={(telefone) => setFormPerfil((atual) => ({ ...atual, telefone }))} />
                     <CampoPerfil label="Data de nascimento" type="date" value={formPerfil.dataNascimento} onChange={(value) => setFormPerfil((atual) => ({ ...atual, dataNascimento: value }))} />
                     <label className="block">
                       <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">Sexo</span>

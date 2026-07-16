@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
-import { notificarPedidoSubstituicao } from '../services/notificacoes.service.js';
+import { notificarNovaEscalaAdmin, notificarPedidoSubstituicao } from '../services/notificacoes.service.js';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -15,6 +15,7 @@ const prisma = new PrismaClient({
 });
 
 const router = Router();
+const timeZoneEventos = process.env.EVENT_TIME_ZONE || 'America/Campo_Grande';
 
 function getJwtSecret() {
   if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
@@ -61,7 +62,41 @@ function exigirAdmin(req, res, next) {
 }
 
 function getSemanaMes(data) {
-  return Math.ceil(data.getDate() / 7);
+  return Math.ceil(data.getUTCDate() / 7);
+}
+
+function parseDataHoraEvento(valor) {
+  if (valor instanceof Date) {
+    return Number.isNaN(valor.getTime()) ? null : valor;
+  }
+
+  const texto = String(valor || '').trim();
+  const dataHoraLocal = texto.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+
+  if (dataHoraLocal) {
+    const [, anoRaw, mesRaw, diaRaw, horasRaw, minutosRaw] = dataHoraLocal;
+    const ano = Number(anoRaw);
+    const mes = Number(mesRaw);
+    const dia = Number(diaRaw);
+    const horas = Number(horasRaw);
+    const minutos = Number(minutosRaw);
+    const data = getDataUtc(ano, mes - 1, dia, horas, minutos);
+
+    if (
+      data.getUTCFullYear() !== ano
+      || data.getUTCMonth() !== mes - 1
+      || data.getUTCDate() !== dia
+      || data.getUTCHours() !== horas
+      || data.getUTCMinutes() !== minutos
+    ) {
+      return null;
+    }
+
+    return data;
+  }
+
+  const data = new Date(texto);
+  return Number.isNaN(data.getTime()) ? null : data;
 }
 
 function getDataHoraRecorrente(diaSemana, semanaMes, dataHora) {
@@ -83,6 +118,27 @@ function getHorarioBase(dataHora) {
 
 function getDataUtc(ano, mes, dia, horas = 18, minutos = 0) {
   return new Date(Date.UTC(ano, mes, dia, horas, minutos, 0, 0));
+}
+
+function getAgoraEvento() {
+  const partes = new Intl.DateTimeFormat('en-US', {
+    timeZone: timeZoneEventos,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date());
+  const valor = Object.fromEntries(partes.map((parte) => [parte.type, parte.value]));
+
+  return getDataUtc(
+    Number(valor.year),
+    Number(valor.month) - 1,
+    Number(valor.day),
+    Number(valor.hour),
+    Number(valor.minute),
+  );
 }
 
 function getOcorrenciaNoMes(ano, mes, diaSemana, semanaMes, dataHora) {
@@ -137,37 +193,42 @@ function datasIguais(dataA, dataB) {
   return new Date(dataA).toISOString() === new Date(dataB).toISOString();
 }
 
-function formatarParticipacao(item, dataOcorrencia) {
+function formatarParticipacao(item, dataOcorrencia, tipoEscala) {
   const temOcorrenciaEspecifica = Boolean(item.dataOcorrenciaSubstituicao);
 
   if (item.substituto && temOcorrenciaEspecifica && !datasIguais(item.dataOcorrenciaSubstituicao, dataOcorrencia)) {
     return null;
   }
 
-  const usarStatusEspecifico = !temOcorrenciaEspecifica || datasIguais(item.dataOcorrenciaSubstituicao, dataOcorrencia);
+  const usarStatusEspecifico = tipoEscala !== 'RECORRENTE'
+    || datasIguais(item.dataOcorrenciaStatus, dataOcorrencia);
+  const usarSubstituicaoEspecifica = !temOcorrenciaEspecifica
+    || datasIguais(item.dataOcorrenciaSubstituicao, dataOcorrencia);
 
   return {
     id: item.id,
     status: usarStatusEspecifico ? item.status : 'PENDENTE',
-    justificativaSubstituicao: usarStatusEspecifico ? item.justificativaSubstituicao : null,
+    justificativaSubstituicao: usarSubstituicaoEspecifica ? item.justificativaSubstituicao : null,
+    dataOcorrenciaStatus: item.dataOcorrenciaStatus,
     dataOcorrenciaSubstituicao: item.dataOcorrenciaSubstituicao,
-    substituto: usarStatusEspecifico ? item.substituto : false,
+    substituto: usarSubstituicaoEspecifica ? item.substituto : false,
     usuario: item.usuario,
   };
 }
 
 function formatarEscala(voluntarioEscala) {
   const dataOcorrencia = getProximaOcorrencia(voluntarioEscala.escala);
+  const usarStatusEspecifico = voluntarioEscala.escala.tipo !== 'RECORRENTE'
+    || datasIguais(voluntarioEscala.dataOcorrenciaStatus, dataOcorrencia);
 
   return {
     id: voluntarioEscala.id,
-    status: !voluntarioEscala.dataOcorrenciaSubstituicao || datasIguais(voluntarioEscala.dataOcorrenciaSubstituicao, dataOcorrencia)
-      ? voluntarioEscala.status
-      : 'PENDENTE',
+    status: usarStatusEspecifico ? voluntarioEscala.status : 'PENDENTE',
     justificativaSubstituicao: datasIguais(voluntarioEscala.dataOcorrenciaSubstituicao, dataOcorrencia)
       ? voluntarioEscala.justificativaSubstituicao
       : null,
     dataOcorrenciaSubstituicao: voluntarioEscala.dataOcorrenciaSubstituicao,
+    dataOcorrenciaStatus: voluntarioEscala.dataOcorrenciaStatus,
     substituto: !voluntarioEscala.dataOcorrenciaSubstituicao || datasIguais(voluntarioEscala.dataOcorrenciaSubstituicao, dataOcorrencia)
       ? voluntarioEscala.substituto
       : false,
@@ -193,10 +254,10 @@ function formatarEscala(voluntarioEscala) {
 function formatarEscalaCompleta(escala, usuarioId) {
   const dataOcorrencia = getProximaOcorrencia(escala);
   const voluntarios = escala.voluntarios
-    .map((item) => formatarParticipacao(item, dataOcorrencia))
+    .map((item) => formatarParticipacao(item, dataOcorrencia, escala.tipo))
     .filter(Boolean);
   const minhaParticipacaoBase = escala.voluntarios.find((item) => item.usuarioId === usuarioId) || null;
-  const minhaParticipacao = minhaParticipacaoBase ? formatarParticipacao(minhaParticipacaoBase, dataOcorrencia) : null;
+  const minhaParticipacao = minhaParticipacaoBase ? formatarParticipacao(minhaParticipacaoBase, dataOcorrencia, escala.tipo) : null;
 
   return {
     id: escala.id,
@@ -215,6 +276,7 @@ function formatarEscalaCompleta(escala, usuarioId) {
         ? {
           id: minhaParticipacao.id,
           status: minhaParticipacao.status,
+          dataOcorrenciaStatus: minhaParticipacao.dataOcorrenciaStatus,
           justificativaSubstituicao: minhaParticipacao.justificativaSubstituicao,
           dataOcorrenciaSubstituicao: minhaParticipacao.dataOcorrenciaSubstituicao,
           substituto: minhaParticipacao.substituto,
@@ -438,6 +500,10 @@ router.post('/admin/esporadicas', autenticar, exigirAdmin, async (req, res) => {
       },
       select: {
         id: true,
+        nome: true,
+        lideres: {
+          select: { id: true },
+        },
       },
     });
 
@@ -445,13 +511,13 @@ router.post('/admin/esporadicas', autenticar, exigirAdmin, async (req, res) => {
       return res.status(400).json({ erro: 'Uma ou mais equipes selecionadas são inválidas.' });
     }
 
-    const datas = datasInformadas.map((item) => new Date(item));
+    const datas = datasInformadas.map(parseDataHoraEvento);
 
-    if (datas.some((data) => Number.isNaN(data.getTime()))) {
+    if (datas.some((data) => !data)) {
       return res.status(400).json({ erro: 'Uma ou mais datas/horários são inválidos.' });
     }
 
-    const agora = new Date();
+    const agora = getAgoraEvento();
 
     if (datas.some((data) => data <= agora)) {
       return res.status(400).json({ erro: 'As escalas esporádicas devem ter data e horário futuros.' });
@@ -462,21 +528,32 @@ router.post('/admin/esporadicas', autenticar, exigirAdmin, async (req, res) => {
       grupoEsporadicoId: randomUUID(),
     }));
 
-    await prisma.escala.createMany({
-      data: grupos.flatMap(({ data, grupoEsporadicoId }) => (
-        equipes.map((equipe) => ({
-          titulo: titulo.trim(),
-          local: typeof local === 'string' && local.trim() ? local.trim() : null,
-          descricao: typeof descricao === 'string' && descricao.trim() ? descricao.trim() : null,
-          tipo: 'ESPORADICA',
-          diaSemana: data.getDay(),
-          semanaMes: getSemanaMes(data),
-          dataHora: data,
-          grupoEsporadicoId,
-          solicitadaPeloAdmin: true,
-          equipeId: equipe.id,
+    const escalasCriadas = await prisma.$transaction(
+      grupos.flatMap(({ data, grupoEsporadicoId }) => (
+        equipes.map((equipe) => prisma.escala.create({
+          data: {
+            titulo: titulo.trim(),
+            local: typeof local === 'string' && local.trim() ? local.trim() : null,
+            descricao: typeof descricao === 'string' && descricao.trim() ? descricao.trim() : null,
+            tipo: 'ESPORADICA',
+            diaSemana: data.getUTCDay(),
+            semanaMes: getSemanaMes(data),
+            dataHora: data,
+            grupoEsporadicoId,
+            solicitadaPeloAdmin: true,
+            equipeId: equipe.id,
+          },
         }))
       )),
+    );
+
+    await notificarNovaEscalaAdmin(prisma, {
+      escalas: escalasCriadas.map((escala) => ({
+        ...escala,
+        equipe: equipes.find((equipe) => equipe.id === escala.equipeId),
+      })),
+    }).catch((notificationError) => {
+      console.warn('[WARN] Falha ao notificar líderes sobre nova escala:', notificationError.message);
     });
 
     return res.status(201).json({
@@ -522,6 +599,10 @@ router.post('/admin/recorrentes', autenticar, exigirAdmin, async (req, res) => {
       },
       select: {
         id: true,
+        nome: true,
+        lideres: {
+          select: { id: true },
+        },
       },
     });
 
@@ -536,17 +617,29 @@ router.post('/admin/recorrentes', autenticar, exigirAdmin, async (req, res) => {
     );
     const tituloPadrao = `${semanaMesNumero}º ${diaSemanaNumero === 0 ? 'Domingo' : 'Sábado'}`;
 
-    await prisma.escala.createMany({
-      data: equipes.map((equipe) => ({
-        titulo: typeof titulo === 'string' && titulo.trim() ? titulo.trim() : tituloPadrao,
-        local: typeof local === 'string' && local.trim() ? local.trim() : null,
-        descricao: typeof descricao === 'string' && descricao.trim() ? descricao.trim() : null,
-        tipo: 'RECORRENTE',
-        diaSemana: diaSemanaNumero,
-        semanaMes: semanaMesNumero,
-        dataHora,
-        equipeId: equipe.id,
+    const escalasCriadas = await prisma.$transaction(
+      equipes.map((equipe) => prisma.escala.create({
+        data: {
+          titulo: typeof titulo === 'string' && titulo.trim() ? titulo.trim() : tituloPadrao,
+          local: typeof local === 'string' && local.trim() ? local.trim() : null,
+          descricao: typeof descricao === 'string' && descricao.trim() ? descricao.trim() : null,
+          tipo: 'RECORRENTE',
+          diaSemana: diaSemanaNumero,
+          semanaMes: semanaMesNumero,
+          dataHora,
+          solicitadaPeloAdmin: true,
+          equipeId: equipe.id,
+        },
       })),
+    );
+
+    await notificarNovaEscalaAdmin(prisma, {
+      escalas: escalasCriadas.map((escala) => ({
+        ...escala,
+        equipe: equipes.find((equipe) => equipe.id === escala.equipeId),
+      })),
+    }).catch((notificationError) => {
+      console.warn('[WARN] Falha ao notificar líderes sobre nova escala:', notificationError.message);
     });
 
     return res.status(201).json({
@@ -655,17 +748,25 @@ router.patch('/:id/status', autenticar, async (req, res) => {
       return res.status(404).json({ erro: 'Escala não encontrada para este usuário.' });
     }
 
+    const ocorrenciaAtual = getProximaOcorrencia(escalaExistente.escala);
+    const dataOcorrenciaStatus = new Date(dataOcorrencia || ocorrenciaAtual);
+
+    if (Number.isNaN(dataOcorrenciaStatus.getTime()) || !datasIguais(dataOcorrenciaStatus, ocorrenciaAtual)) {
+      return res.status(400).json({ erro: 'A ocorrência informada não corresponde à próxima escala.' });
+    }
+
     const escalaAtualizada = await prisma.voluntarioEscala.update({
       where: {
         id: escalaExistente.id,
       },
       data: {
         status,
+        dataOcorrenciaStatus,
         justificativaSubstituicao: status === 'PEDIU_SUBSTITUICAO'
           ? String(justificativaSubstituicao).trim()
           : null,
         dataOcorrenciaSubstituicao: status === 'PEDIU_SUBSTITUICAO'
-          ? new Date(dataOcorrencia || getProximaOcorrencia(escalaExistente.escala))
+          ? dataOcorrenciaStatus
           : null,
       },
       include: {

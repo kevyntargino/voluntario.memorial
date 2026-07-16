@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bell, BookOpen, CalendarDays, Home, ShieldCheck, UsersRound } from 'lucide-react';
+import { BookOpen, CalendarDays, Home, ShieldCheck, UsersRound } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
 
@@ -11,7 +11,6 @@ export function MobileBottomNav() {
   const itens = [
     { label: 'Início', path: '/', icon: Home },
     { label: 'Escalas', path: '/escalas', icon: CalendarDays },
-    { label: 'Avisos', path: '/avisos', icon: Bell },
     ...(podeGerenciarEquipe ? [{ label: 'Equipe', path: '/minha-equipe', icon: UsersRound }] : []),
     ...(isAdmin ? [{ label: 'Admin', path: '/admin', icon: ShieldCheck }] : [{ label: 'Manuais', path: '/manuais', icon: BookOpen }]),
   ];
@@ -19,7 +18,7 @@ export function MobileBottomNav() {
     <>
       <div className="h-24 md:hidden" aria-hidden="true" />
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white/95 px-2 pb-[calc(0.55rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-18px_50px_rgba(15,23,42,0.12)] backdrop-blur dark:border-gray-800 dark:bg-gray-950/95 md:hidden">
-        <div className="mx-auto grid max-w-md grid-cols-5 gap-1">
+        <div className={`mx-auto grid max-w-md gap-1 ${itens.length >= 5 ? 'grid-cols-5' : itens.length === 4 ? 'grid-cols-4' : 'grid-cols-3'}`}>
           {itens.slice(0, 5).map((item) => {
             const Icon = item.icon;
             const ativo = item.path === '/' ? pathname === '/' : pathname.startsWith(item.path);

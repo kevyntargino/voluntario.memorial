@@ -17,6 +17,7 @@ try {
     ALTER TABLE "manuais" ADD COLUMN IF NOT EXISTS "oculto" BOOLEAN NOT NULL DEFAULT false;
     ALTER TABLE "manuais" ADD COLUMN IF NOT EXISTS "arquivo_key" TEXT;
     ALTER TABLE "manuais" ALTER COLUMN "equipe_id" DROP NOT NULL;
+    ALTER TABLE "voluntarios_escalas" ADD COLUMN IF NOT EXISTS "data_ocorrencia_status" TIMESTAMP(3);
 
     DO $$
     BEGIN
@@ -52,9 +53,9 @@ try {
     END $$;
   `);
 
-  console.log('[DB] Schemas de manuais e notificações verificados/ajustados com sucesso.');
+  console.log('[DB] Schemas auxiliares verificados/ajustados com sucesso.');
 } catch (error) {
-  console.error('[ERRO] Falha ao ajustar schema de manuais:', error.message);
+  console.error('[ERRO] Falha ao ajustar schemas auxiliares:', error.message);
   process.exitCode = 1;
 } finally {
   await pool.end();

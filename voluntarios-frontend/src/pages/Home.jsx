@@ -11,6 +11,7 @@ export default function Home() {
   const { token, usuario, logout } = useAuth();
   const { navigate } = useNavigation();
   const [totalAvisos, setTotalAvisos] = useState(null);
+  const [totalConfirmacoesPendentes, setTotalConfirmacoesPendentes] = useState(null);
 
   const handleLogout = () => {
     logout();
@@ -41,9 +42,35 @@ export default function Home() {
     }
   }, [logout, navigate, token]);
 
+  const carregarResumoEscalas = useCallback(async () => {
+    try {
+      const resposta = await fetch(buildApiUrl('/api/escalas?visao=minhas'), {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const dados = await resposta.json();
+
+      if (!resposta.ok) {
+        if (resposta.status === 401) {
+          logout();
+          navigate('/login', { replace: true });
+        }
+
+        return;
+      }
+
+      const pendentes = (dados.escalas || []).filter((escala) => escala.minhaParticipacao?.status === 'PENDENTE');
+      setTotalConfirmacoesPendentes(pendentes.length);
+    } catch {
+      setTotalConfirmacoesPendentes(null);
+    }
+  }, [logout, navigate, token]);
+
   useEffect(() => {
     carregarResumoAvisos();
-  }, [carregarResumoAvisos]);
+    carregarResumoEscalas();
+  }, [carregarResumoAvisos, carregarResumoEscalas]);
 
   const cards = useMemo(() => ([
     {
@@ -66,13 +93,17 @@ export default function Home() {
     },
     {
       title: 'Confirmações pendentes',
-      value: '1',
-      description: 'Há uma confirmação aguardando sua resposta.',
+      value: totalConfirmacoesPendentes === null ? '-' : String(totalConfirmacoesPendentes),
+      description: totalConfirmacoesPendentes === 0
+        ? 'Você não tem escalas aguardando confirmação.'
+        : totalConfirmacoesPendentes === 1
+        ? 'Há uma escala aguardando sua confirmação.'
+        : `Há ${totalConfirmacoesPendentes} escalas aguardando sua confirmação.`,
       icon: ClipboardList,
       action: 'Ver confirmações',
       path: '/escalas?filtro=confirmacoes',
     },
-  ]), [totalAvisos]);
+  ]), [totalAvisos, totalConfirmacoesPendentes]);
 
   return (
     <div className="flex min-h-screen flex-col bg-[radial-gradient(circle_at_top,_rgba(15,23,42,0.08),_transparent_34%),linear-gradient(180deg,#f8fafc_0%,#eef2f7_100%)] text-gray-900">

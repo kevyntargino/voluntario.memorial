@@ -106,13 +106,22 @@ async function carregarDestinatarios({ publico, equipeIds = [], usuarioIds = [] 
   if (publico === 'EQUIPES') {
     return prisma.usuario.findMany({
       where: {
-        equipes: {
-          some: {
-            id: {
-              in: equipeIds,
+        OR: [
+          {
+            equipes: {
+              some: {
+                id: { in: equipeIds },
+              },
             },
           },
-        },
+          {
+            equipesLideradas: {
+              some: {
+                id: { in: equipeIds },
+              },
+            },
+          },
+        ],
       },
       select: { id: true },
     });
@@ -145,10 +154,18 @@ router.get('/', autenticar, async (req, res) => {
             id: true,
           },
         },
+        equipesLideradas: {
+          select: {
+            id: true,
+          },
+        },
       },
     });
 
-    const equipeIds = usuario?.equipes.map((equipe) => equipe.id) || [];
+    const equipeIds = Array.from(new Set([
+      ...(usuario?.equipes || []).map((equipe) => equipe.id),
+      ...(usuario?.equipesLideradas || []).map((equipe) => equipe.id),
+    ]));
     const filtroDestinatario = {
       OR: [
         { tipo: 'GLOBAL' },
