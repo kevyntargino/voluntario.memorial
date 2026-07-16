@@ -29,6 +29,21 @@ test('evento semanal gera uma ocorrência a cada sete dias até a data final', (
   ]);
 });
 
+test('evento semanal pode acontecer em uma quarta-feira', () => {
+  const datas = gerarDatasEvento({
+    frequencia: 'SEMANAL',
+    dataInicio: new Date('2026-08-05T19:30:00.000Z'),
+    dataFim: new Date('2026-08-26T23:59:00.000Z'),
+  });
+
+  assert.deepEqual(datas.map((data) => data.toISOString()), [
+    '2026-08-05T19:30:00.000Z',
+    '2026-08-12T19:30:00.000Z',
+    '2026-08-19T19:30:00.000Z',
+    '2026-08-26T19:30:00.000Z',
+  ]);
+});
+
 test('evento mensal respeita o domingo e a semana definidos', () => {
   const datas = gerarDatasEvento({
     frequencia: 'MENSAL',
@@ -42,6 +57,22 @@ test('evento mensal respeita o domingo e a semana definidos', () => {
     '2026-08-09T18:00:00.000Z',
     '2026-09-13T18:00:00.000Z',
     '2026-10-11T18:00:00.000Z',
+  ]);
+});
+
+test('evento mensal pode acontecer na segunda quarta-feira', () => {
+  const datas = gerarDatasEvento({
+    frequencia: 'MENSAL',
+    dataInicio: new Date('2026-08-12T19:30:00.000Z'),
+    dataFim: new Date('2026-10-31T23:59:00.000Z'),
+    diaSemana: 3,
+    semanaMes: 2,
+  });
+
+  assert.deepEqual(datas.map((data) => data.toISOString()), [
+    '2026-08-12T19:30:00.000Z',
+    '2026-09-09T19:30:00.000Z',
+    '2026-10-14T19:30:00.000Z',
   ]);
 });
 

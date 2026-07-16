@@ -113,10 +113,12 @@ function parseDataHoraEvento(valor) {
 
 function getDataHoraRecorrente(diaSemana, semanaMes, dataHora) {
   const { horas, minutos } = getHorarioBase(dataHora);
-  const agora = new Date();
-
-  return getOcorrenciaNoMes(agora.getUTCFullYear(), agora.getUTCMonth(), diaSemana, semanaMes, dataHora)
-    || getDataUtc(agora.getUTCFullYear(), agora.getUTCMonth(), 1, horas, minutos);
+  return getProximaDataDaRegra(
+    diaSemana,
+    semanaMes,
+    `${String(horas).padStart(2, '0')}:${String(minutos).padStart(2, '0')}`,
+    'MENSAL',
+  );
 }
 
 function getProximaDataDaRegra(diaSemana, semanaMes, horario, frequencia) {
