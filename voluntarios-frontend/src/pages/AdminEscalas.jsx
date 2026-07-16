@@ -3,7 +3,10 @@ import {
   AlertCircle,
   Bell,
   BookOpen,
+  CalendarDays,
   CalendarClock,
+  ChevronLeft,
+  ChevronRight,
   CheckCircle2,
   Clock3,
   Download,
@@ -11,6 +14,7 @@ import {
   EyeOff,
   FileText,
   Loader2,
+  List,
   Megaphone,
   ArrowDownUp,
   Plus,
@@ -22,6 +26,7 @@ import {
   Trash2,
   UserCog,
   UsersRound,
+  X,
 } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import { Footer } from '../components/Footer';
@@ -82,6 +87,14 @@ function formatarData(dataHora) {
 function toTime(dataHora) {
   if (!dataHora) return '18:00';
   return new Date(dataHora).toISOString().slice(11, 16);
+}
+
+function hojeParaInput() {
+  const hoje = new Date();
+  const ano = hoje.getFullYear();
+  const mes = String(hoje.getMonth() + 1).padStart(2, '0');
+  const dia = String(hoje.getDate()).padStart(2, '0');
+  return `${ano}-${mes}-${dia}`;
 }
 
 function criarFormUsuario(usuario) {
@@ -293,13 +306,20 @@ export default function AdminEscalas() {
 
     for (const escala of filtradas) {
       const data = escala.dataHora ? new Date(escala.dataHora).toISOString() : 'sem-data';
+      const tituloRecorrente = `${escala.semanaMes}º ${escala.diaSemana === 0 ? 'Domingo' : 'Sábado'}`;
       const chave = escala.tipo === 'ESPORADICA'
         ? `ESPORADICA:${escala.grupoEsporadicoId || escala.id}`
-        : `RECORRENTE:${escala.diaSemana}:${escala.semanaMes}:${data}`;
-      const tituloRecorrente = `${escala.semanaMes}º ${escala.diaSemana === 0 ? 'Domingo' : 'Sábado'}`;
+        : `RECORRENTE:${JSON.stringify([
+          escala.diaSemana,
+          escala.semanaMes,
+          data,
+          escala.titulo || tituloRecorrente,
+          escala.local || '',
+          escala.descricao || '',
+        ])}`;
       const evento = eventos.get(chave) || {
         id: chave,
-        titulo: escala.tipo === 'RECORRENTE' ? tituloRecorrente : escala.titulo || 'Escala sem título',
+        titulo: escala.titulo || (escala.tipo === 'RECORRENTE' ? tituloRecorrente : 'Escala sem título'),
         tipo: escala.tipo,
         dataHora: escala.dataHora,
         local: escala.local,
@@ -413,8 +433,11 @@ export default function AdminEscalas() {
       setSucesso(dados.mensagem || 'Usuário excluído.');
       await carregarDados();
       setUsuarioModal(null);
+      setEditandoUsuarioId(null);
+      return true;
     } catch (error) {
       setErro(error.message || 'Não foi possível excluir o usuário.');
+      return false;
     } finally {
       setSalvandoId(null);
     }
@@ -684,20 +707,32 @@ export default function AdminEscalas() {
     setSucesso('');
     setSalvandoId('nova-escala');
 
-    const dataHoras = (formEscala.horarios || [])
-      .filter((horario) => horario)
-      .map((horario) => `${formEscala.data}T${horario}`);
-    const endpoint = formEscala.tipo === 'RECORRENTE'
-      ? '/api/escalas/admin/recorrentes'
-      : '/api/escalas/admin/esporadicas';
-    const body = formEscala.tipo === 'RECORRENTE'
-      ? formEscala
-      : {
-        ...formEscala,
-        dataHoras,
-      };
-
     try {
+      const recorrente = formEscala.tipo === 'RECORRENTE';
+      const endpoint = recorrente
+        ? '/api/escalas/admin/recorrentes'
+        : '/api/escalas/admin/esporadicas';
+      let body = formEscala;
+
+      if (!recorrente) {
+        const datas = (formEscala.horarios || [])
+          .filter((horario) => horario)
+          .map((horario) => new Date(`${formEscala.data}T${horario}`));
+
+        if (!formEscala.data || datas.length === 0 || datas.some((data) => Number.isNaN(data.getTime()))) {
+          throw new Error('Informe uma data e pelo menos um horário válido.');
+        }
+
+        if (datas.some((data) => data <= new Date())) {
+          throw new Error('As escalas esporádicas devem ter data e horário futuros.');
+        }
+
+        body = {
+          ...formEscala,
+          dataHoras: datas.map((data) => data.toISOString()),
+        };
+      }
+
       const resposta = await fetch(buildApiUrl(endpoint), {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -921,6 +956,7 @@ export default function AdminEscalas() {
                 onAlternarEquipe={alternarEquipeUsuario}
                 onAlternarLiderEquipe={alternarLiderEquipeUsuario}
                 onSalvar={salvarUsuario}
+                onExcluir={painelAberto === 'voluntarios' ? excluirUsuario : undefined}
                 editandoUsuarioId={editandoUsuarioId}
                 onEditar={setEditandoUsuarioId}
                 onAbrirUsuario={setUsuarioModal}
@@ -1113,6 +1149,7 @@ function PainelUsuarios({
   onAlternarEquipe,
   onAlternarLiderEquipe,
   onSalvar,
+  onExcluir,
   onAbrirUsuario,
   permiteCadastrar = false,
   mostrarCadastro = false,
@@ -1125,7 +1162,9 @@ function PainelUsuarios({
   const [busca, setBusca] = useState('');
   const [equipeFiltro, setEquipeFiltro] = useState('TODAS');
   const [ordem, setOrdem] = useState('nome-asc');
+  const [usuarioConfirmandoExclusao, setUsuarioConfirmandoExclusao] = useState(null);
   const isLideres = titulo.toLowerCase().includes('líder');
+  const excluindoUsuario = Boolean(usuarioConfirmandoExclusao && salvandoId === usuarioConfirmandoExclusao.id);
   const usuariosFiltrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
 
@@ -1150,6 +1189,13 @@ function PainelUsuarios({
         return (a.nomeCompleto || '').localeCompare(b.nomeCompleto || '', 'pt-BR');
       });
   }, [busca, equipeFiltro, isLideres, ordem, usuarios]);
+
+  const confirmarExclusao = async () => {
+    if (!usuarioConfirmandoExclusao || !onExcluir) return;
+
+    const excluiu = await onExcluir(usuarioConfirmandoExclusao.id);
+    if (excluiu) setUsuarioConfirmandoExclusao(null);
+  };
 
   return (
     <section className="mt-5 rounded-2xl border border-gray-200 bg-white shadow-sm">
@@ -1326,11 +1372,22 @@ function PainelUsuarios({
                       </p>
                     </GrupoChecks>
                   </div>
-                  <div className="flex items-end">
+                  <div className="flex flex-col justify-end gap-2">
                     <button type="button" disabled={salvandoId === usuario.id} onClick={() => onSalvar(usuario.id)} className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-gray-950 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">
                       {salvandoId === usuario.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save size={15} />}
                       Salvar edição
                     </button>
+                    {onExcluir && (
+                      <button
+                        type="button"
+                        disabled={salvandoId === usuario.id}
+                        onClick={() => setUsuarioConfirmandoExclusao(usuario)}
+                        className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-red-200 bg-white px-3 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-60"
+                      >
+                        <Trash2 size={15} />
+                        Excluir voluntário
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
@@ -1338,6 +1395,42 @@ function PainelUsuarios({
           );
         })}
       </div>
+      {usuarioConfirmandoExclusao && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/45 px-4 py-6 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-5 shadow-2xl">
+            <div className="flex items-start gap-3">
+              <div className="rounded-full bg-red-50 p-2 text-red-600">
+                <AlertCircle size={22} />
+              </div>
+              <div>
+                <p className="text-sm font-bold uppercase tracking-[0.16em] text-red-700">Confirmar exclusão</p>
+                <h2 className="mt-2 text-xl font-bold leading-7 text-gray-950">
+                  Tem certeza que quer excluir o Voluntário {usuarioConfirmandoExclusao.nomeCompleto || 'selecionado'}?
+                </h2>
+              </div>
+            </div>
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                disabled={excluindoUsuario}
+                onClick={() => setUsuarioConfirmandoExclusao(null)}
+                className="rounded-md border border-gray-200 bg-white px-4 py-2.5 text-sm font-bold text-gray-700 transition hover:bg-gray-50 disabled:opacity-60"
+              >
+                Não
+              </button>
+              <button
+                type="button"
+                disabled={excluindoUsuario}
+                onClick={confirmarExclusao}
+                className="inline-flex items-center justify-center gap-2 rounded-md bg-red-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-red-700 disabled:opacity-60"
+              >
+                {excluindoUsuario ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 size={16} />}
+                Sim
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
@@ -1700,6 +1793,7 @@ function PainelEscalas({
   mostrarFormEscala,
   onMostrarFormEscala,
 }) {
+  const [visualizacao, setVisualizacao] = useState('lista');
   const agora = new Date();
   const eventosFuturos = eventos.filter((evento) => !evento.dataHora || new Date(evento.dataHora) >= agora);
   const eventosEsporadicos = eventos.filter((evento) => evento.tipo === 'ESPORADICA');
@@ -1797,7 +1891,7 @@ function PainelEscalas({
 
                 {formEscala.tipo === 'ESPORADICA' ? (
                   <div>
-                    <Campo label="Data" type="date" value={formEscala.data} onChange={(value) => onChangeEscala((atual) => ({ ...atual, data: value }))} />
+                    <Campo label="Data" type="date" min={hojeParaInput()} value={formEscala.data} onChange={(value) => onChangeEscala((atual) => ({ ...atual, data: value }))} />
                     <div className="mt-4">
                       <div className="mb-2 flex items-center justify-between gap-2">
                         <span className="text-sm font-semibold text-gray-700">Horários</span>
@@ -1908,7 +2002,7 @@ function PainelEscalas({
             </div>
           )}
 
-          <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto] lg:items-center">
+          <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto_auto] lg:items-center">
             <label className="relative block">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
               <input
@@ -1918,6 +2012,28 @@ function PainelEscalas({
                 placeholder="Pesquisar por equipe, título ou voluntário"
               />
             </label>
+            <div className="inline-flex justify-self-start rounded-lg border border-gray-200 bg-gray-50 p-1" aria-label="Modo de visualização">
+              <button
+                type="button"
+                onClick={() => setVisualizacao('lista')}
+                className={`flex h-9 w-9 items-center justify-center rounded-md transition ${visualizacao === 'lista' ? 'bg-gray-950 text-white' : 'text-gray-500 hover:bg-white hover:text-gray-900'}`}
+                title="Visualizar como lista"
+                aria-label="Visualizar como lista"
+                aria-pressed={visualizacao === 'lista'}
+              >
+                <List size={17} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setVisualizacao('calendario')}
+                className={`flex h-9 w-9 items-center justify-center rounded-md transition ${visualizacao === 'calendario' ? 'bg-gray-950 text-white' : 'text-gray-500 hover:bg-white hover:text-gray-900'}`}
+                title="Visualizar como calendário"
+                aria-label="Visualizar como calendário"
+                aria-pressed={visualizacao === 'calendario'}
+              >
+                <CalendarDays size={17} />
+              </button>
+            </div>
             <button
               type="button"
               onClick={() => onOrdemEscalas(ordemEscalas === 'proximas' ? 'distantes' : 'proximas')}
@@ -1932,6 +2048,10 @@ function PainelEscalas({
             </span>
           </div>
 
+          {visualizacao === 'calendario' ? (
+            <CalendarioEscalas eventos={eventos} />
+          ) : (
+            <>
           <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
             <div className="flex items-end justify-between gap-3">
               <div>
@@ -2120,10 +2240,166 @@ function PainelEscalas({
               </>
             )}
           </div>
+            </>
+          )}
         </div>
       </div>
 
     </section>
+  );
+}
+
+function CalendarioEscalas({ eventos }) {
+  const [mesAtual, setMesAtual] = useState(() => {
+    const hoje = new Date();
+    return new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+  });
+  const [diaSelecionado, setDiaSelecionado] = useState(null);
+  const hoje = new Date();
+  const inicioMes = new Date(mesAtual.getFullYear(), mesAtual.getMonth(), 1);
+  const inicioGrade = new Date(inicioMes);
+  inicioGrade.setDate(inicioGrade.getDate() - inicioGrade.getDay());
+  const diasGrade = Array.from({ length: 42 }, (_, index) => {
+    const data = new Date(inicioGrade);
+    data.setDate(inicioGrade.getDate() + index);
+    return data;
+  });
+  const nomeMes = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(mesAtual);
+  const nomesSemana = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+
+  const eventosNaData = (data) => eventos.filter((evento) => {
+    if (evento.tipo === 'RECORRENTE') {
+      return data.getDay() === evento.diaSemana && Math.ceil(data.getDate() / 7) === evento.semanaMes;
+    }
+
+    if (!evento.dataHora) return false;
+    const dataEvento = new Date(evento.dataHora);
+    return dataEvento.getFullYear() === data.getFullYear()
+      && dataEvento.getMonth() === data.getMonth()
+      && dataEvento.getDate() === data.getDate();
+  });
+
+  const eventosSelecionados = diaSelecionado ? eventosNaData(diaSelecionado) : [];
+  const dataEvento = (evento) => {
+    if (evento.tipo !== 'RECORRENTE' || !evento.dataHora || !diaSelecionado) {
+      return evento.dataHora;
+    }
+
+    const horario = new Date(evento.dataHora);
+    return new Date(
+      diaSelecionado.getFullYear(),
+      diaSelecionado.getMonth(),
+      diaSelecionado.getDate(),
+      horario.getHours(),
+      horario.getMinutes(),
+    );
+  };
+
+  useEffect(() => {
+    if (!diaSelecionado) return undefined;
+    const fecharComEscape = (event) => {
+      if (event.key === 'Escape') setDiaSelecionado(null);
+    };
+    window.addEventListener('keydown', fecharComEscape);
+    return () => window.removeEventListener('keydown', fecharComEscape);
+  }, [diaSelecionado]);
+
+  const navegarMes = (direcao) => {
+    setMesAtual((atual) => new Date(atual.getFullYear(), atual.getMonth() + direcao, 1));
+    setDiaSelecionado(null);
+  };
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+      <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-3 py-3 sm:px-4">
+        <button type="button" onClick={() => navegarMes(-1)} className="flex h-9 w-9 items-center justify-center rounded-md border border-gray-200 text-gray-600 transition hover:bg-gray-50" title="Mês anterior" aria-label="Mês anterior">
+          <ChevronLeft size={18} />
+        </button>
+        <div className="text-center">
+          <p className="text-sm font-bold capitalize text-gray-950">{nomeMes}</p>
+          <button type="button" onClick={() => setMesAtual(new Date(hoje.getFullYear(), hoje.getMonth(), 1))} className="mt-0.5 text-xs font-semibold text-dourado-700 hover:text-dourado-800">
+            Ir para hoje
+          </button>
+        </div>
+        <button type="button" onClick={() => navegarMes(1)} className="flex h-9 w-9 items-center justify-center rounded-md border border-gray-200 text-gray-600 transition hover:bg-gray-50" title="Próximo mês" aria-label="Próximo mês">
+          <ChevronRight size={18} />
+        </button>
+      </div>
+
+      <div className="grid grid-cols-7 border-b border-gray-100 bg-gray-50">
+        {nomesSemana.map((dia) => <div key={dia} className="py-2 text-center text-[11px] font-bold uppercase text-gray-400">{dia}</div>)}
+      </div>
+      <div className="grid grid-cols-7">
+        {diasGrade.map((data) => {
+          const eventosDoDia = eventosNaData(data);
+          const pertenceAoMes = data.getMonth() === mesAtual.getMonth();
+          const isHoje = data.getFullYear() === hoje.getFullYear() && data.getMonth() === hoje.getMonth() && data.getDate() === hoje.getDate();
+          const chave = `${data.getFullYear()}-${data.getMonth()}-${data.getDate()}`;
+
+          return (
+            <button
+              key={chave}
+              type="button"
+              disabled={eventosDoDia.length === 0}
+              onClick={() => setDiaSelecionado(new Date(data))}
+              className={`relative aspect-square min-h-12 border-b border-r border-gray-100 p-1.5 text-left transition sm:min-h-20 sm:p-2 ${pertenceAoMes ? 'bg-white' : 'bg-gray-50/70'} ${eventosDoDia.length > 0 ? 'cursor-pointer hover:bg-dourado-50/50' : 'cursor-default'}`}
+              aria-label={`${data.getDate()} de ${nomeMes}${eventosDoDia.length ? `, ${eventosDoDia.length} escala(s)` : ''}`}
+            >
+              <span className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold ${isHoje ? 'bg-gray-950 text-white' : pertenceAoMes ? 'text-gray-700' : 'text-gray-300'}`}>{data.getDate()}</span>
+              {eventosDoDia.length > 0 && (
+                <span className="absolute bottom-1.5 left-1.5 right-1.5 flex flex-wrap gap-1 sm:bottom-2 sm:left-2 sm:right-2">
+                  {eventosDoDia.slice(0, 3).map((evento) => (
+                    <span key={evento.id} className={`h-1.5 w-1.5 rounded-full sm:h-2 sm:w-2 ${evento.tipo === 'ESPORADICA' ? 'bg-amber-500' : 'bg-sky-600'}`} title={evento.titulo} />
+                  ))}
+                  {eventosDoDia.length > 3 && <span className="text-[9px] font-bold leading-2 text-gray-500">+{eventosDoDia.length - 3}</span>}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      <div className="flex flex-wrap items-center gap-4 border-t border-gray-100 px-4 py-3 text-xs font-semibold text-gray-500">
+        <span className="inline-flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-sky-600" />Recorrente</span>
+        <span className="inline-flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-amber-500" />Esporádica</span>
+      </div>
+
+      {diaSelecionado && eventosSelecionados.length > 0 && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/45 px-4 py-6 backdrop-blur-sm" onMouseDown={(event) => event.target === event.currentTarget && setDiaSelecionado(null)}>
+          <div role="dialog" aria-modal="true" aria-labelledby="titulo-escalas-dia" className="max-h-[85vh] w-full max-w-2xl overflow-hidden rounded-lg border border-gray-200 bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-gray-100 px-5 py-4">
+              <div>
+                <p className="text-xs font-bold uppercase text-dourado-700">Escalas do dia</p>
+                <h2 id="titulo-escalas-dia" className="mt-1 text-xl font-bold text-gray-950">
+                  {new Intl.DateTimeFormat('pt-BR', { dateStyle: 'full' }).format(diaSelecionado)}
+                </h2>
+              </div>
+              <button type="button" onClick={() => setDiaSelecionado(null)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-gray-200 text-gray-500 transition hover:bg-gray-50 hover:text-gray-900" title="Fechar" aria-label="Fechar">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="max-h-[65vh] space-y-3 overflow-y-auto p-5">
+              {eventosSelecionados.map((evento) => (
+                <article key={evento.id} className="rounded-md border border-gray-200 bg-gray-50 p-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className={`h-2 w-2 rounded-full ${evento.tipo === 'ESPORADICA' ? 'bg-amber-500' : 'bg-sky-600'}`} />
+                    <span className="text-xs font-bold uppercase text-gray-500">{evento.tipo === 'ESPORADICA' ? 'Esporádica' : 'Recorrente'}</span>
+                  </div>
+                  <h3 className="mt-2 text-base font-bold text-gray-950">{evento.titulo}</h3>
+                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-600">
+                    <span>{formatarData(dataEvento(evento))}</span>
+                    {evento.local && <span>Local: {evento.local}</span>}
+                  </div>
+                  {evento.descricao && <p className="mt-2 text-sm leading-6 text-gray-600">{evento.descricao}</p>}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {evento.areas.map((area) => <span key={area.id} className="rounded border border-gray-200 bg-white px-2 py-1 text-xs font-semibold text-gray-700">{area.equipe?.nome || 'Sem equipe'}</span>)}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -2364,11 +2640,11 @@ function GrupoChecks({ titulo, children }) {
   );
 }
 
-function Campo({ label, value, onChange, type = 'text', placeholder = '' }) {
+function Campo({ label, value, onChange, type = 'text', placeholder = '', min }) {
   return (
     <label className="block">
       <span className="text-sm font-semibold text-gray-700">{label}</span>
-      <input type={type} value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} className="mt-2 block w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10" />
+      <input type={type} value={value} min={min} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} className="mt-2 block w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10" />
     </label>
   );
 }

@@ -15,7 +15,6 @@ const prisma = new PrismaClient({
 });
 
 const router = Router();
-const areasMCom = ['Midia', 'Iluminação', 'Filmagem', 'Fotografia', 'DTV', 'Direção', 'Redes Sociais'];
 
 function getJwtSecret() {
   if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
@@ -292,7 +291,7 @@ router.get('/minhas', autenticar, async (req, res) => {
     }
 
     const where = usuario.permissoes.includes('ADMINISTRADOR')
-      ? { nome: { in: areasMCom } }
+      ? undefined
       : { id: { in: usuario.equipesLideradas.map((equipe) => equipe.id) } };
 
     const equipes = await prisma.equipe.findMany({

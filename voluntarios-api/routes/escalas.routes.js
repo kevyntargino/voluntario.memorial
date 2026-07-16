@@ -226,23 +226,13 @@ function formatarEscalaCompleta(escala, usuarioId) {
 router.get('/', autenticar, async (req, res) => {
   try {
     const visao = req.query.visao === 'minhas' ? 'minhas' : 'todas';
-    const areasMCom = ['Midia', 'Iluminação', 'Filmagem', 'Fotografia', 'DTV', 'Direção', 'Redes Sociais'];
 
     const escalas = await prisma.escala.findMany({
       where: {
-        OR: visao === 'minhas'
-          ? [
-              { tipo: 'RECORRENTE' },
-              { tipo: 'ESPORADICA', dataHora: { gte: new Date() } },
-            ]
-          : [
-              { tipo: 'RECORRENTE' },
-            ],
-        equipe: {
-          nome: {
-            in: areasMCom,
-          },
-        },
+        OR: [
+          { tipo: 'RECORRENTE' },
+          { tipo: 'ESPORADICA', dataHora: { gte: new Date() } },
+        ],
         voluntarios: visao === 'minhas'
           ? {
               some: {
@@ -303,13 +293,7 @@ router.get('/', autenticar, async (req, res) => {
 
 router.get('/admin', autenticar, exigirAdmin, async (req, res) => {
   try {
-    const areasMCom = ['Midia', 'Iluminação', 'Filmagem', 'Fotografia', 'DTV', 'Direção', 'Redes Sociais'];
     const equipes = await prisma.equipe.findMany({
-      where: {
-        nome: {
-          in: areasMCom,
-        },
-      },
       orderBy: {
         nome: 'asc',
       },
@@ -321,9 +305,6 @@ router.get('/admin', autenticar, exigirAdmin, async (req, res) => {
 
     const escalas = await prisma.escala.findMany({
       where: {
-        equipeId: {
-          in: equipes.map((equipe) => equipe.id),
-        },
         OR: [
           { tipo: 'RECORRENTE' },
           { tipo: 'ESPORADICA', dataHora: { gte: new Date() } },
@@ -468,6 +449,12 @@ router.post('/admin/esporadicas', autenticar, exigirAdmin, async (req, res) => {
 
     if (datas.some((data) => Number.isNaN(data.getTime()))) {
       return res.status(400).json({ erro: 'Uma ou mais datas/horários são inválidos.' });
+    }
+
+    const agora = new Date();
+
+    if (datas.some((data) => data <= agora)) {
+      return res.status(400).json({ erro: 'As escalas esporádicas devem ter data e horário futuros.' });
     }
 
     const grupos = datas.map((data) => ({
