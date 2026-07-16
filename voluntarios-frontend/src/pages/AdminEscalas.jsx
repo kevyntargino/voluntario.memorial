@@ -80,12 +80,12 @@ const filtrosTipoEscala = [
   { value: 'RECORRENTE', label: 'Recorrentes' },
   { value: 'ESPORADICA', label: 'Esporádicas' },
 ];
-const filtrosRecorrentes = [0, 6].flatMap((diaSemana) => (
+const filtrosRecorrentes = dias.flatMap(({ value: diaSemana, label: diaLabel }) => (
   semanas.map((semanaMes) => ({
     value: `${diaSemana}-${semanaMes}`,
     diaSemana,
     semanaMes,
-    label: `${semanaMes}º ${diaSemana === 0 ? 'Domingo' : 'Sábado'}`,
+    label: `${semanaMes}ª ${diaLabel}`,
   }))
 ));
 
@@ -2287,40 +2287,15 @@ function PainelEscalas({
 
           {tipoEscalas === 'RECORRENTE' && (
             <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
-              <p className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-gray-400">Filtrar recorrentes</p>
-              <div className="space-y-2">
-                {[0, 6].map((diaSemana) => (
-                  <div key={diaSemana} className="flex flex-wrap gap-2">
-                    {filtrosRecorrentes
-                      .filter((filtro) => filtro.diaSemana === diaSemana)
-                      .map((filtro) => (
-                        <button
-                          key={filtro.value}
-                          type="button"
-                          onClick={() => onFiltroRecorrencia(filtro.value)}
-                          className={`rounded-md border px-3 py-2 text-sm font-bold transition ${
-                            filtroRecorrencia === filtro.value
-                              ? 'border-gray-950 bg-gray-950 text-white'
-                              : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
-                          }`}
-                        >
-                          {filtro.label}
-                        </button>
-                      ))}
-                  </div>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => onFiltroRecorrencia('TODAS')}
-                  className={`rounded-md border px-3 py-2 text-sm font-bold transition ${
-                    filtroRecorrencia === 'TODAS'
-                      ? 'border-dourado-700 bg-dourado-700 text-white'
-                      : 'border-dourado-200 bg-dourado-50 text-dourado-800 hover:border-dourado-300'
-                  }`}
-                >
-                  Todas recorrentes
-                </button>
-              </div>
+              <Select
+                label="Filtrar recorrentes"
+                value={filtroRecorrencia}
+                options={[
+                  { value: 'TODAS', label: 'Todos os dias e semanas' },
+                  ...filtrosRecorrentes,
+                ]}
+                onChange={onFiltroRecorrencia}
+              />
             </div>
           )}
 

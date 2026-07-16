@@ -27,6 +27,7 @@ const prisma = new PrismaClient({
 
 const router = Router();
 const timeZoneEventos = process.env.EVENT_TIME_ZONE || 'America/Campo_Grande';
+const nomesDiasSemana = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 
 function getJwtSecret() {
   if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
@@ -634,8 +635,8 @@ router.patch('/admin/recorrentes/:id', autenticar, exigirAdmin, async (req, res)
     const diaSemanaNumero = Number(diaSemana);
     const semanaMesNumero = Number(semanaMes);
 
-    if (![0, 6].includes(diaSemanaNumero) || ![1, 2, 3, 4].includes(semanaMesNumero)) {
-      return res.status(400).json({ erro: 'Informe um sábado/domingo entre o 1º e o 4º fim de semana.' });
+    if (!Number.isInteger(diaSemanaNumero) || diaSemanaNumero < 0 || diaSemanaNumero > 6 || ![1, 2, 3, 4, 5].includes(semanaMesNumero)) {
+      return res.status(400).json({ erro: 'Informe um dia da semana e uma semana do mês válidos.' });
     }
 
     const [horasRaw, minutosRaw] = String(horario || '18:00').split(':');
@@ -788,8 +789,8 @@ router.post('/admin/recorrentes', autenticar, exigirAdmin, async (req, res) => {
     const diaSemanaNumero = Number(diaSemana);
     const semanaMesNumero = Number(semanaMes);
 
-    if (![0, 6].includes(diaSemanaNumero) || ![1, 2, 3, 4].includes(semanaMesNumero)) {
-      return res.status(400).json({ erro: 'Informe um sábado/domingo entre o 1º e o 4º fim de semana.' });
+    if (!Number.isInteger(diaSemanaNumero) || diaSemanaNumero < 0 || diaSemanaNumero > 6 || ![1, 2, 3, 4, 5].includes(semanaMesNumero)) {
+      return res.status(400).json({ erro: 'Informe um dia da semana e uma semana do mês válidos.' });
     }
 
     if (!Array.isArray(equipeIds) || equipeIds.length === 0) {
@@ -828,7 +829,7 @@ router.post('/admin/recorrentes', autenticar, exigirAdmin, async (req, res) => {
       semanaMesNumero,
       getDataUtc(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1, horas, minutos),
     );
-    const tituloPadrao = `${semanaMesNumero}º ${diaSemanaNumero === 0 ? 'Domingo' : 'Sábado'}`;
+    const tituloPadrao = `${semanaMesNumero}ª ${nomesDiasSemana[diaSemanaNumero]}`;
 
     const escalasCriadas = await prisma.$transaction(
       equipes.map((equipe) => prisma.escala.create({

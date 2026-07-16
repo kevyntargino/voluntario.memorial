@@ -27,9 +27,15 @@ import { escalaEstaEncerrada, getAgoraEscalas } from '../lib/escalas';
 import { formatarTelefoneExibicao } from '../lib/telefone';
 
 const areas = ['Midia', 'Iluminação', 'Filmagem', 'Fotografia', 'DTV', 'Direção', 'Redes Sociais'];
-const semanas = [1, 2, 3, 4];
+const semanas = [1, 2, 3, 4, 5];
 const dias = [
+  { value: 'TODOS', label: 'Todos' },
   { value: 0, label: 'Domingo' },
+  { value: 1, label: 'Segunda' },
+  { value: 2, label: 'Terça' },
+  { value: 3, label: 'Quarta' },
+  { value: 4, label: 'Quinta' },
+  { value: 5, label: 'Sexta' },
   { value: 6, label: 'Sábado' },
 ];
 const filtrosStatus = [
@@ -203,8 +209,8 @@ export default function Escalas() {
   const [participacaoSelecionadaId, setParticipacaoSelecionadaId] = useState(parametrosIniciais.get('participacao') || '');
   const [eventoSelecionadoId, setEventoSelecionadoId] = useState(eventoInicial);
   const [dataEventoSelecionada, setDataEventoSelecionada] = useState(dataEventoInicial);
-  const [diaSelecionado, setDiaSelecionado] = useState(0);
-  const [semanaSelecionada, setSemanaSelecionada] = useState(1);
+  const [diaSelecionado, setDiaSelecionado] = useState('TODOS');
+  const [semanaSelecionada, setSemanaSelecionada] = useState('TODAS');
   const [tipoFiltro, setTipoFiltro] = useState('TODAS');
   const [statusFiltro, setStatusFiltro] = useState(filtroInicial === 'confirmacoes' ? 'PENDENTE' : 'TODOS');
   const [areaFiltro, setAreaFiltro] = useState('TODAS');
@@ -454,7 +460,10 @@ export default function Escalas() {
         && correspondeTipo
         && correspondeArea
         && correspondeStatus
-        && (eventoSelecionadoId || isEsporadicaMinha || !usaFiltroPeriodo || (mesmaSemana && mesmoDia))
+        && (eventoSelecionadoId || isEsporadicaMinha || !usaFiltroPeriodo || (
+          (semanaSelecionada === 'TODAS' || mesmaSemana)
+          && (diaSelecionado === 'TODOS' || mesmoDia)
+        ))
         && correspondeTexto;
     }).sort((a, b) => {
       if (ordem === 'distantes') {
@@ -569,6 +578,8 @@ export default function Escalas() {
   const temFiltrosAtivos = filtroConfirmacoes
     || Boolean(participacaoSelecionadaId)
     || Boolean(eventoSelecionadoId)
+    || diaSelecionado !== 'TODOS'
+    || semanaSelecionada !== 'TODAS'
     || busca.trim()
     || areaFiltro !== 'TODAS'
     || statusFiltro !== 'TODOS'
@@ -577,6 +588,8 @@ export default function Escalas() {
   const totalFiltrosAtivos = [
     filtroConfirmacoes || Boolean(participacaoSelecionadaId),
     Boolean(eventoSelecionadoId),
+    diaSelecionado !== 'TODOS',
+    semanaSelecionada !== 'TODAS',
     Boolean(busca.trim()),
     areaFiltro !== 'TODAS',
     statusFiltro !== 'TODOS',
@@ -589,6 +602,8 @@ export default function Escalas() {
     setParticipacaoSelecionadaId('');
     setEventoSelecionadoId('');
     setDataEventoSelecionada('');
+    setDiaSelecionado('TODOS');
+    setSemanaSelecionada('TODAS');
     setTipoFiltro('TODAS');
     setStatusFiltro('TODOS');
     setAreaFiltro('TODAS');
@@ -726,7 +741,7 @@ export default function Escalas() {
               )}
               {modoVisualizacao === 'lista' && tipoFiltro !== 'ESPORADICA' && !filtroConfirmacoes && (
                 <div className="flex flex-wrap gap-2">
-                  {semanas.map((semana) => (
+                  {['TODAS', ...semanas].map((semana) => (
                     <button
                       key={semana}
                       type="button"
@@ -737,7 +752,7 @@ export default function Escalas() {
                           : 'border border-gray-300 bg-white text-gray-600 hover:border-gray-400 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-300 dark:hover:border-gray-500'
                       }`}
                     >
-                      {semana}º fim de semana
+                      {semana === 'TODAS' ? 'Todas as semanas' : `${semana}ª semana`}
                     </button>
                   ))}
                 </div>
