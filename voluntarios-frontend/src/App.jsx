@@ -13,11 +13,29 @@ import { Redirect } from './components/Redirect';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { PwaInstallPrompt } from './components/PwaInstallPrompt';
 import { PushNotificationManager } from './components/PushNotificationManager';
+import { AppSettings } from './components/AppSettings';
 
 function App() {
+  const getInitialLocation = () => {
+    const params = new URLSearchParams(window.location.search || '');
+    const openPath = params.get('mcom_open');
+
+    if (openPath?.startsWith('/')) {
+      window.history.replaceState({}, '', openPath);
+      return {
+        pathname: window.location.pathname || '/',
+        search: window.location.search || '',
+      };
+    }
+
+    return {
+      pathname: window.location.pathname || '/',
+      search: window.location.search || '',
+    };
+  };
+
   const [location, setLocation] = useState(() => ({
-    pathname: window.location.pathname || '/',
-    search: window.location.search || '',
+    ...getInitialLocation(),
   }));
 
   useEffect(() => {
@@ -103,6 +121,7 @@ function AppRouter() {
       <MobileBottomNav />
       <PwaInstallPrompt />
       <PushNotificationManager />
+      <AppSettings />
     </>
   );
 }

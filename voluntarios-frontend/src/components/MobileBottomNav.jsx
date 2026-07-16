@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bell, BookOpen, CalendarDays, Home, ShieldCheck, UsersRound } from 'lucide-react';
+import { Bell, BookOpen, CalendarDays, Home, Settings, ShieldCheck, UsersRound } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
 
@@ -15,11 +15,22 @@ export function MobileBottomNav() {
     ...(podeGerenciarEquipe ? [{ label: 'Equipe', path: '/minha-equipe', icon: UsersRound }] : []),
     ...(isAdmin ? [{ label: 'Admin', path: '/admin', icon: ShieldCheck }] : [{ label: 'Manuais', path: '/manuais', icon: BookOpen }]),
   ];
+  const abrirConfiguracoes = () => {
+    window.dispatchEvent(new CustomEvent('mcom-open-settings'));
+  };
 
   return (
     <>
       <div className="h-24 md:hidden" aria-hidden="true" />
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white/95 px-2 pb-[calc(0.55rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-18px_50px_rgba(15,23,42,0.12)] backdrop-blur md:hidden">
+      <button
+        type="button"
+        onClick={abrirConfiguracoes}
+        className="fixed bottom-[calc(5.4rem+env(safe-area-inset-bottom))] right-4 z-40 grid h-12 w-12 place-items-center rounded-2xl border border-gray-200 bg-white text-gray-700 shadow-xl shadow-gray-950/10 transition active:scale-95 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 md:hidden"
+        aria-label="Abrir configurações do app"
+      >
+        <Settings size={20} />
+      </button>
+      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white/95 px-2 pb-[calc(0.55rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-18px_50px_rgba(15,23,42,0.12)] backdrop-blur dark:border-gray-800 dark:bg-gray-950/95 md:hidden">
         <div className="mx-auto grid max-w-md grid-cols-5 gap-1">
           {itens.slice(0, 5).map((item) => {
             const Icon = item.icon;
@@ -32,8 +43,8 @@ export function MobileBottomNav() {
                 onClick={() => navigate(item.path)}
                 className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-bold transition ${
                   ativo
-                    ? 'bg-gray-950 text-white shadow-lg shadow-gray-950/15'
-                    : 'text-gray-500 hover:bg-gray-100 hover:text-gray-950'
+                    ? 'bg-gray-950 text-white shadow-lg shadow-gray-950/15 dark:bg-white dark:text-gray-950'
+                    : 'text-gray-500 hover:bg-gray-100 hover:text-gray-950 dark:text-gray-400 dark:hover:bg-gray-900 dark:hover:text-white'
                 }`}
               >
                 <Icon size={18} />

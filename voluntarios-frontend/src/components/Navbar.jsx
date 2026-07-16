@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { BadgeCheck, Bell, CheckCheck, Loader2, LogOut, Pencil, Save, Trash2, User, X } from 'lucide-react';
+import { BadgeCheck, Bell, Camera, CheckCheck, Image as ImageIcon, Loader2, LogOut, Pencil, Save, Trash2, User, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
 import { buildApiUrl } from '../lib/api';
@@ -63,6 +63,7 @@ export default function Navbar() {
   const [salvandoSenha, setSalvandoSenha] = useState(false);
   const [enviandoFoto, setEnviandoFoto] = useState(false);
   const fotoInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
   const { token, usuario, atualizarUsuario, logout } = useAuth();
   const { navigate } = useNavigation();
   const podeGerenciarEquipe = usuario?.permissoes?.some((permissao) => ['LIDER_EQUIPE', 'ADMINISTRADOR'].includes(permissao));
@@ -76,6 +77,18 @@ export default function Navbar() {
     document.documentElement.classList.toggle('dark', tema === 'escuro');
     window.localStorage.setItem(THEME_KEY, tema);
   }, [tema]);
+
+  useEffect(() => {
+    const sincronizarTema = (event) => {
+      const proximoTema = event.detail?.tema;
+      if (['claro', 'escuro'].includes(proximoTema)) {
+        setTema(proximoTema);
+      }
+    };
+
+    window.addEventListener('mcom-theme-change', sincronizarTema);
+    return () => window.removeEventListener('mcom-theme-change', sincronizarTema);
+  }, []);
 
   const carregarNotificacoes = useCallback(async () => {
     if (!token) return;
@@ -365,7 +378,7 @@ export default function Navbar() {
   };
 
   return (
-    <nav className="sticky top-0 z-30 border-b border-white/60 bg-white/85 shadow-sm backdrop-blur">
+    <nav className="sticky top-0 z-30 border-b border-white/60 bg-white/85 shadow-sm backdrop-blur dark:border-gray-800 dark:bg-gray-950/95 dark:shadow-black/30">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           
@@ -373,31 +386,31 @@ export default function Navbar() {
           <div className="flex items-center">
             <button type="button" onClick={() => navigate('/')} className="flex items-center gap-2">
               <img src={logo} alt="MCom" className="h-10 w-10 rounded-xl object-contain" />
-              <span className="font-serif text-2xl font-bold text-gray-950">MCom</span>
+              <span className="font-serif text-2xl font-bold text-gray-950 dark:text-white">MCom</span>
             </button>
           </div>
 
           {/* Links de Navegação - Desktop */}
           <div className="hidden md:flex md:items-center md:space-x-8">
-            <button type="button" onClick={() => irPara('/')} className="font-sans text-gray-600 hover:text-gray-950 transition-colors font-medium">
+            <button type="button" onClick={() => irPara('/')} className="font-sans text-gray-600 hover:text-gray-950 transition-colors font-medium dark:text-gray-300 dark:hover:text-white">
               Início
             </button>
-            <button type="button" onClick={() => irPara('/escalas')} className="font-sans text-gray-600 hover:text-gray-950 transition-colors font-medium">
+            <button type="button" onClick={() => irPara('/escalas')} className="font-sans text-gray-600 hover:text-gray-950 transition-colors font-medium dark:text-gray-300 dark:hover:text-white">
               Escalas
             </button>
-            <button type="button" onClick={() => irPara('/avisos')} className="font-sans text-gray-600 hover:text-gray-950 transition-colors font-medium">
+            <button type="button" onClick={() => irPara('/avisos')} className="font-sans text-gray-600 hover:text-gray-950 transition-colors font-medium dark:text-gray-300 dark:hover:text-white">
               Avisos
             </button>
-            <button type="button" onClick={() => irPara('/manuais')} className="font-sans text-gray-600 hover:text-gray-950 transition-colors font-medium">
+            <button type="button" onClick={() => irPara('/manuais')} className="font-sans text-gray-600 hover:text-gray-950 transition-colors font-medium dark:text-gray-300 dark:hover:text-white">
               Manuais
             </button>
             {podeGerenciarEquipe && (
-              <button type="button" onClick={() => irPara('/minha-equipe')} className="font-sans text-gray-600 hover:text-gray-950 transition-colors font-medium">
+              <button type="button" onClick={() => irPara('/minha-equipe')} className="font-sans text-gray-600 hover:text-gray-950 transition-colors font-medium dark:text-gray-300 dark:hover:text-white">
                 Equipe
               </button>
             )}
             {isAdmin && (
-              <button type="button" onClick={() => irPara('/admin')} className="font-sans text-gray-600 hover:text-gray-950 transition-colors font-medium">
+              <button type="button" onClick={() => irPara('/admin')} className="font-sans text-gray-600 hover:text-gray-950 transition-colors font-medium dark:text-gray-300 dark:hover:text-white">
                 Admin
               </button>
             )}
@@ -409,7 +422,7 @@ export default function Navbar() {
             <button
               type="button"
               onClick={abrirNotificacoes}
-              className="relative grid h-10 w-10 place-items-center rounded-full border border-gray-200 bg-white text-gray-600 transition hover:border-gray-400 hover:text-gray-950"
+              className="relative grid h-10 w-10 place-items-center rounded-full border border-gray-200 bg-white text-gray-600 transition hover:border-gray-400 hover:text-gray-950 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:border-gray-500 dark:hover:text-white"
               aria-label="Abrir notificações"
             >
               <Bell size={18} />
@@ -419,8 +432,8 @@ export default function Navbar() {
                 </span>
               )}
             </button>
-            <button type="button" onClick={abrirPerfil} className="flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-950 focus:outline-none focus:ring-2 focus:ring-gray-900">
-              <span className="grid h-8 w-8 place-items-center overflow-hidden rounded-full bg-gray-100 text-gray-500">
+            <button type="button" onClick={abrirPerfil} className="flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-950 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:border-gray-500 dark:hover:text-white">
+              <span className="grid h-8 w-8 place-items-center overflow-hidden rounded-full bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-200">
                 {usuario?.urlFoto ? (
                   <img src={usuario.urlFoto} alt="" className="h-full w-full object-cover" />
                 ) : (
@@ -445,7 +458,7 @@ export default function Navbar() {
             <button
               type="button"
               onClick={abrirNotificacoes}
-              className="relative mr-1 grid h-10 w-10 place-items-center rounded-full border border-gray-200 bg-white text-gray-500"
+              className="relative mr-1 grid h-10 w-10 place-items-center rounded-full border border-gray-200 bg-white text-gray-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
               aria-label="Abrir notificações"
             >
               <Bell size={18} />
@@ -458,7 +471,7 @@ export default function Navbar() {
             <button
               type="button"
               onClick={abrirPerfil}
-              className="grid h-10 w-10 place-items-center overflow-hidden rounded-full border border-gray-200 bg-white text-gray-500"
+              className="grid h-10 w-10 place-items-center overflow-hidden rounded-full border border-gray-200 bg-white text-gray-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
               aria-label="Abrir perfil"
             >
               {usuario?.urlFoto ? (
@@ -472,11 +485,11 @@ export default function Navbar() {
       </div>
 
       {notificacoesAberto && (
-        <div className="absolute right-4 top-[4.5rem] z-50 w-[calc(100vw-2rem)] max-w-md overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl md:right-8">
-          <div className="flex items-start justify-between gap-3 border-b border-gray-100 px-5 py-4">
+        <div className="absolute right-4 top-[4.5rem] z-50 w-[calc(100vw-2rem)] max-w-md overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-950 dark:shadow-black/40 md:right-8">
+          <div className="flex items-start justify-between gap-3 border-b border-gray-100 px-5 py-4 dark:border-gray-800">
             <div>
-              <h2 className="text-base font-bold text-gray-950">Notificações</h2>
-              <p className="mt-1 text-xs text-gray-500">
+              <h2 className="text-base font-bold text-gray-950 dark:text-white">Notificações</h2>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                 {naoVisualizadas > 0 ? `${naoVisualizadas} não visualizada(s)` : 'Tudo visualizado por aqui.'}
               </p>
             </div>
@@ -485,12 +498,12 @@ export default function Navbar() {
                 type="button"
                 onClick={visualizarTodas}
                 disabled={naoVisualizadas === 0}
-                className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
+                className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
               >
                 <CheckCheck size={14} />
                 Marcar todas
               </button>
-              <button type="button" onClick={() => setNotificacoesAberto(false)} className="rounded-full border border-gray-200 bg-white p-2 text-gray-500 transition hover:bg-gray-50 hover:text-gray-900" aria-label="Fechar notificações">
+              <button type="button" onClick={() => setNotificacoesAberto(false)} className="rounded-full border border-gray-200 bg-white p-2 text-gray-500 transition hover:bg-gray-50 hover:text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white" aria-label="Fechar notificações">
                 <X size={16} />
               </button>
             </div>
@@ -498,31 +511,31 @@ export default function Navbar() {
 
           <div className="max-h-[70vh] overflow-y-auto">
             {carregandoNotificacoes && notificacoes.length === 0 ? (
-              <div className="flex items-center gap-2 px-5 py-8 text-sm text-gray-500">
+              <div className="flex items-center gap-2 px-5 py-8 text-sm text-gray-500 dark:text-gray-400">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Carregando notificações...
               </div>
             ) : notificacoes.length === 0 ? (
-              <div className="px-5 py-8 text-sm text-gray-500">
+              <div className="px-5 py-8 text-sm text-gray-500 dark:text-gray-400">
                 Nenhuma notificação por enquanto.
               </div>
             ) : (
-              <div className="divide-y divide-gray-100">
+              <div className="divide-y divide-gray-100 dark:divide-gray-800">
                 {notificacoes.map((notificacao) => (
                   <button
                     key={notificacao.id}
                     type="button"
                     onClick={() => visualizarNotificacao(notificacao)}
-                    className={`block w-full px-5 py-4 text-left transition hover:bg-gray-50 ${
-                      notificacao.visualizada ? 'bg-white' : 'bg-gray-50'
+                    className={`block w-full px-5 py-4 text-left transition hover:bg-gray-50 dark:hover:bg-gray-900 ${
+                      notificacao.visualizada ? 'bg-white dark:bg-gray-950' : 'bg-gray-50 dark:bg-gray-900/80'
                     }`}
                   >
                     <div className="flex items-start gap-3">
-                      <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${notificacao.visualizada ? 'bg-gray-300' : 'bg-gray-950'}`} />
+                      <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${notificacao.visualizada ? 'bg-gray-300 dark:bg-gray-600' : 'bg-gray-950 dark:bg-white'}`} />
                       <div className="min-w-0">
-                        <p className="text-sm font-bold text-gray-950">{notificacao.titulo}</p>
-                        <p className="mt-1 text-sm leading-5 text-gray-600">{notificacao.mensagem}</p>
-                        <p className="mt-2 text-xs font-semibold text-gray-400">{formatarDataNotificacao(notificacao.criadoEm)}</p>
+                        <p className="text-sm font-bold text-gray-950 dark:text-white">{notificacao.titulo}</p>
+                        <p className="mt-1 text-sm leading-5 text-gray-600 dark:text-gray-300">{notificacao.mensagem}</p>
+                        <p className="mt-2 text-xs font-semibold text-gray-400 dark:text-gray-500">{formatarDataNotificacao(notificacao.criadoEm)}</p>
                       </div>
                     </div>
                   </button>
@@ -534,8 +547,8 @@ export default function Navbar() {
       )}
 
       {perfilAberto && (
-        <div className="absolute right-4 top-[4.5rem] z-50 w-[calc(100vw-2rem)] max-w-xl overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl md:right-8">
-          <div className="flex items-start justify-between gap-4 border-b border-gray-100 px-5 py-4">
+        <div className="absolute right-4 top-[4.5rem] z-50 w-[calc(100vw-2rem)] max-w-xl overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-950 dark:shadow-black/40 md:right-8">
+          <div className="flex items-start justify-between gap-4 border-b border-gray-100 px-5 py-4 dark:border-gray-800">
             <div className="flex min-w-0 items-center gap-3">
               <button
                 type="button"
@@ -543,7 +556,7 @@ export default function Navbar() {
                 onClick={() => {
                   if (editandoPerfil) fotoInputRef.current?.click();
                 }}
-                className="group relative grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-2xl bg-gray-950 text-white disabled:cursor-default"
+                className="group relative grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-2xl bg-gray-950 text-white disabled:cursor-default dark:bg-gray-800"
                 aria-label={editandoPerfil ? 'Alterar foto de perfil' : 'Foto de perfil'}
               >
                 {formPerfil.urlFoto ? (
@@ -558,11 +571,11 @@ export default function Navbar() {
                 )}
               </button>
               <div className="min-w-0">
-                <p className="truncate text-lg font-bold text-gray-950">{usuario?.nomeCompleto || 'Usuário'}</p>
-                <p className="truncate text-sm text-gray-500">{usuario?.email || '-'}</p>
+                <p className="truncate text-lg font-bold text-gray-950 dark:text-white">{usuario?.nomeCompleto || 'Usuário'}</p>
+                <p className="truncate text-sm text-gray-500 dark:text-gray-400">{usuario?.email || '-'}</p>
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {(usuario?.permissoes || []).map((permissao) => (
-                    <span key={permissao} className="inline-flex items-center gap-1 rounded-md bg-gray-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-gray-700">
+                    <span key={permissao} className="inline-flex items-center gap-1 rounded-md bg-gray-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-gray-700 dark:bg-gray-900 dark:text-gray-300">
                       <BadgeCheck size={11} />
                       {permissao.replaceAll('_', ' ')}
                     </span>
@@ -570,19 +583,19 @@ export default function Navbar() {
                 </div>
               </div>
             </div>
-            <button type="button" onClick={() => setPerfilAberto(false)} className="rounded-full border border-gray-200 bg-white p-2 text-gray-500 transition hover:bg-gray-50 hover:text-gray-900" aria-label="Fechar perfil">
+            <button type="button" onClick={() => setPerfilAberto(false)} className="rounded-full border border-gray-200 bg-white p-2 text-gray-500 transition hover:bg-gray-50 hover:text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white" aria-label="Fechar perfil">
               <X size={17} />
             </button>
           </div>
 
           <div className="max-h-[calc(100vh-7rem)] overflow-y-auto px-5 py-4">
             {erroPerfil && (
-              <div className="mb-4 rounded-md border border-red-100 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+              <div className="mb-4 rounded-md border border-red-100 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200">
                 {erroPerfil}
               </div>
             )}
             {sucessoPerfil && (
-              <div className="mb-4 rounded-md border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">
+              <div className="mb-4 rounded-md border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-200">
                 {sucessoPerfil}
               </div>
             )}
@@ -599,11 +612,23 @@ export default function Navbar() {
                   event.target.value = '';
                 }}
               />
+              <input
+                ref={cameraInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                capture="environment"
+                className="hidden"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) enviarFoto(file);
+                  event.target.value = '';
+                }}
+              />
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-base font-bold text-gray-950">Minhas informações</h2>
-                  <p className="mt-1 text-xs text-gray-500">
-                    Clique em editar para habilitar alterações. A foto é alterada clicando no avatar.
+                  <h2 className="text-base font-bold text-gray-950 dark:text-white">Minhas informações</h2>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {editandoPerfil ? 'Edite seus dados, foto e senha.' : 'Resumo rápido da sua conta.'}
                   </p>
                 </div>
                 <button
@@ -614,38 +639,79 @@ export default function Navbar() {
                     setErroPerfil('');
                     setSucessoPerfil('');
                   }}
-                  className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+                  className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
                 >
                   {editandoPerfil ? 'Cancelar edição' : 'Editar'}
                 </button>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                <CampoPerfil label="Nome completo" disabled={!editandoPerfil} value={formPerfil.nomeCompleto} onChange={(value) => setFormPerfil((atual) => ({ ...atual, nomeCompleto: value }))} />
-                <CampoPerfil label="E-mail" disabled value={usuario?.email || ''} onChange={() => {}} />
-                <CampoPerfil label="Telefone" disabled={!editandoPerfil} value={formPerfil.telefone} onChange={(value) => setFormPerfil((atual) => ({ ...atual, telefone: value }))} />
-                <CampoPerfil label="Data de nascimento" type="date" disabled={!editandoPerfil} value={formPerfil.dataNascimento} onChange={(value) => setFormPerfil((atual) => ({ ...atual, dataNascimento: value }))} />
-                <label className="block">
-                  <span className="text-sm font-semibold text-gray-700">Sexo</span>
-                  <select
-                    value={formPerfil.sexo}
-                    disabled={!editandoPerfil}
-                    onChange={(event) => setFormPerfil((atual) => ({ ...atual, sexo: event.target.value }))}
-                    className="mt-2 block w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none transition disabled:bg-gray-50 disabled:text-gray-500 focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
-                  >
-                    {sexoOptions.map((option) => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
-                    ))}
-                  </select>
-                </label>
-              </div>
+              {!editandoPerfil ? (
+                <div className="grid gap-2 rounded-2xl border border-gray-200 bg-gray-50 p-4 text-sm dark:border-gray-800 dark:bg-gray-900">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-gray-500 dark:text-gray-400">Telefone</span>
+                    <span className="font-semibold text-gray-900 dark:text-gray-100">{usuario?.telefone || 'Não informado'}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-gray-500 dark:text-gray-400">Nascimento</span>
+                    <span className="font-semibold text-gray-900 dark:text-gray-100">{usuario?.dataNascimento || 'Não informado'}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-gray-500 dark:text-gray-400">Sexo</span>
+                    <span className="font-semibold text-gray-900 dark:text-gray-100">
+                      {sexoOptions.find((option) => option.value === usuario?.sexo)?.label || 'Não informado'}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="grid gap-2 rounded-2xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-900 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      disabled={enviandoFoto}
+                      onClick={() => fotoInputRef.current?.click()}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-3 py-2.5 text-sm font-bold text-gray-800 shadow-sm transition hover:bg-gray-100 disabled:opacity-60 dark:bg-gray-950 dark:text-gray-100 dark:hover:bg-gray-800"
+                    >
+                      {enviandoFoto ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageIcon size={16} />}
+                      Escolher da galeria
+                    </button>
+                    <button
+                      type="button"
+                      disabled={enviandoFoto}
+                      onClick={() => cameraInputRef.current?.click()}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-3 py-2.5 text-sm font-bold text-gray-800 shadow-sm transition hover:bg-gray-100 disabled:opacity-60 dark:bg-gray-950 dark:text-gray-100 dark:hover:bg-gray-800"
+                    >
+                      {enviandoFoto ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera size={16} />}
+                      Tirar foto
+                    </button>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <CampoPerfil label="Nome completo" value={formPerfil.nomeCompleto} onChange={(value) => setFormPerfil((atual) => ({ ...atual, nomeCompleto: value }))} />
+                    <CampoPerfil label="E-mail" disabled value={usuario?.email || ''} onChange={() => {}} />
+                    <CampoPerfil label="Telefone" value={formPerfil.telefone} onChange={(value) => setFormPerfil((atual) => ({ ...atual, telefone: value }))} />
+                    <CampoPerfil label="Data de nascimento" type="date" value={formPerfil.dataNascimento} onChange={(value) => setFormPerfil((atual) => ({ ...atual, dataNascimento: value }))} />
+                    <label className="block">
+                      <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">Sexo</span>
+                      <select
+                        value={formPerfil.sexo}
+                        onChange={(event) => setFormPerfil((atual) => ({ ...atual, sexo: event.target.value }))}
+                        className="mt-2 block w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none transition disabled:bg-gray-50 disabled:text-gray-500 focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                      >
+                        {sexoOptions.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                </>
+              )}
 
               {editandoPerfil && (
                 <div className="grid gap-2 sm:grid-cols-2">
                   <button
                     type="submit"
                     disabled={salvandoPerfil}
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-gray-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-gray-800 disabled:opacity-60"
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-gray-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-gray-800 disabled:opacity-60 dark:bg-white dark:text-gray-950 dark:hover:bg-gray-200"
                   >
                     {salvandoPerfil ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save size={16} />}
                     Salvar dados
@@ -654,7 +720,7 @@ export default function Navbar() {
                     type="button"
                     disabled={enviandoFoto || !formPerfil.urlFoto}
                     onClick={removerFoto}
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-red-100 bg-white px-4 py-2.5 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-red-100 bg-white px-4 py-2.5 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-900/60 dark:bg-gray-900 dark:text-red-200 dark:hover:bg-red-950/30"
                   >
                     {enviandoFoto ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 size={16} />}
                     Remover foto
@@ -664,10 +730,10 @@ export default function Navbar() {
             </form>
 
             {editandoPerfil && (
-              <form onSubmit={alterarSenha} className="mt-5 space-y-3 border-t border-gray-100 pt-5">
+              <form onSubmit={alterarSenha} className="mt-5 space-y-3 border-t border-gray-100 pt-5 dark:border-gray-800">
                 <div>
-                  <h3 className="text-base font-bold text-gray-950">Alterar senha</h3>
-                  <p className="mt-1 text-xs text-gray-500">A nova senha precisa ter no mínimo 6 dígitos.</p>
+                  <h3 className="text-base font-bold text-gray-950 dark:text-white">Alterar senha</h3>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">A nova senha precisa ter no mínimo 6 dígitos.</p>
                 </div>
                 <CampoPerfil label="Senha antiga" type="password" value={formSenha.senhaAtual} onChange={(value) => setFormSenha((atual) => ({ ...atual, senhaAtual: value }))} />
                 <CampoPerfil label="Nova senha" type="password" value={formSenha.novaSenha} onChange={(value) => setFormSenha((atual) => ({ ...atual, novaSenha: value }))} />
@@ -675,7 +741,7 @@ export default function Navbar() {
                 <button
                   type="submit"
                   disabled={salvandoSenha}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-800 transition hover:bg-gray-50 disabled:opacity-60"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-800 transition hover:bg-gray-50 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:hover:bg-gray-800"
                 >
                   {salvandoSenha ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save size={16} />}
                   Alterar senha
@@ -683,11 +749,11 @@ export default function Navbar() {
               </form>
             )}
 
-            <div className="mt-5 border-t border-gray-100 pt-4">
+            <div className="mt-5 border-t border-gray-100 pt-4 dark:border-gray-800">
               <button
                 type="button"
                 onClick={handleLogout}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-red-100 bg-white px-4 py-2.5 text-sm font-semibold text-red-600 transition hover:bg-red-50 dark:bg-gray-800"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-red-100 bg-white px-4 py-2.5 text-sm font-semibold text-red-600 transition hover:bg-red-50 dark:border-red-900/60 dark:bg-gray-900 dark:text-red-200 dark:hover:bg-red-950/30"
               >
                 <LogOut size={16} />
                 Sair da conta
@@ -703,13 +769,13 @@ export default function Navbar() {
 function CampoPerfil({ label, value, onChange, type = 'text', disabled = false }) {
   return (
     <label className="block">
-      <span className="text-sm font-semibold text-gray-700">{label}</span>
+      <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">{label}</span>
       <input
         type={type}
         value={value}
         disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-2 block w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none transition disabled:bg-gray-50 disabled:text-gray-500 focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
+        className="mt-2 block w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none transition disabled:bg-gray-50 disabled:text-gray-500 focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:disabled:bg-gray-800 dark:disabled:text-gray-500"
       />
     </label>
   );

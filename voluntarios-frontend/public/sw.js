@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mcom-shell-v1';
+const CACHE_NAME = 'mcom-shell-v2';
 const APP_SHELL = ['/', '/manifest.webmanifest', '/pwa-icons/icon-192.png', '/pwa-icons/icon-512.png'];
 
 self.addEventListener('install', (event) => {
@@ -35,6 +35,10 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
+          if (!response.ok) {
+            return caches.match('/');
+          }
+
           const copy = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put('/', copy));
           return response;
@@ -85,18 +89,21 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const targetUrl = new URL(event.notification.data?.url || '/', self.location.origin).href;
+  const targetUrl = new URL(event.notification.data?.url || '/', self.location.origin);
+  const targetPath = `${targetUrl.pathname}${targetUrl.search}`;
+  const bootUrl = new URL('/', self.location.origin);
+  bootUrl.searchParams.set('mcom_open', targetPath);
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
       for (const client of clients) {
         if ('focus' in client) {
-          client.navigate(targetUrl);
+          client.navigate(targetUrl.href);
           return client.focus();
         }
       }
 
-      return self.clients.openWindow(targetUrl);
+      return self.clients.openWindow(bootUrl.href);
     }),
   );
 });
