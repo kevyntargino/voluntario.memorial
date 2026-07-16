@@ -34,6 +34,7 @@ import { UsuarioInfoButton, UsuarioModal } from '../components/UsuarioModal';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
 import { buildApiUrl } from '../lib/api';
+import { escalaEstaEncerrada, getAgoraEscalas } from '../lib/escalas';
 import { PhoneInput } from '../components/PhoneInput';
 import { formatarTelefoneExibicao } from '../lib/telefone';
 
@@ -2056,10 +2057,35 @@ function PainelEscalas({
   onMostrarFormEscala,
 }) {
   const [visualizacao, setVisualizacao] = useState('lista');
-  const ocorrenciasCalendario = criarOcorrenciasDosEventos(eventos);
-  const eventosFuturos = eventos.filter((evento) => evento.proximaDataHora);
-  const eventosEsporadicos = eventos.filter((evento) => evento.tipo === 'ESPORADICA');
-  const eventosRecorrentes = eventos.filter((evento) => evento.tipo === 'RECORRENTE');
+  const [periodo, setPeriodo] = useState('futuras');
+  const agora = getAgoraEscalas().getTime();
+  const eventosDoPeriodo = eventos.map((evento) => {
+    const escalas = (evento.escalas || evento.areas || [])
+      .filter((escala) => {
+        const data = new Date(escala.dataHora).getTime();
+        return periodo === 'passadas' ? data < agora : data >= agora;
+      })
+      .sort((a, b) => new Date(a.dataHora).getTime() - new Date(b.dataHora).getTime());
+
+    if (escalas.length === 0) return null;
+    const dataDestaque = periodo === 'passadas' ? escalas.at(-1)?.dataHora : escalas[0]?.dataHora;
+    return {
+      ...evento,
+      escalas,
+      areas: escalas,
+      dataHora: dataDestaque,
+      proximaDataHora: periodo === 'futuras' ? dataDestaque : null,
+      totalEscalasFuturas: periodo === 'futuras' ? escalas.length : 0,
+    };
+  }).filter(Boolean).sort((a, b) => {
+    const diferenca = new Date(a.dataHora).getTime() - new Date(b.dataHora).getTime();
+    if (periodo === 'passadas') return ordemEscalas === 'proximas' ? -diferenca : diferenca;
+    return ordemEscalas === 'proximas' ? diferenca : -diferenca;
+  });
+  const ocorrenciasCalendario = criarOcorrenciasDosEventos(eventosDoPeriodo);
+  const eventosFuturos = periodo === 'futuras' ? eventosDoPeriodo : [];
+  const eventosEsporadicos = eventosDoPeriodo.filter((evento) => evento.tipo === 'ESPORADICA');
+  const eventosRecorrentes = eventosDoPeriodo.filter((evento) => evento.tipo === 'RECORRENTE');
   const eventosListagem = [...eventosEsporadicos, ...eventosRecorrentes];
   const tituloListagem = tipoEscalas === 'ESPORADICA'
     ? 'Eventos esporádicos'
@@ -2298,7 +2324,7 @@ function PainelEscalas({
             </div>
           )}
 
-          <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto_auto] lg:items-center">
+          <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto_auto_auto] lg:items-center">
             <label className="relative block">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
               <input
@@ -2339,8 +2365,20 @@ function PainelEscalas({
               <ArrowDownUp size={16} />
               {ordemEscalas === 'proximas' ? 'Mais próximas' : 'Mais distantes'}
             </button>
+            <button
+              type="button"
+              onClick={() => setPeriodo((atual) => (atual === 'futuras' ? 'passadas' : 'futuras'))}
+              className={`inline-flex items-center justify-center gap-2 rounded-md border px-3 py-2.5 text-sm font-bold transition ${
+                periodo === 'passadas'
+                  ? 'border-gray-950 bg-gray-950 text-white'
+                  : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <CalendarClock size={16} />
+              {periodo === 'passadas' ? 'Ver escalas futuras' : 'Ver escalas passadas'}
+            </button>
             <span className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-600">
-              {eventos.length} evento(s)
+              {eventosDoPeriodo.length} evento(s)
             </span>
           </div>
 
@@ -2348,7 +2386,7 @@ function PainelEscalas({
             <CalendarioEscalas eventos={ocorrenciasCalendario} />
           ) : (
             <>
-          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+          {periodo === 'futuras' && <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
             <div className="flex items-end justify-between gap-3">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.14em] text-gray-400">Próximos eventos</p>
@@ -2382,12 +2420,12 @@ function PainelEscalas({
                 </button>
               ))}
             </div>
-          </div>
+          </div>}
 
           <div className="space-y-4">
             {eventosListagem.length === 0 ? (
               <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-8 text-center text-sm text-gray-500">
-                Nenhuma escala encontrada para esse filtro.
+                Nenhuma escala {periodo === 'passadas' ? 'passada' : 'futura'} encontrada para esse filtro.
               </div>
             ) : (
               <>
@@ -2403,6 +2441,11 @@ function PainelEscalas({
                 </div>
                 {eventosListagem.map((evento, index) => {
                   const mostrarTituloRecorrente = evento.tipo === 'RECORRENTE' && eventosListagem[index - 1]?.tipo !== 'RECORRENTE';
+                  const acoesOrdemCulto = evento.areas.filter((area) => {
+                    const primeiraEscalaDaOcorrencia = evento.areas.find((item) => item.dataHora === area.dataHora)?.id === area.id;
+                    const encerrada = area.encerrada || escalaEstaEncerrada(area.dataHora);
+                    return primeiraEscalaDaOcorrencia && area.eventoId && !encerrada;
+                  });
 
                   return (
                     <React.Fragment key={evento.id}>
@@ -2436,6 +2479,40 @@ function PainelEscalas({
                       {evento.descricao && (
                         <p className="mt-3 max-w-2xl break-words text-sm leading-6 text-gray-600">{evento.descricao}</p>
                       )}
+                      {acoesOrdemCulto.length > 0 && (
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          {acoesOrdemCulto.map((area) => (
+                            <div key={`ordem-${area.id}`} className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2">
+                              <span className="text-xs font-bold text-gray-500">{formatarData(area.dataHora)}</span>
+                              {area.ordemCulto && (
+                                <button
+                                  type="button"
+                                  onClick={() => onAbrirOrdemCulto(area.ordemCulto)}
+                                  className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-bold text-gray-700 transition hover:bg-gray-50"
+                                >
+                                  <Eye size={14} />
+                                  Visualizar ordem de culto
+                                </button>
+                              )}
+                              <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-gray-950 px-2.5 py-1.5 text-xs font-bold text-white transition hover:bg-gray-800">
+                                {salvandoId === `ordem-${area.eventoId}-${area.dataHora}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText size={14} />}
+                                {area.ordemCulto ? 'Substituir ordem de culto' : 'Enviar ordem de culto'}
+                                <input
+                                  type="file"
+                                  accept="application/pdf"
+                                  disabled={salvandoId === `ordem-${area.eventoId}-${area.dataHora}`}
+                                  onChange={(event) => {
+                                    const file = event.target.files?.[0];
+                                    event.target.value = '';
+                                    onSubmeterOrdemCulto(area, file);
+                                  }}
+                                  className="sr-only"
+                                />
+                              </label>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -2455,9 +2532,9 @@ function PainelEscalas({
                           const voluntarios = (area.voluntarios || []).length > 0
                             ? area.voluntarios
                             : [{ id: `${area.id}-vazio`, status: 'PENDENTE', substituto: false, usuario: null }];
-                          const primeiraEscalaDaOcorrencia = evento.areas.find((item) => item.dataHora === area.dataHora)?.id === area.id;
+                          const encerrada = area.encerrada || escalaEstaEncerrada(area.dataHora);
 
-                          return voluntarios.map((item, itemIndex) => {
+                          return voluntarios.map((item) => {
                             const config = statusConfig[item.status] || statusConfig.PENDENTE;
                             const Icon = config.icon;
 
@@ -2498,36 +2575,7 @@ function PainelEscalas({
                                   )}
                                 </td>
                                 <td className="px-3 py-3 text-right">
-                                  {itemIndex === 0 && primeiraEscalaDaOcorrencia && area.eventoId && (
-                                    <div className="flex flex-wrap justify-end gap-2">
-                                      {area.ordemCulto && (
-                                        <button
-                                          type="button"
-                                          onClick={() => onAbrirOrdemCulto(area.ordemCulto)}
-                                          className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-bold text-gray-700 transition hover:bg-gray-50"
-                                        >
-                                          <Eye size={14} />
-                                          Visualizar
-                                        </button>
-                                      )}
-                                      <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-gray-950 px-2.5 py-1.5 text-xs font-bold text-white transition hover:bg-gray-800">
-                                        {salvandoId === `ordem-${area.eventoId}-${area.dataHora}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText size={14} />}
-                                        {area.ordemCulto ? 'Substituir ordem' : 'Enviar ordem'}
-                                        <input
-                                          type="file"
-                                          accept="application/pdf"
-                                          disabled={salvandoId === `ordem-${area.eventoId}-${area.dataHora}`}
-                                          onChange={(event) => {
-                                            const file = event.target.files?.[0];
-                                            event.target.value = '';
-                                            onSubmeterOrdemCulto(area, file);
-                                          }}
-                                          className="sr-only"
-                                        />
-                                      </label>
-                                    </div>
-                                  )}
-                                  {area.tipo === 'RECORRENTE' && !area.eventoId && (
+                                  {area.tipo === 'RECORRENTE' && !area.eventoId && !encerrada && (
                                     <button
                                       type="button"
                                       onClick={() => onEditarEscala(escalaEditandoId === area.id ? null : area.id)}

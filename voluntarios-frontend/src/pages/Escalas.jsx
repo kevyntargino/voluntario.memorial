@@ -23,6 +23,7 @@ import { Footer } from '../components/Footer';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
 import { buildApiUrl } from '../lib/api';
+import { escalaEstaEncerrada, getAgoraEscalas } from '../lib/escalas';
 import { formatarTelefoneExibicao } from '../lib/telefone';
 
 const areas = ['Midia', 'Iluminação', 'Filmagem', 'Fotografia', 'DTV', 'Direção', 'Redes Sociais'];
@@ -86,20 +87,6 @@ function getSemanaDoMes(escala) {
   }
 
   return Math.ceil(data.getUTCDate() / 7);
-}
-
-function formatarHorario(dataHora) {
-  if (!dataHora) {
-    return 'Horário a confirmar';
-  }
-
-  return new Intl.DateTimeFormat('pt-BR', {
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: 'UTC',
-  }).format(new Date(dataHora));
 }
 
 function formatarDataCompleta(dataHora) {
@@ -191,14 +178,31 @@ function normalizar(texto) {
   return String(texto || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }
 
+function mesmaDataHora(dataA, dataB) {
+  if (!dataA || !dataB) return false;
+  const primeira = new Date(dataA);
+  const segunda = new Date(dataB);
+  return !Number.isNaN(primeira.getTime())
+    && !Number.isNaN(segunda.getTime())
+    && primeira.getTime() === segunda.getTime();
+}
+
+function getEventoDomId(eventoId, dataHora) {
+  return `evento-${eventoId}-${new Date(dataHora).getTime()}`;
+}
+
 export default function Escalas() {
   const { token, logout } = useAuth();
   const { navigate, search } = useNavigation();
   const parametrosIniciais = new URLSearchParams(search || '');
   const filtroInicial = parametrosIniciais.get('filtro');
+  const eventoInicial = parametrosIniciais.get('evento') || '';
+  const dataEventoInicial = parametrosIniciais.get('data') || '';
   const [visao, setVisao] = useState(filtroInicial === 'confirmacoes' ? 'minhas' : 'todas');
   const [filtroConfirmacoes, setFiltroConfirmacoes] = useState(filtroInicial === 'confirmacoes');
   const [participacaoSelecionadaId, setParticipacaoSelecionadaId] = useState(parametrosIniciais.get('participacao') || '');
+  const [eventoSelecionadoId, setEventoSelecionadoId] = useState(eventoInicial);
+  const [dataEventoSelecionada, setDataEventoSelecionada] = useState(dataEventoInicial);
   const [diaSelecionado, setDiaSelecionado] = useState(0);
   const [semanaSelecionada, setSemanaSelecionada] = useState(1);
   const [tipoFiltro, setTipoFiltro] = useState('TODAS');
@@ -260,8 +264,24 @@ export default function Escalas() {
     const params = new URLSearchParams(search || '');
     const filtro = params.get('filtro');
     const participacao = params.get('participacao') || '';
+    const evento = params.get('evento') || '';
+    const dataEvento = params.get('data') || '';
 
-    if (filtro === 'confirmacoes') {
+    if (evento && dataEvento) {
+      setEventoSelecionadoId(evento);
+      setDataEventoSelecionada(dataEvento);
+      setModoVisualizacao('lista');
+      setVisao('todas');
+      setFiltroConfirmacoes(false);
+      setParticipacaoSelecionadaId('');
+      setTipoFiltro('TODAS');
+      setStatusFiltro('TODOS');
+      setAreaFiltro('TODAS');
+      setOrdem('proximas');
+      setBusca('');
+    } else if (filtro === 'confirmacoes') {
+      setEventoSelecionadoId('');
+      setDataEventoSelecionada('');
       setVisao('minhas');
       setFiltroConfirmacoes(true);
       setStatusFiltro('PENDENTE');
@@ -273,6 +293,8 @@ export default function Escalas() {
     } else {
       setFiltroConfirmacoes(false);
       setParticipacaoSelecionadaId('');
+      setEventoSelecionadoId('');
+      setDataEventoSelecionada('');
     }
   }, [search]);
 
@@ -288,6 +310,17 @@ export default function Escalas() {
       });
     }, 120);
   }, [carregando, participacaoSelecionadaId]);
+
+  useEffect(() => {
+    if (!eventoSelecionadoId || !dataEventoSelecionada || carregando) return;
+
+    window.setTimeout(() => {
+      document.getElementById(getEventoDomId(eventoSelecionadoId, dataEventoSelecionada))?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+    }, 120);
+  }, [carregando, dataEventoSelecionada, eventoSelecionadoId]);
 
   const atualizarStatus = async (participacaoId, status, justificativaSubstituicao = '', dataOcorrencia = '') => {
     setErro('');
@@ -377,19 +410,24 @@ export default function Escalas() {
 
   const escalasVisiveis = useMemo(() => {
     const termo = normalizar(busca);
+    const agora = getAgoraEscalas().getTime();
 
     return escalas.filter((escala) => {
       const isEsporadicaMinha = visao === 'minhas' && escala.tipo === 'ESPORADICA';
       const mesmaSemana = getSemanaDoMes(escala) === semanaSelecionada;
       const mesmoDia = getDiaSemana(escala) === diaSelecionado;
       const correspondeParticipacao = !participacaoSelecionadaId || escala.minhaParticipacao?.id === participacaoSelecionadaId;
-      const correspondeConfirmacao = !filtroConfirmacoes || escala.minhaParticipacao?.status === 'PENDENTE';
+      const correspondeEvento = !eventoSelecionadoId
+        || (escala.eventoId === eventoSelecionadoId && mesmaDataHora(escala.dataHora, dataEventoSelecionada));
+      const futura = !escala.encerrada && (getData(escala)?.getTime() || 0) >= agora;
+      const correspondeConfirmacao = !filtroConfirmacoes || (futura && escala.minhaParticipacao?.status === 'PENDENTE');
       const correspondeTipo = tipoFiltro === 'TODAS' || escala.tipo === tipoFiltro;
       const correspondeArea = areaFiltro === 'TODAS' || escala.equipe?.nome === areaFiltro;
       const statusBase = visao === 'minhas'
         ? [escala.minhaParticipacao?.status]
         : (escala.voluntarios || []).map((item) => item.status);
-      const correspondeStatus = statusFiltro === 'TODOS' || statusBase.includes(statusFiltro);
+      const correspondeStatus = statusFiltro === 'TODOS'
+        || (statusBase.includes(statusFiltro) && (statusFiltro !== 'PENDENTE' || futura));
       const usaFiltroPeriodo = modoVisualizacao === 'lista'
         && escala.tipo === 'RECORRENTE'
         && tipoFiltro !== 'ESPORADICA';
@@ -410,10 +448,11 @@ export default function Escalas() {
         return correspondeParticipacao && correspondeConfirmacao && correspondeTipo && correspondeArea && correspondeTexto;
       }
 
-      return correspondeTipo
+      return correspondeEvento
+        && correspondeTipo
         && correspondeArea
         && correspondeStatus
-        && (isEsporadicaMinha || !usaFiltroPeriodo || (mesmaSemana && mesmoDia))
+        && (eventoSelecionadoId || isEsporadicaMinha || !usaFiltroPeriodo || (mesmaSemana && mesmoDia))
         && correspondeTexto;
     }).sort((a, b) => {
       if (ordem === 'distantes') {
@@ -433,27 +472,41 @@ export default function Escalas() {
 
       return (getData(a)?.getTime() || 0) - (getData(b)?.getTime() || 0);
     });
-  }, [areaFiltro, busca, diaSelecionado, escalas, filtroConfirmacoes, modoVisualizacao, ordem, participacaoSelecionadaId, semanaSelecionada, statusFiltro, tipoFiltro, visao]);
+  }, [areaFiltro, busca, dataEventoSelecionada, diaSelecionado, escalas, eventoSelecionadoId, filtroConfirmacoes, modoVisualizacao, ordem, participacaoSelecionadaId, semanaSelecionada, statusFiltro, tipoFiltro, visao]);
 
-  const escalasPorArea = useMemo(() => {
-    const mapa = new Map(areas.map((area) => [area, []]));
+  const eventosLista = useMemo(() => {
+    const eventos = new Map();
 
     for (const escala of escalasVisiveis) {
-      const area = escala.equipe?.nome || 'Outras';
-      mapa.set(area, [...(mapa.get(area) || []), escala]);
+      const data = getData(escala);
+      const dataIso = data?.toISOString() || 'sem-data';
+      const chave = escala.eventoId
+        ? `evento:${escala.eventoId}:${dataIso}`
+        : escala.grupoEsporadicoId
+          ? `grupo:${escala.grupoEsporadicoId}:${dataIso}`
+          : `${normalizar(escala.titulo)}:${dataIso}:${normalizar(escala.local)}`;
+      const existente = eventos.get(chave);
+
+      if (existente) {
+        existente.escalas.push(escala);
+      } else {
+        eventos.set(chave, {
+          id: chave,
+          eventoId: escala.eventoId,
+          titulo: escala.titulo || escala.evento?.titulo || 'Evento sem título',
+          dataHora: escala.dataHora,
+          local: escala.local,
+          descricao: escala.descricao,
+          tipo: escala.tipo,
+          encerrada: escala.encerrada || escalaEstaEncerrada(escala.dataHora),
+          ordemCulto: escala.ordemCulto,
+          escalas: [escala],
+        });
+      }
     }
 
-    const manterAreasVazias = !filtroConfirmacoes
-      && !participacaoSelecionadaId
-      && !busca.trim()
-      && areaFiltro === 'TODAS'
-      && statusFiltro === 'TODOS'
-      && tipoFiltro !== 'ESPORADICA';
-
-    return Array.from(mapa.entries())
-      .map(([area, itens]) => ({ area, itens }))
-      .filter(({ itens }) => manterAreasVazias || itens.length > 0);
-  }, [areaFiltro, busca, escalasVisiveis, filtroConfirmacoes, participacaoSelecionadaId, statusFiltro, tipoFiltro]);
+    return Array.from(eventos.values());
+  }, [escalasVisiveis]);
 
   const totalVoluntarios = escalasVisiveis.reduce((total, escala) => total + (escala.voluntarios?.length || 0), 0);
   const ocorrenciasCalendario = useMemo(() => {
@@ -513,6 +566,7 @@ export default function Escalas() {
   }, [escalasVisiveis, mesCalendario]);
   const temFiltrosAtivos = filtroConfirmacoes
     || Boolean(participacaoSelecionadaId)
+    || Boolean(eventoSelecionadoId)
     || busca.trim()
     || areaFiltro !== 'TODAS'
     || statusFiltro !== 'TODOS'
@@ -520,6 +574,7 @@ export default function Escalas() {
     || ordem !== 'proximas';
   const totalFiltrosAtivos = [
     filtroConfirmacoes || Boolean(participacaoSelecionadaId),
+    Boolean(eventoSelecionadoId),
     Boolean(busca.trim()),
     areaFiltro !== 'TODAS',
     statusFiltro !== 'TODOS',
@@ -530,6 +585,8 @@ export default function Escalas() {
   const limparFiltros = () => {
     setFiltroConfirmacoes(false);
     setParticipacaoSelecionadaId('');
+    setEventoSelecionadoId('');
+    setDataEventoSelecionada('');
     setTipoFiltro('TODAS');
     setStatusFiltro('TODOS');
     setAreaFiltro('TODAS');
@@ -557,7 +614,7 @@ export default function Escalas() {
               <h1 className="mt-1 text-2xl font-bold text-gray-950 dark:text-white sm:text-3xl">
                 {filtroConfirmacoes
                   ? 'Confirmações pendentes'
-                  : modoVisualizacao === 'calendario' ? 'Calendário de eventos' : 'Escalas por área'}
+                  : modoVisualizacao === 'calendario' ? 'Calendário de eventos' : 'Escalas por evento'}
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-600 dark:text-gray-300">
                 {participacaoSelecionadaId
@@ -566,7 +623,7 @@ export default function Escalas() {
                   ? 'Veja somente suas escalas que ainda aguardam confirmação.'
                   : modoVisualizacao === 'calendario'
                     ? 'Consulte cada evento do mês e abra seus detalhes para ver os voluntários organizados por área.'
-                    : 'Veja os voluntários escalados para cada área nos sábados e domingos do 1º ao 4º fim de semana.'}
+                    : 'Consulte cada evento e veja funções, voluntários e confirmações em uma única tabela.'}
               </p>
             </div>
 
@@ -601,8 +658,8 @@ export default function Escalas() {
             <Segmento
               label="Visão"
               options={[
-                { value: 'todas', label: 'Todas as escalas' },
-                { value: 'minhas', label: 'Somente minhas' },
+                { value: 'todas', label: 'Todas' },
+                { value: 'minhas', label: 'Minhas' },
               ]}
               value={visao}
               onChange={alterarVisao}
@@ -640,13 +697,13 @@ export default function Escalas() {
             />
 
             <div>
-              <p className="mb-2 text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Busca</p>
+              <p className="mb-1 text-[11px] font-semibold uppercase text-gray-500 dark:text-gray-400">Busca</p>
               <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
               <input
                 value={busca}
                 onChange={(event) => setBusca(event.target.value)}
-                className="block min-h-11 w-full rounded-md border border-gray-300 bg-white py-2.5 pl-9 pr-3 text-sm text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-gray-400 dark:focus:ring-gray-400/20"
+                className="block h-9 w-full rounded-md border border-gray-300 bg-white pl-9 pr-3 text-sm text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-gray-400 dark:focus:ring-gray-400/20"
                 placeholder="Buscar por área, título ou voluntário"
               />
               </div>
@@ -672,7 +729,7 @@ export default function Escalas() {
                       key={semana}
                       type="button"
                       onClick={() => setSemanaSelecionada(semana)}
-                      className={`min-h-10 rounded-md px-3 py-2 text-sm font-semibold transition ${
+                      className={`h-8 rounded-md px-2.5 text-xs font-semibold transition ${
                         semanaSelecionada === semana
                           ? 'bg-gray-950 text-white dark:bg-white dark:text-gray-950'
                           : 'border border-gray-300 bg-white text-gray-600 hover:border-gray-400 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-300 dark:hover:border-gray-500'
@@ -748,9 +805,11 @@ export default function Escalas() {
           />
         ) : (
           <TabelaEscalas
-            escalasPorArea={escalasPorArea}
+            eventos={eventosLista}
             temResultados={escalasVisiveis.length > 0}
             participacaoSelecionadaId={participacaoSelecionadaId}
+            eventoSelecionadoId={eventoSelecionadoId}
+            dataEventoSelecionada={dataEventoSelecionada}
             atualizandoId={atualizandoId}
             substituicaoAbertaId={substituicaoAbertaId}
             justificativa={justificativa}
@@ -779,8 +838,8 @@ export default function Escalas() {
 function SeletorVisualizacao({ value, onChange }) {
   return (
     <div className="w-full sm:w-auto">
-      <p className="mb-2 text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Exibição</p>
-      <div className="flex rounded-md border border-gray-300 bg-gray-100 p-1 dark:border-gray-700 dark:bg-gray-900">
+      <p className="mb-1 text-[11px] font-semibold uppercase text-gray-500 dark:text-gray-400">Exibição</p>
+      <div className="inline-flex rounded-md border border-gray-300 bg-gray-100 p-0.5 dark:border-gray-700 dark:bg-gray-900">
         {[
           { value: 'lista', label: 'Lista', icon: List },
           { value: 'calendario', label: 'Calendário', icon: CalendarDays },
@@ -792,14 +851,15 @@ function SeletorVisualizacao({ value, onChange }) {
               key={opcao.value}
               type="button"
               onClick={() => onChange(opcao.value)}
-              className={`inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded px-3 py-2 text-sm font-semibold transition sm:flex-none ${
+              className={`inline-flex h-8 w-9 items-center justify-center rounded transition ${
                 value === opcao.value
                   ? 'bg-white text-gray-950 shadow-sm dark:bg-gray-700 dark:text-white'
                   : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'
               }`}
+              title={opcao.label}
+              aria-label={`Visualizar como ${opcao.label.toLowerCase()}`}
             >
               <Icon size={15} />
-              {opcao.label}
             </button>
           );
         })}
@@ -1098,14 +1158,14 @@ function Resumo({ icon: Icon, label, value }) {
 function Segmento({ label, options, value, onChange }) {
   return (
     <div>
-      <p className="mb-2 text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">{label}</p>
-      <div className="flex rounded-md border border-gray-300 bg-gray-100 p-1 dark:border-gray-700 dark:bg-gray-950">
+      <p className="mb-1 text-[11px] font-semibold uppercase text-gray-500 dark:text-gray-400">{label}</p>
+      <div className="flex rounded-md border border-gray-300 bg-gray-100 p-0.5 dark:border-gray-700 dark:bg-gray-950">
         {options.map((option) => (
           <button
             key={option.value}
             type="button"
             onClick={() => onChange(option.value)}
-            className={`min-h-10 flex-1 rounded px-3 py-2 text-sm font-semibold transition ${
+            className={`h-8 flex-1 rounded px-2.5 text-xs font-semibold transition ${
               value === option.value
                 ? 'bg-white text-gray-950 shadow-sm dark:bg-gray-700 dark:text-white'
                 : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'
@@ -1122,11 +1182,11 @@ function Segmento({ label, options, value, onChange }) {
 function SelectFiltro({ label, options, value, onChange }) {
   return (
     <label className="block">
-      <span className="mb-2 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">{label}</span>
+      <span className="mb-1 block text-[11px] font-semibold uppercase text-gray-500 dark:text-gray-400">{label}</span>
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="block min-h-11 w-full rounded-md border border-gray-300 bg-white px-3 py-2.5 text-sm font-semibold text-gray-700 outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-gray-400 dark:focus:ring-gray-400/20"
+        className="block h-9 w-full rounded-md border border-gray-300 bg-white px-2.5 text-sm font-semibold text-gray-700 outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-gray-400 dark:focus:ring-gray-400/20"
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>{option.label}</option>
@@ -1137,9 +1197,11 @@ function SelectFiltro({ label, options, value, onChange }) {
 }
 
 function TabelaEscalas({
-  escalasPorArea,
+  eventos,
   temResultados,
   participacaoSelecionadaId,
+  eventoSelecionadoId,
+  dataEventoSelecionada,
   atualizandoId,
   substituicaoAbertaId,
   justificativa,
@@ -1149,201 +1211,139 @@ function TabelaEscalas({
   onAtualizarStatus,
   onAbrirOrdemCulto,
 }) {
-  const linhas = escalasPorArea.flatMap(({ area, itens }) => (
-    itens.length > 0
-      ? itens.map((escala) => ({ area, escala }))
-      : [{ area, escala: null }]
-  ));
+  if (!temResultados) {
+    return (
+      <section className="mt-5 rounded-lg border border-gray-200 bg-white px-6 py-12 text-center shadow-sm dark:border-gray-800 dark:bg-gray-900">
+        <p className="text-base font-bold text-gray-950 dark:text-white">Nenhuma escala encontrada</p>
+        <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Ajuste os filtros ou limpe os critérios para visualizar outras escalas.</p>
+      </section>
+    );
+  }
 
   return (
-    <section className="mt-5 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900 dark:shadow-black/20">
-      <div className="hidden grid-cols-[minmax(160px,0.8fr)_minmax(220px,1.2fr)] border-b border-gray-200 bg-gray-50 px-4 py-3 text-xs font-bold uppercase text-gray-500 dark:border-gray-800 dark:bg-gray-950/60 dark:text-gray-400 md:grid">
-        <span>Função</span>
-        <span>Voluntários</span>
-      </div>
-
-      <div className="divide-y divide-gray-100 dark:divide-gray-800">
-        {!temResultados ? (
-          <div className="px-6 py-12 text-center">
-            <p className="text-base font-bold text-gray-950 dark:text-white">Nenhuma escala encontrada</p>
-            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Ajuste os filtros, altere a busca ou limpe os critérios para visualizar outras escalas.</p>
-          </div>
-        ) : linhas.map(({ area, escala }) => (
-          <EscalaLinha
-            key={escala?.id || area}
-            area={area}
-            escala={escala}
-            destaque={Boolean(participacaoSelecionadaId && escala?.minhaParticipacao?.id === participacaoSelecionadaId)}
-            atualizandoId={atualizandoId}
-            substituicaoAbertaId={substituicaoAbertaId}
-            justificativa={justificativa}
-            onAbrirSubstituicao={onAbrirSubstituicao}
-            onCancelarSubstituicao={onCancelarSubstituicao}
-            onChangeJustificativa={onChangeJustificativa}
-            onAtualizarStatus={onAtualizarStatus}
-            onAbrirOrdemCulto={onAbrirOrdemCulto}
-          />
-        ))}
-      </div>
+    <section className="mt-5 space-y-4">
+      {eventos.map((evento) => (
+        <EventoEscalaCard
+          key={evento.id}
+          evento={evento}
+          participacaoSelecionadaId={participacaoSelecionadaId}
+          destaqueEvento={evento.eventoId === eventoSelecionadoId && mesmaDataHora(evento.dataHora, dataEventoSelecionada)}
+          atualizandoId={atualizandoId}
+          substituicaoAbertaId={substituicaoAbertaId}
+          justificativa={justificativa}
+          onAbrirSubstituicao={onAbrirSubstituicao}
+          onCancelarSubstituicao={onCancelarSubstituicao}
+          onChangeJustificativa={onChangeJustificativa}
+          onAtualizarStatus={onAtualizarStatus}
+          onAbrirOrdemCulto={onAbrirOrdemCulto}
+        />
+      ))}
     </section>
   );
 }
 
-function EscalaLinha({
-  area,
-  escala,
-  destaque,
-  atualizandoId,
-  substituicaoAbertaId,
-  justificativa,
-  onAbrirSubstituicao,
-  onCancelarSubstituicao,
-  onChangeJustificativa,
-  onAtualizarStatus,
-  onAbrirOrdemCulto,
-}) {
-  const participacao = escala?.minhaParticipacao;
-  const justificando = participacao && substituicaoAbertaId === participacao.id;
+function EventoEscalaCard({ evento, participacaoSelecionadaId, destaqueEvento, atualizandoId, substituicaoAbertaId, justificativa, onAbrirSubstituicao, onCancelarSubstituicao, onChangeJustificativa, onAtualizarStatus, onAbrirOrdemCulto }) {
+  const participacoes = evento.escalas.filter((escala) => escala.minhaParticipacao && !escala.encerrada);
 
   return (
-    <div
-      id={participacao ? `participacao-${participacao.id}` : undefined}
-      className={`grid gap-4 px-3 py-4 transition sm:px-4 sm:py-5 md:grid-cols-[minmax(160px,0.8fr)_minmax(220px,1.2fr)] ${
-        destaque ? 'bg-amber-50/80 ring-2 ring-inset ring-amber-300 dark:bg-amber-950/45 dark:ring-amber-500/70' : ''
+    <article
+      id={evento.eventoId ? getEventoDomId(evento.eventoId, evento.dataHora) : undefined}
+      className={`overflow-hidden rounded-lg border bg-white shadow-sm dark:bg-gray-900 dark:shadow-black/20 ${
+        destaqueEvento
+          ? 'border-amber-400 ring-2 ring-amber-300 dark:border-amber-400 dark:ring-amber-600'
+          : 'border-gray-200 dark:border-gray-700'
       }`}
     >
-      <div className="border-b border-gray-100 pb-4 dark:border-gray-800 md:border-b-0 md:pb-0 md:pr-4">
-        <div className="flex items-start justify-between gap-3">
-        <p className="text-base font-bold text-gray-950 dark:text-white">{area}</p>
-        {destaque && (
-          <span className="inline-flex rounded border border-amber-300 bg-amber-100 px-2 py-1 text-[10px] font-bold uppercase text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
-            Selecionada
-          </span>
-        )}
-        </div>
-        {escala ? (
-          <>
-            <p className="mt-1 text-sm font-semibold text-gray-500 dark:text-gray-300">{formatarHorario(escala.dataHora)}</p>
-            <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">{escala.titulo || 'Escala sem título'}</p>
-            {escala.tipo === 'ESPORADICA' && (
-              <span className="mt-2 inline-flex rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-bold uppercase text-amber-700 dark:border-amber-700 dark:bg-amber-950/70 dark:text-amber-200">
-                Esporádica
-              </span>
-            )}
-            {escala.tipo === 'ESPORADICA' && (
-              <p className="mt-2 text-xs font-semibold text-gray-600 dark:text-gray-200">{formatarDataCompleta(escala.dataHora)}</p>
-            )}
-            {escala.local && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Local: {escala.local}</p>}
-            {escala.descricao && <p className="mt-2 max-w-sm text-xs leading-5 text-gray-600 dark:text-gray-300">{escala.descricao}</p>}
-            {escala.ordemCulto && (
-              <button
-                type="button"
-                onClick={() => onAbrirOrdemCulto(escala.ordemCulto)}
-                className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-2 text-xs font-bold text-gray-800 transition hover:bg-gray-50 dark:border-white/70 dark:bg-gray-950 dark:text-white dark:hover:bg-gray-800"
-              >
-                <Eye size={15} />
-                Visualizar ordem de culto
-              </button>
-            )}
-          </>
-        ) : (
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Nenhuma escala neste período.</p>
-        )}
-      </div>
-
-      {escala ? (
-        <div>
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div className="grid min-w-0 gap-2 sm:grid-cols-2 xl:flex xl:flex-wrap">
-              {(escala.voluntarios || []).map((item) => {
-                const config = statusConfig[item.status] || statusConfig.PENDENTE;
-                const Icon = config.icon;
-
-                return (
-                  <div key={item.id} className="flex min-w-0 items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2.5 dark:border-gray-700 dark:bg-gray-950 xl:min-w-48">
-                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded bg-white text-sm font-bold text-gray-700 shadow-sm dark:bg-gray-800 dark:text-gray-200 dark:shadow-none">
-                      {item.usuario?.nomeCompleto?.slice(0, 1) || '?'}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
-                        <p className="truncate text-sm font-semibold text-gray-800 dark:text-gray-100">{item.usuario?.nomeCompleto || 'Voluntário'}</p>
-                        {item.usuario?.telefone && (
-                          <span className="text-[11px] font-medium text-gray-400 dark:text-gray-500">{formatarTelefoneExibicao(item.usuario.telefone)}</span>
-                        )}
-                      </div>
-                      <div className="mt-1 flex flex-wrap gap-1">
-                        <p className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] font-semibold ${config.className}`}>
-                          <Icon size={11} />
-                          {config.label}
-                        </p>
-                        {item.substituto && (
-                          <span className="inline-flex rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[11px] font-semibold text-violet-700 dark:border-violet-800 dark:bg-violet-950/50 dark:text-violet-200">
-                            Substituto
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+      <header className="border-b border-gray-200 px-4 py-4 dark:border-gray-700 sm:px-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="break-words text-xl font-bold text-gray-950 dark:text-white">{evento.titulo}</h2>
+              {evento.encerrada && <span className="rounded border border-gray-300 px-2 py-0.5 text-[10px] font-bold uppercase text-gray-500 dark:border-white/60 dark:text-gray-200">Encerrada</span>}
             </div>
-
-            {participacao && (
-              <div className="grid shrink-0 gap-2 min-[420px]:grid-cols-2 sm:flex sm:flex-wrap lg:justify-end">
-                <button
-                  type="button"
-                  disabled={atualizandoId === participacao.id || ['CONFIRMADA', 'AUSENTE'].includes(participacao.status)}
-                  onClick={() => onAtualizarStatus(participacao.id, 'CONFIRMADA', '', escala.dataHora)}
-                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-gray-950 px-3 py-2 text-sm font-semibold text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-gray-950 dark:hover:bg-gray-200"
-                >
-                  {atualizandoId === participacao.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 size={16} />}
-                  Confirmar
-                </button>
-                <button
-                  type="button"
-                  disabled={atualizandoId === participacao.id || ['PEDIU_SUBSTITUICAO', 'AUSENTE'].includes(participacao.status)}
-                  onClick={() => onAbrirSubstituicao(participacao.id)}
-                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:border-gray-400 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-200 dark:hover:bg-gray-800"
-                >
-                  <RefreshCcw size={16} />
-                  Substituição
-                </button>
-              </div>
-            )}
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm font-semibold text-gray-600 dark:text-gray-200">
+              <span className="inline-flex items-center gap-1.5"><CalendarDays size={15} />{formatarDataCompleta(evento.dataHora)}</span>
+              {evento.local && <span className="inline-flex items-center gap-1.5"><MapPin size={15} />{evento.local}</span>}
+            </div>
+            {evento.descricao && <p className="mt-3 max-w-3xl text-sm leading-6 text-gray-600 dark:text-gray-200">{evento.descricao}</p>}
           </div>
-
-          {justificando && (
-            <div className="mt-4 rounded-md border border-sky-200 bg-sky-50 p-3 dark:border-sky-900 dark:bg-sky-950/40">
-              <label className="block text-sm font-semibold text-sky-800 dark:text-sky-200">
-                Justificativa da substituição
-                <textarea
-                  value={justificativa}
-                  onChange={(event) => onChangeJustificativa(event.target.value)}
-                  rows={3}
-                  className="mt-2 block w-full rounded-md border border-sky-200 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/10 dark:border-sky-900 dark:bg-gray-950 dark:text-gray-100"
-                  placeholder="Explique rapidamente por que precisa de substituição."
-                />
-              </label>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  disabled={atualizandoId === participacao.id}
-                  onClick={() => onAtualizarStatus(participacao.id, 'PEDIU_SUBSTITUICAO', justificativa, escala.dataHora)}
-                  className="inline-flex min-h-11 items-center gap-2 rounded-md bg-sky-700 px-3 py-2 text-sm font-semibold text-white transition hover:bg-sky-800 disabled:opacity-60 dark:bg-sky-600 dark:hover:bg-sky-500"
-                >
-                  {atualizandoId === participacao.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw size={16} />}
-                  Enviar solicitação
-                </button>
-                <button type="button" onClick={onCancelarSubstituicao} className="min-h-11 rounded-md border border-sky-200 bg-white px-3 py-2 text-sm font-semibold text-sky-700 dark:border-sky-900 dark:bg-gray-950 dark:text-sky-200">
-                  Cancelar
-                </button>
-              </div>
-            </div>
+          {evento.ordemCulto && (
+            <button type="button" onClick={() => onAbrirOrdemCulto(evento.ordemCulto)} className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md border border-gray-300 bg-white px-3 text-xs font-bold text-gray-800 transition hover:bg-gray-50 dark:border-white/70 dark:bg-gray-950 dark:text-white dark:hover:bg-gray-800">
+              <Eye size={15} /> Visualizar ordem
+            </button>
           )}
         </div>
-      ) : (
-        <div className="text-sm text-gray-500 dark:text-gray-400">Sem voluntários escalados.</div>
-      )}
+      </header>
+
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[680px] text-left text-sm">
+          <thead className="border-b border-gray-200 bg-gray-50 text-[11px] font-bold uppercase text-gray-500 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-300">
+            <tr><th className="px-4 py-2.5">Voluntário</th><th className="px-4 py-2.5">Função</th><th className="px-4 py-2.5">Status</th><th className="px-4 py-2.5 text-right">Ações</th></tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+            {evento.escalas.flatMap((escala) => {
+              const voluntarios = escala.voluntarios?.length ? escala.voluntarios : [null];
+              return voluntarios.map((item) => {
+                const config = statusConfig[item?.status] || statusConfig.PENDENTE;
+                const Icon = config.icon;
+                const minhaParticipacao = item?.id === escala.minhaParticipacao?.id ? escala.minhaParticipacao : null;
+                const destaque = participacaoSelecionadaId && minhaParticipacao?.id === participacaoSelecionadaId;
+
+                return (
+                  <tr id={minhaParticipacao ? `participacao-${minhaParticipacao.id}` : undefined} key={`${escala.id}-${item?.id || 'vazio'}`} className={destaque ? 'bg-amber-50 dark:bg-amber-950/40' : ''}>
+                    <td className="px-4 py-3"><AvatarVoluntario usuario={item?.usuario} /></td>
+                    <td className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-100">{escala.equipe?.nome || 'Sem função'}</td>
+                    <td className="px-4 py-3">
+                      {item ? <div className="flex flex-wrap gap-1.5"><span className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] font-semibold ${config.className}`}><Icon size={11} />{config.label}</span>{item.substituto && <span className="rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[11px] font-semibold text-violet-700 dark:border-violet-700 dark:bg-violet-950 dark:text-violet-200">Substituto</span>}</div> : <span className="text-xs text-gray-400 dark:text-gray-300">Não atribuído</span>}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {minhaParticipacao && !escala.encerrada && <AcoesEscala participacao={minhaParticipacao} escala={escala} atualizandoId={atualizandoId} onAbrirSubstituicao={onAbrirSubstituicao} onAtualizarStatus={onAtualizarStatus} />}
+                    </td>
+                  </tr>
+                );
+              });
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {participacoes.map((escala) => escala.minhaParticipacao && substituicaoAbertaId === escala.minhaParticipacao.id ? (
+        <div key={`justificativa-${escala.id}`} className="border-t border-sky-200 bg-sky-50 p-4 dark:border-sky-800 dark:bg-sky-950/40">
+          <label className="block text-sm font-semibold text-sky-800 dark:text-sky-100">Justificativa da substituição
+            <textarea value={justificativa} onChange={(event) => onChangeJustificativa(event.target.value)} rows={3} className="mt-2 block w-full rounded-md border border-sky-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none dark:border-white/60 dark:bg-gray-950 dark:text-white" placeholder="Explique rapidamente por que precisa de substituição." />
+          </label>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button type="button" disabled={atualizandoId === escala.minhaParticipacao.id} onClick={() => onAtualizarStatus(escala.minhaParticipacao.id, 'PEDIU_SUBSTITUICAO', justificativa, escala.dataHora)} className="inline-flex h-9 items-center gap-2 rounded-md bg-sky-700 px-3 text-sm font-semibold text-white disabled:opacity-60"><RefreshCcw size={15} />Enviar solicitação</button>
+            <button type="button" onClick={onCancelarSubstituicao} className="h-9 rounded-md border border-sky-300 bg-white px-3 text-sm font-semibold text-sky-700 dark:border-white/60 dark:bg-gray-950 dark:text-sky-100">Cancelar</button>
+          </div>
+        </div>
+      ) : null)}
+    </article>
+  );
+}
+
+function AvatarVoluntario({ usuario }) {
+  if (!usuario) return <span className="text-sm text-gray-400 dark:text-gray-300">Nenhum voluntário</span>;
+
+  return (
+    <div className="flex min-w-0 items-center gap-2.5">
+      <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full border border-gray-200 bg-gray-100 text-sm font-bold text-gray-700 dark:border-white/60 dark:bg-gray-800 dark:text-white">
+        {usuario.urlFoto ? <img src={usuario.urlFoto} alt="" className="h-full w-full object-cover" /> : usuario.nomeCompleto?.slice(0, 1) || '?'}
+      </span>
+      <div className="min-w-0"><p className="max-w-52 truncate font-semibold text-gray-800 dark:text-white">{usuario.nomeCompleto || 'Voluntário'}</p>{usuario.telefone && <p className="text-[11px] text-gray-500 dark:text-gray-300">{formatarTelefoneExibicao(usuario.telefone)}</p>}</div>
+    </div>
+  );
+}
+
+function AcoesEscala({ participacao, escala, atualizandoId, onAbrirSubstituicao, onAtualizarStatus }) {
+  return (
+    <div className="inline-flex gap-1.5">
+      <button type="button" title="Confirmar escala" aria-label="Confirmar escala" disabled={atualizandoId === participacao.id || ['CONFIRMADA', 'AUSENTE'].includes(participacao.status)} onClick={() => onAtualizarStatus(participacao.id, 'CONFIRMADA', '', escala.dataHora)} className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-gray-950 text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-gray-950">
+        {atualizandoId === participacao.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 size={15} />}
+      </button>
+      <button type="button" title="Solicitar substituição" aria-label="Solicitar substituição" disabled={atualizandoId === participacao.id || ['PEDIU_SUBSTITUICAO', 'AUSENTE'].includes(participacao.status)} onClick={() => onAbrirSubstituicao(participacao.id)} className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-300 bg-white text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/60 dark:bg-gray-950 dark:text-white">
+        <RefreshCcw size={15} />
+      </button>
     </div>
   );
 }

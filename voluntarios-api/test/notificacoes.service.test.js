@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import {
   gerarNotificacoesAutomaticas,
   getStatusParticipacaoNaOcorrencia,
+  notificarConfirmacaoEscala,
   notificarNovaEscalaAdmin,
+  notificarOrdemCulto,
 } from '../services/notificacoes.service.js';
 
 function criarPrisma(participacoes = []) {
@@ -151,7 +153,7 @@ test('notifica somente os líderes da equipe requisitada em nova escala', async 
       id: 'escala-admin-1',
       titulo: 'Conferência',
       tipo: 'ESPORADICA',
-      dataHora: new Date('2026-07-25T19:00:00.000Z'),
+      dataHora: new Date('2099-07-25T19:00:00.000Z'),
       equipe: {
         id: 'equipe-1',
         nome: 'Filmagem',
@@ -163,4 +165,68 @@ test('notifica somente os líderes da equipe requisitada em nova escala', async 
   assert.equal(resultado.count, 2);
   assert.deepEqual(prisma.criadas.map((item) => item.usuarioId), ['lider-1', 'lider-2']);
   assert.ok(prisma.criadas.every((item) => item.link.includes('escala=escala-admin-1')));
+});
+
+test('notifica os líderes quando o voluntário confirma uma escala futura', async () => {
+  const prisma = criarPrisma();
+  const participacao = criarParticipacao({
+    dataHora: '2099-07-25T19:00:00.000Z',
+    lideres: [{ id: 'lider-1' }, { id: 'lider-2' }],
+  });
+
+  const resultado = await notificarConfirmacaoEscala(prisma, {
+    participacao,
+    dataOcorrencia: new Date('2099-07-25T19:00:00.000Z'),
+  });
+
+  assert.equal(resultado.count, 2);
+  assert.deepEqual(prisma.criadas.map((item) => item.usuarioId), ['lider-1', 'lider-2']);
+  assert.ok(prisma.criadas.every((item) => item.titulo === 'Escala confirmada'));
+  assert.ok(prisma.criadas.every((item) => item.chave.includes(participacao.id)));
+});
+
+test('não notifica confirmação de escala passada', async () => {
+  const prisma = criarPrisma();
+  const participacao = criarParticipacao({ dataHora: '2020-07-25T19:00:00.000Z' });
+
+  const resultado = await notificarConfirmacaoEscala(prisma, {
+    participacao,
+    dataOcorrencia: new Date('2020-07-25T19:00:00.000Z'),
+  });
+
+  assert.equal(resultado.count, 0);
+});
+
+test('não gera lembretes nem pendências para escala passada', async () => {
+  const prisma = criarPrisma([criarParticipacao({ dataHora: '2026-07-15T18:00:00.000Z' })]);
+
+  const resultado = await gerarNotificacoesAutomaticas(
+    prisma,
+    new Date('2026-07-16T10:00:00.000Z'),
+  );
+
+  assert.equal(resultado.count, 0);
+  assert.equal(prisma.criadas.length, 0);
+});
+
+test('notifica uma vez cada voluntário quando a ordem de culto é publicada', async () => {
+  const prisma = criarPrisma();
+  const dataHora = new Date('2099-07-25T19:00:00.000Z');
+
+  const resultado = await notificarOrdemCulto(prisma, {
+    ordem: {
+      id: 'ordem-1',
+      eventoId: 'evento-1',
+      dataHora,
+      arquivoKey: 'ordens-culto/evento-1/arquivo.pdf',
+    },
+    eventoTitulo: 'Culto de Celebração',
+    usuarioIds: ['voluntario-1', 'voluntario-2', 'voluntario-1'],
+  });
+
+  assert.equal(resultado.count, 2);
+  assert.deepEqual(prisma.criadas.map((item) => item.usuarioId), ['voluntario-1', 'voluntario-2']);
+  assert.ok(prisma.criadas.every((item) => item.tipo === 'ORDEM_CULTO'));
+  assert.ok(prisma.criadas.every((item) => item.link.includes('evento=evento-1')));
+  assert.ok(prisma.criadas.every((item) => item.link.includes(encodeURIComponent(dataHora.toISOString()))));
 });

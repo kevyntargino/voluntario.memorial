@@ -232,6 +232,27 @@ export async function notificarAviso(prisma, { aviso, usuarioIds }) {
   })));
 }
 
+export async function notificarOrdemCulto(prisma, { ordem, eventoTitulo, usuarioIds }) {
+  const ids = Array.from(new Set(usuarioIds || []));
+  const data = new Date(ordem?.dataHora);
+
+  if (!ordem?.id || ids.length === 0 || Number.isNaN(data.getTime()) || data <= getAgoraNotificacao()) {
+    return { count: 0 };
+  }
+
+  const versao = ordem.arquivoKey || ordem.atualizadoEm?.toISOString() || ordem.id;
+  const link = `/escalas?evento=${encodeURIComponent(ordem.eventoId)}&data=${encodeURIComponent(data.toISOString())}`;
+
+  return criarNotificacoes(prisma, ids.map((usuarioId) => ({
+    usuarioId,
+    tipo: 'ORDEM_CULTO',
+    titulo: 'Ordem de culto disponível',
+    mensagem: `A ordem de culto de ${eventoTitulo || 'sua próxima escala'} já está disponível.`,
+    link,
+    chave: `ordem-culto:${usuarioId}:${ordem.id}:${versao}`,
+  })));
+}
+
 export async function notificarPedidoSubstituicao(prisma, { participacao }) {
   const lideres = participacao.escala?.equipe?.lideres || [];
   const equipeNome = participacao.escala?.equipe?.nome || 'sua equipe';
@@ -251,9 +272,34 @@ export async function notificarPedidoSubstituicao(prisma, { participacao }) {
   })));
 }
 
+export async function notificarConfirmacaoEscala(prisma, { participacao, dataOcorrencia }) {
+  const lideres = participacao.escala?.equipe?.lideres || [];
+  const data = new Date(dataOcorrencia || participacao.escala?.dataHora);
+
+  if (lideres.length === 0 || Number.isNaN(data.getTime()) || data <= getAgoraNotificacao()) {
+    return { count: 0 };
+  }
+
+  const nomeVoluntario = participacao.usuario?.nomeCompleto || 'Um voluntário';
+  const equipeNome = participacao.escala.equipe?.nome || 'sua equipe';
+
+  return criarNotificacoes(prisma, lideres.map((lider) => ({
+    usuarioId: lider.id,
+    tipo: 'ALERTA_LIDER',
+    titulo: 'Escala confirmada',
+    mensagem: `${nomeVoluntario} confirmou a escala de ${equipeNome} para ${formatarData(data)}.`,
+    link: `/minha-equipe?equipe=${participacao.escala.equipe.id}&escala=${participacao.escala.id}`,
+    chave: `escala-confirmada:${lider.id}:${participacao.id}:${data.toISOString()}`,
+  })));
+}
+
 export async function notificarSubstituto(prisma, { participacao, dataOcorrencia }) {
   const data = dataOcorrencia ? new Date(dataOcorrencia) : getProximaOcorrenciaNotificacao(participacao.escala);
   const equipeNome = participacao.escala?.equipe?.nome || 'sua equipe';
+
+  if (!data || Number.isNaN(new Date(data).getTime()) || new Date(data) <= getAgoraNotificacao()) {
+    return { count: 0 };
+  }
 
   return criarNotificacoes(prisma, [{
     usuarioId: participacao.usuarioId,
@@ -267,9 +313,11 @@ export async function notificarSubstituto(prisma, { participacao, dataOcorrencia
 
 export async function notificarNovaEscalaAdmin(prisma, { escalas }) {
   const notificacoes = [];
+  const agora = getAgoraNotificacao();
 
   for (const escala of escalas || []) {
-    const dataOcorrencia = getProximaOcorrenciaNotificacao(escala, getAgoraNotificacao());
+    const dataOcorrencia = getProximaOcorrenciaNotificacao(escala, agora);
+    if (!dataOcorrencia || new Date(dataOcorrencia) <= agora) continue;
     const dataTexto = dataOcorrencia ? formatarData(new Date(dataOcorrencia)) : 'uma próxima data';
     const equipeNome = escala.equipe?.nome || 'sua equipe';
 
@@ -319,7 +367,7 @@ export async function gerarNotificacoesAutomaticas(prisma, agora = getAgoraNotif
   for (const participacao of participacoes) {
     const dataOcorrencia = getProximaOcorrenciaNotificacao(participacao.escala, agora);
 
-    if (!dataOcorrencia) {
+    if (!dataOcorrencia || new Date(dataOcorrencia) <= agora) {
       continue;
     }
 

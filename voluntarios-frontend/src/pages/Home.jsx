@@ -5,6 +5,7 @@ import { Footer } from '../components/Footer';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
 import { buildApiUrl } from '../lib/api';
+import { getAgoraEscalas } from '../lib/escalas';
 import logo from '../assets/ico.png';
 
 function estaNosProximos7Dias(dataHora) {
@@ -13,13 +14,10 @@ function estaNosProximos7Dias(dataHora) {
   const dataEscala = new Date(dataHora);
   if (Number.isNaN(dataEscala.getTime())) return false;
 
-  const agora = new Date();
-  const inicioHoje = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate());
-  const fimJanela = new Date(inicioHoje);
-  fimJanela.setDate(fimJanela.getDate() + 7);
-  fimJanela.setHours(23, 59, 59, 999);
+  const agora = getAgoraEscalas();
+  const fimJanela = new Date(agora.getTime() + 7 * 86400000);
 
-  return dataEscala >= inicioHoje && dataEscala <= fimJanela;
+  return dataEscala >= agora && dataEscala <= fimJanela;
 }
 
 export default function Home() {

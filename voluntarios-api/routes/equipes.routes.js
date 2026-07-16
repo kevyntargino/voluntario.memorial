@@ -6,7 +6,8 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import { notificarSubstituto } from '../services/notificacoes.service.js';
 import { normalizarTelefone } from '../utils/telefone.js';
-import { garantirOcorrenciasEventos, getInicioHistoricoEscalas } from '../services/eventos.service.js';
+import { garantirOcorrenciasEventos } from '../services/eventos.service.js';
+import { escalaEstaEncerrada, getAgoraEscalas } from '../utils/escalas.js';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -264,7 +265,7 @@ async function carregarEquipe(equipeId, usuario) {
         },
       },
       escalas: {
-        where: { dataHora: { gte: getInicioHistoricoEscalas() } },
+        where: { dataHora: { gte: getAgoraEscalas() } },
         orderBy: [{ dataHora: 'asc' }, { criadoEm: 'asc' }],
         include: {
           evento: { include: { ordensCulto: true } },
@@ -332,7 +333,7 @@ router.get('/minhas', autenticar, async (req, res) => {
           },
         },
         escalas: {
-          where: { dataHora: { gte: getInicioHistoricoEscalas() } },
+          where: { dataHora: { gte: getAgoraEscalas() } },
           orderBy: [{ dataHora: 'asc' }, { criadoEm: 'asc' }],
           include: {
             evento: { include: { ordensCulto: true } },
@@ -520,6 +521,10 @@ router.post('/:equipeId/substituicoes/:participacaoId/atribuir', autenticar, asy
 
     const dataOcorrenciaSubstituicao = pedido.dataOcorrenciaSubstituicao || getProximaOcorrencia(pedido.escala);
 
+    if (escalaEstaEncerrada(dataOcorrenciaSubstituicao)) {
+      return res.status(409).json({ erro: 'Escalas passadas são somente para consulta e não podem ser alteradas.' });
+    }
+
     const [, participacaoSubstituto] = await prisma.$transaction([
       prisma.voluntarioEscala.update({
         where: {
@@ -603,11 +608,15 @@ router.patch('/:equipeId/escalas/:escalaId', autenticar, async (req, res) => {
         id: req.params.escalaId,
         equipeId: req.params.equipeId,
       },
-      select: { id: true },
+      select: { id: true, dataHora: true },
     });
 
     if (!escalaExistente) {
       return res.status(404).json({ erro: 'Escala não encontrada nesta equipe.' });
+    }
+
+    if (escalaEstaEncerrada(escalaExistente.dataHora)) {
+      return res.status(409).json({ erro: 'Escalas passadas são somente para consulta e não podem ser alteradas.' });
     }
 
     const voluntariosDaEquipe = await prisma.equipe.findUnique({

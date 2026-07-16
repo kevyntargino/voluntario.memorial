@@ -5,6 +5,8 @@ import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import { validarPdfBase64 } from '../services/pdf.service.js';
+import { notificarOrdemCulto } from '../services/notificacoes.service.js';
+import { escalaEstaEncerrada } from '../utils/escalas.js';
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
@@ -137,6 +139,9 @@ router.post('/admin', autenticar, exigirAdmin, async (req, res) => {
       include: { evento: { select: { titulo: true } } },
     });
     if (!escala) return res.status(404).json({ erro: 'Ocorrência do evento não encontrada.' });
+    if (escalaEstaEncerrada(ocorrencia)) {
+      return res.status(409).json({ erro: 'Escalas passadas são somente para consulta e não podem ser alteradas.' });
+    }
 
     const validacao = validarPdfBase64(arquivo);
     if (validacao.erro) return res.status(400).json({ erro: validacao.erro });
@@ -169,6 +174,21 @@ router.post('/admin', autenticar, exigirAdmin, async (req, res) => {
     if (existente?.arquivoKey && existente.arquivoKey !== key) {
       apagarArquivo(existente.arquivoKey).catch((error) => console.warn('[WARN] Falha ao remover PDF substituído:', error.message));
     }
+
+    const participacoes = await prisma.voluntarioEscala.findMany({
+      where: {
+        escala: { eventoId, dataHora: ocorrencia },
+      },
+      select: { usuarioId: true },
+    });
+    await notificarOrdemCulto(prisma, {
+      ordem,
+      eventoTitulo: escala.evento?.titulo || escala.titulo,
+      usuarioIds: participacoes.map((participacao) => participacao.usuarioId),
+    }).catch((notificationError) => {
+      console.warn('[WARN] Falha ao notificar voluntários sobre a ordem de culto:', notificationError.message);
+    });
+
     return res.status(200).json({ mensagem: 'Ordem de culto enviada com sucesso.', ordemCulto: formatarOrdem(ordem) });
   } catch (erro) {
     if (erro.message === 'TIMEOUT_STORAGE') return res.status(504).json({ erro: 'O envio do PDF demorou demais. Tente um arquivo menor.' });

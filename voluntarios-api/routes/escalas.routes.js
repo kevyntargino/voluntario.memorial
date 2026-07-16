@@ -4,7 +4,12 @@ import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
-import { notificarNovaEscalaAdmin, notificarPedidoSubstituicao } from '../services/notificacoes.service.js';
+import {
+  notificarConfirmacaoEscala,
+  notificarNovaEscalaAdmin,
+  notificarPedidoSubstituicao,
+} from '../services/notificacoes.service.js';
+import { escalaEstaEncerrada } from '../utils/escalas.js';
 import {
   garantirOcorrenciasEventos,
   gerarDatasEvento,
@@ -312,6 +317,7 @@ function formatarEscalaCompleta(escala, usuarioId) {
       arquivoUrl: `/api/ordens-culto/${ordem.id}/arquivo`,
     } : null,
     solicitadaPeloAdmin: escala.solicitadaPeloAdmin,
+    encerrada: escalaEstaEncerrada(dataOcorrencia),
     equipe: escala.equipe,
     voluntarios,
     minhaParticipacao: minhaParticipacao
@@ -645,6 +651,16 @@ router.patch('/admin/recorrentes/:id', autenticar, exigirAdmin, async (req, res)
       getDataUtc(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1, horas, minutos),
     );
 
+    const escalaExistente = await prisma.escala.findUnique({
+      where: { id: req.params.id },
+      select: { dataHora: true },
+    });
+
+    if (!escalaExistente) return res.status(404).json({ erro: 'Escala recorrente não encontrada.' });
+    if (escalaEstaEncerrada(escalaExistente.dataHora)) {
+      return res.status(409).json({ erro: 'Escalas passadas são somente para consulta e não podem ser alteradas.' });
+    }
+
     await prisma.escala.update({
       where: {
         id: req.params.id,
@@ -951,6 +967,10 @@ router.patch('/:id/status', autenticar, async (req, res) => {
       return res.status(400).json({ erro: 'A ocorrência informada não corresponde à próxima escala.' });
     }
 
+    if (escalaEstaEncerrada(dataOcorrenciaStatus)) {
+      return res.status(409).json({ erro: 'Escalas passadas são somente para consulta e não podem ser alteradas.' });
+    }
+
     const escalaAtualizada = await prisma.voluntarioEscala.update({
       where: {
         id: escalaExistente.id,
@@ -1001,6 +1021,17 @@ router.patch('/:id/status', autenticar, async (req, res) => {
         },
       }).catch((notificationError) => {
         console.warn('[WARN] Falha ao marcar notificações de confirmação como visualizadas:', notificationError.message);
+      });
+
+      await notificarConfirmacaoEscala(prisma, {
+        participacao: {
+          ...escalaAtualizada,
+          usuario: escalaExistente.usuario,
+          escala: escalaExistente.escala,
+        },
+        dataOcorrencia: dataOcorrenciaStatus,
+      }).catch((notificationError) => {
+        console.warn('[WARN] Falha ao notificar líderes sobre confirmação:', notificationError.message);
       });
     }
 
