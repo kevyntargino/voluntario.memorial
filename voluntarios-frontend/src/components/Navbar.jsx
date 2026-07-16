@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { BadgeCheck, Bell, Camera, CheckCheck, Image as ImageIcon, Loader2, LogOut, Pencil, Save, Trash2, User, X } from 'lucide-react';
+import { BadgeCheck, Bell, Camera, CheckCheck, Image as ImageIcon, Loader2, LogOut, Pencil, Save, Settings, Trash2, User, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
 import { buildApiUrl } from '../lib/api';
@@ -583,9 +583,19 @@ export default function Navbar() {
                 </div>
               </div>
             </div>
-            <button type="button" onClick={() => setPerfilAberto(false)} className="rounded-full border border-gray-200 bg-white p-2 text-gray-500 transition hover:bg-gray-50 hover:text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white" aria-label="Fechar perfil">
-              <X size={17} />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => window.dispatchEvent(new CustomEvent('mcom-open-settings'))}
+                className="grid h-9 w-9 place-items-center rounded-full border border-gray-200 bg-white text-gray-600 transition hover:bg-gray-50 hover:text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white"
+                aria-label="Abrir configurações do app"
+              >
+                <Settings size={16} />
+              </button>
+              <button type="button" onClick={() => setPerfilAberto(false)} className="rounded-full border border-gray-200 bg-white p-2 text-gray-500 transition hover:bg-gray-50 hover:text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white" aria-label="Fechar perfil">
+                <X size={17} />
+              </button>
+            </div>
           </div>
 
           <div className="max-h-[calc(100vh-7rem)] overflow-y-auto px-5 py-4">
