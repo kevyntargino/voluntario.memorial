@@ -1175,9 +1175,18 @@ function ModalEvento({ evento, onClose, onAbrirOrdemCulto }) {
 
                         return (
                           <div key={item.id} className="flex flex-col gap-2 py-3 first:pt-2 sm:flex-row sm:items-center sm:justify-between">
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-semibold text-gray-800 dark:text-gray-100">{item.usuario?.nomeCompleto || 'Voluntário'}</p>
-                              {item.usuario?.telefone && <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{formatarTelefoneExibicao(item.usuario.telefone)}</p>}
+                            <div className="flex min-w-0 items-center gap-2.5">
+                              <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full border border-gray-200 bg-gray-100 text-sm font-bold text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-white">
+                                {item.usuario?.urlFoto ? (
+                                  <img src={item.usuario.urlFoto} alt="" className="h-full w-full object-cover" />
+                                ) : (
+                                  item.usuario?.nomeCompleto?.slice(0, 1) || '?'
+                                )}
+                              </span>
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-semibold text-gray-800 dark:text-gray-100">{item.usuario?.nomeCompleto || 'Voluntário'}</p>
+                                {item.usuario?.telefone && <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{formatarTelefoneExibicao(item.usuario.telefone)}</p>}
+                              </div>
                             </div>
                             <div className="flex shrink-0 flex-wrap gap-1.5 sm:justify-end">
                               <span className={`inline-flex items-center gap-1 rounded border px-2 py-1 text-xs font-semibold ${config.className}`}><Icon size={12} /> {config.label}</span>

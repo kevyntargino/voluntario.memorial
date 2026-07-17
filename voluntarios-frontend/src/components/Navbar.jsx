@@ -73,6 +73,7 @@ export default function Navbar() {
   const cameraInputRef = useRef(null);
   const { token, usuario, atualizarUsuario, logout } = useAuth();
   const { navigate } = useNavigation();
+  const usuarioAvatarUrl = usuario?.urlFoto || formPerfil.urlFoto || '';
   const podeGerenciarEquipe = usuario?.permissoes?.some((permissao) => ['LIDER_EQUIPE', 'ADMINISTRADOR'].includes(permissao));
   const isAdmin = usuario?.permissoes?.includes('ADMINISTRADOR');
   const avisosRepresentadosPorNotificacao = useMemo(() => new Set(
@@ -498,9 +499,10 @@ export default function Navbar() {
   };
 
   return (
-    <nav className="sticky top-0 z-[60] border-b border-gray-200 bg-white/95 backdrop-blur-xl dark:border-gray-800 dark:bg-gray-950/95">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex h-14 justify-between md:h-16">
+    <>
+      <nav className="sticky top-0 z-[60] border-b border-gray-200 bg-white/95 backdrop-blur-xl dark:border-gray-800 dark:bg-gray-950/95">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex h-14 justify-between md:h-16">
           
           {/* Logo / Título */}
           <div className="flex items-center">
@@ -551,8 +553,8 @@ export default function Navbar() {
             </button>
             <button type="button" onClick={abrirPerfil} className="flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-950 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:border-gray-500 dark:hover:text-white">
               <span className="grid h-8 w-8 place-items-center overflow-hidden rounded-full bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-200">
-                {usuario?.urlFoto ? (
-                  <img src={usuario.urlFoto} alt="" className="h-full w-full object-cover" />
+                {usuarioAvatarUrl ? (
+                  <img src={usuarioAvatarUrl} alt="" className="h-full w-full object-cover" />
                 ) : (
                   <User size={18} />
                 )}
@@ -591,15 +593,16 @@ export default function Navbar() {
               className="grid h-10 w-10 place-items-center overflow-hidden rounded-full border border-gray-200 bg-white text-gray-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
               aria-label="Abrir perfil"
             >
-              {usuario?.urlFoto ? (
-                <img src={usuario.urlFoto} alt="" className="h-full w-full object-cover" />
+              {usuarioAvatarUrl ? (
+                <img src={usuarioAvatarUrl} alt="" className="h-full w-full object-cover" />
               ) : (
                 <User size={19} />
               )}
             </button>
           </div>
+          </div>
         </div>
-      </div>
+      </nav>
 
       {notificacoesAberto && (
         <div className="fixed inset-x-0 bottom-0 top-14 z-[70] overflow-hidden rounded-t-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-950 md:absolute md:inset-x-auto md:bottom-auto md:right-8 md:top-[4.5rem] md:max-h-[calc(100vh-6rem)] md:w-[calc(100vw-2rem)] md:max-w-md md:rounded-lg">
@@ -894,7 +897,7 @@ export default function Navbar() {
           </div>
         </div>
       )}
-    </nav>
+    </>
   );
 }
 
