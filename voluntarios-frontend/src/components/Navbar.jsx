@@ -498,7 +498,7 @@ export default function Navbar() {
   };
 
   return (
-    <nav className="sticky top-0 z-30 border-b border-gray-200 bg-white/95 backdrop-blur-xl dark:border-gray-800 dark:bg-gray-950/95">
+    <nav className="sticky top-0 z-[60] border-b border-gray-200 bg-white/95 backdrop-blur-xl dark:border-gray-800 dark:bg-gray-950/95">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex h-14 justify-between md:h-16">
           
@@ -602,7 +602,7 @@ export default function Navbar() {
       </div>
 
       {notificacoesAberto && (
-        <div className="fixed inset-x-0 bottom-0 top-14 z-50 overflow-hidden rounded-t-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-950 md:absolute md:inset-x-auto md:bottom-auto md:right-8 md:top-[4.5rem] md:max-h-[calc(100vh-6rem)] md:w-[calc(100vw-2rem)] md:max-w-md md:rounded-lg">
+        <div className="fixed inset-x-0 bottom-0 top-14 z-[70] overflow-hidden rounded-t-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-950 md:absolute md:inset-x-auto md:bottom-auto md:right-8 md:top-[4.5rem] md:max-h-[calc(100vh-6rem)] md:w-[calc(100vw-2rem)] md:max-w-md md:rounded-lg">
           <div className="flex items-start justify-between gap-3 border-b border-gray-100 px-5 py-4 dark:border-gray-800">
             <div>
               <h2 className="text-base font-bold text-gray-950 dark:text-white">Notificações</h2>
@@ -669,7 +669,7 @@ export default function Navbar() {
       )}
 
       {perfilAberto && (
-        <div className="fixed inset-x-0 bottom-0 top-14 z-50 overflow-hidden rounded-t-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-950 md:absolute md:inset-x-auto md:bottom-auto md:right-8 md:top-[4.5rem] md:w-[calc(100vw-2rem)] md:max-w-xl md:rounded-lg">
+        <div className="fixed inset-x-0 bottom-0 top-14 z-[70] overflow-hidden rounded-t-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-950 md:absolute md:inset-x-auto md:bottom-auto md:right-8 md:top-[4.5rem] md:w-[calc(100vw-2rem)] md:max-w-xl md:rounded-lg">
           <div className="flex items-start justify-between gap-4 border-b border-gray-100 px-5 py-4 dark:border-gray-800">
             <div className="flex min-w-0 items-center gap-3">
               <button
