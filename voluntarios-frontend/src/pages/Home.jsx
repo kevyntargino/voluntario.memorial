@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Bell, CalendarDays, ClipboardList, LogOut } from 'lucide-react';
+import { ArrowRight, Bell, CalendarDays, ClipboardList, LogOut } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import { Footer } from '../components/Footer';
 import { useAuth } from '../context/AuthContext';
@@ -122,30 +122,30 @@ export default function Home() {
   ]), [totalAvisos, totalConfirmacoesPendentes]);
 
   return (
-    <div className="flex min-h-screen flex-col bg-[radial-gradient(circle_at_top,_rgba(15,23,42,0.08),_transparent_34%),linear-gradient(180deg,#f8fafc_0%,#eef2f7_100%)] text-gray-900">
+    <div className="app-page">
       <Navbar />
 
-      <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-10 sm:px-6 lg:px-8">
-        <section className="overflow-hidden rounded-[2rem] border border-black/5 bg-white/80 shadow-[0_30px_100px_rgba(17,24,39,0.12)] backdrop-blur">
-          <div className="grid gap-10 px-6 py-8 lg:grid-cols-[1.3fr_0.9fr] lg:px-10 lg:py-12">
+      <main className="app-main">
+        <section className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <div className="grid gap-8 px-5 py-6 sm:px-7 lg:grid-cols-[1.4fr_0.8fr] lg:px-9 lg:py-9">
             <div>
-              <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-gray-700">
+              <span className="inline-flex items-center gap-2 text-xs font-semibold uppercase text-dourado-700 dark:text-dourado-300">
                 <img src={logo} alt="MCom" className="mr-2 h-5 w-5 object-contain" />
                 Portal do voluntário
               </span>
 
-              <h1 className="mt-5 max-w-2xl text-4xl font-bold tracking-tight text-gray-950 sm:text-5xl">
+              <h1 className="mt-4 max-w-2xl text-2xl font-bold text-gray-950 dark:text-white sm:text-3xl">
                 Bem-vindo, {usuario?.nomeCompleto || 'voluntário'}.
               </h1>
 
-              <p className="mt-4 max-w-2xl text-base leading-7 text-gray-600 sm:text-lg">
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-gray-600 dark:text-gray-300 sm:text-base">
                 Aqui está um panorama rápido da sua conta. Use este espaço como ponto de partida para ver escalas, avisos e tarefas importantes.
               </p>
 
             </div>
 
-            <aside className="rounded-[1.75rem] border border-gray-200/70 bg-gradient-to-br from-gray-950 to-gray-800 p-6 text-white shadow-2xl shadow-gray-950/20">
-              <p className="text-sm font-medium uppercase tracking-[0.25em] text-gray-300">
+            <aside className="rounded-lg border border-gray-800 bg-gray-950 p-5 text-white dark:bg-gray-950">
+              <p className="text-xs font-semibold uppercase text-gray-400">
                 Sessão ativa
               </p>
               <div className="mt-6 space-y-5">
@@ -166,7 +166,7 @@ export default function Home() {
                 </div>
               </div>
 
-              <button onClick={handleLogout} className="mt-8 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/15">
+              <button onClick={handleLogout} className="mt-6 inline-flex items-center gap-2 rounded-md border border-white/15 px-3 py-2 text-sm font-semibold text-white transition hover:bg-white/10">
                 <LogOut size={16} />
                 Sair da sessão
               </button>
@@ -174,20 +174,21 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="mt-8 grid gap-4 md:grid-cols-3">
+        <section className="mt-5 grid gap-3 md:grid-cols-3">
           {cards.map((card) => {
             const Icon = card.icon;
 
             return (
-              <article key={card.title} className="rounded-[1.5rem] border border-white/60 bg-white/90 p-6 shadow-lg shadow-gray-900/5">
+              <article key={card.title} className="flex min-h-[190px] flex-col rounded-lg border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
                 <div className="flex items-center justify-between">
-                  <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">{card.title}</p>
-                  <Icon className="h-5 w-5 text-gray-500" />
+                  <p className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">{card.title}</p>
+                  <span className="grid h-8 w-8 place-items-center rounded-md bg-dourado-50 text-dourado-700 dark:bg-gray-800 dark:text-dourado-300"><Icon className="h-4 w-4" /></span>
                 </div>
-                <p className="mt-4 text-4xl font-bold text-gray-950">{card.value}</p>
-                <p className="mt-3 text-sm leading-6 text-gray-600">{card.description}</p>
-                <button onClick={() => navigate(card.path)} className="mt-5 text-sm font-semibold text-gray-700 transition hover:text-gray-950">
+                <p className="mt-3 text-3xl font-bold text-gray-950 dark:text-white">{card.value}</p>
+                <p className="mt-2 flex-1 text-sm leading-5 text-gray-600 dark:text-gray-300">{card.description}</p>
+                <button onClick={() => navigate(card.path)} className="mt-4 inline-flex items-center gap-1.5 self-start text-sm font-semibold text-dourado-700 transition hover:text-dourado-900 dark:text-dourado-300">
                   {card.action}
+                  <ArrowRight size={15} />
                 </button>
               </article>
             );

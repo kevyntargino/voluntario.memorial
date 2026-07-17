@@ -469,7 +469,7 @@ router.patch('/me', autenticar, async (req, res) => {
       return res.status(400).json({ erro: 'Nome completo deve ter pelo menos 3 caracteres.' });
     }
 
-    const sexosPermitidos = ['MASCULINO', 'FEMININO', 'OUTRO', 'PREFIRO_NAO_INFORMAR'];
+    const sexosPermitidos = ['MASCULINO', 'FEMININO'];
 
     if (sexo && !sexosPermitidos.includes(sexo)) {
       return res.status(400).json({ erro: 'Sexo informado é inválido.' });

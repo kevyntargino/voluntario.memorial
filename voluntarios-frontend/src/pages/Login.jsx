@@ -72,20 +72,21 @@ export default function Login() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-gray-50 font-sans text-gray-900">
-      <main className="flex flex-1 flex-col justify-center px-4 py-12 sm:px-6 lg:px-8">
+    <div className="app-page">
+      <main className="flex flex-1 flex-col justify-center px-5 py-10 sm:px-6">
       
       {/* Cabeçalho */}
-      <div className="sm:mx-auto sm:w-full sm:max-w-md text-center mb-8">
-        <img src={logo} alt="MCom" className="mx-auto h-24 w-24 object-contain" />
-        <p className="mt-2 text-sm text-gray-500">
+      <div className="mb-7 text-center sm:mx-auto sm:w-full sm:max-w-sm">
+        <img src={logo} alt="MCom" className="mx-auto h-16 w-16 object-contain" />
+        <h1 className="mt-3 text-xl font-bold text-gray-950 dark:text-white">Portal do Voluntário</h1>
+        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
           Acesso ao Portal do Voluntário
         </p>
       </div>
 
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
+      <div className="sm:mx-auto sm:w-full sm:max-w-sm">
         {/* Card Principal */}
-        <div className="bg-white py-8 px-4 shadow-xl shadow-gray-200/50 sm:rounded-2xl sm:px-10 border border-gray-100">
+        <div className="rounded-lg border border-gray-200 bg-white px-5 py-6 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:px-7">
           <form className="space-y-6" onSubmit={handleLogin}>
             
             {/* Mensagem de Erro */}
@@ -110,7 +111,7 @@ export default function Login() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   disabled={carregando}
-                  className="block w-full pl-10 pr-3 py-2.5 border border-gray-200 rounded-lg bg-gray-50/50 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-black focus:border-black sm:text-sm transition-all disabled:opacity-50"
+                  className="block w-full rounded-md border border-gray-300 bg-white py-2.5 pl-10 pr-3 placeholder-gray-400 transition disabled:opacity-50 dark:border-gray-700 dark:bg-gray-950 sm:text-sm"
                   placeholder="seu@email.com"
                 />
               </div>
@@ -131,7 +132,7 @@ export default function Login() {
                   value={senha}
                   onChange={(e) => setSenha(e.target.value)}
                   disabled={carregando}
-                  className="block w-full pl-10 pr-10 py-2.5 border border-gray-200 rounded-lg bg-gray-50/50 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-black focus:border-black sm:text-sm transition-all disabled:opacity-50"
+                  className="block w-full rounded-md border border-gray-300 bg-white py-2.5 pl-10 pr-10 placeholder-gray-400 transition disabled:opacity-50 dark:border-gray-700 dark:bg-gray-950 sm:text-sm"
                   placeholder="••••••••"
                 />
                 <button
@@ -156,7 +157,7 @@ export default function Login() {
             <button
               type="submit"
               disabled={carregando}
-              className="w-full flex justify-center items-center gap-2 py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-black hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+              className="flex w-full items-center justify-center gap-2 rounded-md border border-transparent bg-dourado-700 px-4 py-3 text-sm font-semibold text-white transition hover:bg-dourado-800 disabled:cursor-not-allowed disabled:opacity-70"
             >
               {carregando ? (
                 <>
@@ -179,14 +180,14 @@ export default function Login() {
                 <div className="w-full border-t border-gray-100" />
               </div>
               <div className="relative flex justify-center text-sm">
-                <span className="px-3 bg-white text-gray-400">Novo por aqui?</span>
+                <span className="bg-white px-3 text-gray-400 dark:bg-gray-900">Novo por aqui?</span>
               </div>
             </div>
 
             <div className="mt-6">
               <button
                 type="button"
-                className="w-full flex justify-center py-2.5 px-4 border border-gray-200 rounded-lg shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-all"
+                className="flex w-full justify-center rounded-md border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
               >
                 Criar uma conta
               </button>

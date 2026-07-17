@@ -12,8 +12,6 @@ const sexoOptions = [
   { value: '', label: 'Não informado' },
   { value: 'MASCULINO', label: 'Masculino' },
   { value: 'FEMININO', label: 'Feminino' },
-  { value: 'OUTRO', label: 'Outro' },
-  { value: 'PREFIRO_NAO_INFORMAR', label: 'Prefiro não informar' },
 ];
 
 function criarFormUsuario(usuario) {
@@ -500,20 +498,20 @@ export default function Navbar() {
   };
 
   return (
-    <nav className="sticky top-0 z-30 border-b border-white/60 bg-white/85 shadow-sm backdrop-blur dark:border-gray-800 dark:bg-gray-950/95 dark:shadow-black/30">
+    <nav className="sticky top-0 z-30 border-b border-gray-200 bg-white/95 backdrop-blur-xl dark:border-gray-800 dark:bg-gray-950/95">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between h-16">
+        <div className="flex h-14 justify-between md:h-16">
           
           {/* Logo / Título */}
           <div className="flex items-center">
             <button type="button" onClick={() => navigate('/')} className="flex items-center gap-2">
-              <img src={logo} alt="MCom" className="h-10 w-10 rounded-xl object-contain" />
-              <span className="font-serif text-2xl font-bold text-gray-950 dark:text-white">MCom</span>
+              <img src={logo} alt="MCom" className="h-8 w-8 object-contain md:h-9 md:w-9" />
+              <span className="text-lg font-bold text-gray-950 dark:text-white md:text-xl">MCom</span>
             </button>
           </div>
 
           {/* Links de Navegação - Desktop */}
-          <div className="hidden md:flex md:items-center md:space-x-8">
+          <div className="hidden md:flex md:items-center md:gap-7">
             <button type="button" onClick={() => irPara('/')} className="font-sans text-gray-600 hover:text-gray-950 transition-colors font-medium dark:text-gray-300 dark:hover:text-white">
               Início
             </button>
@@ -604,7 +602,7 @@ export default function Navbar() {
       </div>
 
       {notificacoesAberto && (
-        <div className="absolute right-4 top-[4.5rem] z-50 w-[calc(100vw-2rem)] max-w-md overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-950 dark:shadow-black/40 md:right-8">
+        <div className="fixed inset-x-0 bottom-0 top-14 z-50 overflow-hidden rounded-t-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-950 md:absolute md:inset-x-auto md:bottom-auto md:right-8 md:top-[4.5rem] md:max-h-[calc(100vh-6rem)] md:w-[calc(100vw-2rem)] md:max-w-md md:rounded-lg">
           <div className="flex items-start justify-between gap-3 border-b border-gray-100 px-5 py-4 dark:border-gray-800">
             <div>
               <h2 className="text-base font-bold text-gray-950 dark:text-white">Notificações</h2>
@@ -628,7 +626,7 @@ export default function Navbar() {
             </div>
           </div>
 
-          <div className="max-h-[70vh] overflow-y-auto">
+          <div className="max-h-[calc(100vh-8rem)] overflow-y-auto md:max-h-[70vh]">
             {carregandoNotificacoes && notificacoes.length === 0 ? (
               <div className="flex items-center gap-2 px-5 py-8 text-sm text-gray-500 dark:text-gray-400">
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -671,7 +669,7 @@ export default function Navbar() {
       )}
 
       {perfilAberto && (
-        <div className="absolute right-4 top-[4.5rem] z-50 w-[calc(100vw-2rem)] max-w-xl overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-950 dark:shadow-black/40 md:right-8">
+        <div className="fixed inset-x-0 bottom-0 top-14 z-50 overflow-hidden rounded-t-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-950 md:absolute md:inset-x-auto md:bottom-auto md:right-8 md:top-[4.5rem] md:w-[calc(100vw-2rem)] md:max-w-xl md:rounded-lg">
           <div className="flex items-start justify-between gap-4 border-b border-gray-100 px-5 py-4 dark:border-gray-800">
             <div className="flex min-w-0 items-center gap-3">
               <button

@@ -13,8 +13,6 @@ const sexoOptions = [
   { value: '', label: 'Não informado' },
   { value: 'MASCULINO', label: 'Masculino' },
   { value: 'FEMININO', label: 'Feminino' },
-  { value: 'OUTRO', label: 'Outro' },
-  { value: 'PREFIRO_NAO_INFORMAR', label: 'Prefiro não informar' },
 ];
 
 function createFormState(usuario) {

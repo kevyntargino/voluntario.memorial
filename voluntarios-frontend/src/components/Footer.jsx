@@ -2,16 +2,13 @@ import logo from '../assets/ico.png';
 
 export function Footer() {
   return (
-    <footer className="bg-white border-t border-gray-200 shadow-sm mt-auto">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 text-center">
-        <div className="mb-2 flex items-center justify-center gap-2">
-          <img src={logo} alt="MCom" className="h-7 w-7 object-contain" />
-          <span className="text-sm font-bold text-gray-800">MCom</span>
+    <footer className="mt-auto hidden border-t border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-950 md:block">
+      <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-6 py-4 lg:px-8">
+        <div className="flex items-center gap-2">
+          <img src={logo} alt="MCom" className="h-6 w-6 object-contain" />
+          <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">MCom &copy; {new Date().getFullYear()}</span>
         </div>
-        <p className="text-sm text-gray-500">
-          &copy; {new Date().getFullYear()} MCom. Todos os direitos reservados.
-        </p>
-        <p className="text-sm text-gray-500">
+        <p className="text-xs text-gray-500 dark:text-gray-400">
           Desenvolvido por <a href="https://www.linkedin.com/in/kevyntargino/" target="_blank" rel="noopener noreferrer" className="text-dourado-600 hover:text-dourado-800 transition-colors">Kevyn Targino</a>
         </p>
       </div>

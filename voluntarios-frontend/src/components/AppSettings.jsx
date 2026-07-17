@@ -182,11 +182,11 @@ export function AppSettings() {
   }
 
   return (
-    <div className="fixed inset-0 z-[70] bg-gray-950/50 px-4 py-5 backdrop-blur-sm md:hidden">
-      <div className="mx-auto flex h-full max-w-md flex-col overflow-hidden rounded-[2rem] border border-gray-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-950">
+    <div className="fixed inset-0 z-[70] bg-gray-950/50 pt-14 backdrop-blur-sm md:hidden">
+      <div className="mx-auto flex h-full max-w-md flex-col overflow-hidden rounded-t-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-950">
         <div className="flex items-start justify-between gap-4 border-b border-gray-100 px-5 py-5 dark:border-gray-800">
           <div>
-            <span className="inline-flex items-center gap-2 rounded-full bg-gray-100 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-gray-600 dark:bg-gray-900 dark:text-gray-300">
+            <span className="inline-flex items-center gap-2 text-[11px] font-bold uppercase text-dourado-700 dark:text-dourado-300">
               <Settings size={13} />
               App MCom
             </span>
@@ -204,9 +204,9 @@ export function AppSettings() {
         </div>
 
         <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
-          <section className="rounded-3xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-900">
+          <section className="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-900">
             <div className="flex items-center gap-3">
-              <div className="grid h-11 w-11 place-items-center rounded-2xl bg-white text-gray-900 dark:bg-gray-950 dark:text-white">
+              <div className="grid h-10 w-10 place-items-center rounded-md bg-white text-gray-900 dark:bg-gray-950 dark:text-white">
                 {tema === 'escuro' ? <Moon size={20} /> : <Sun size={20} />}
               </div>
               <div>
@@ -214,7 +214,7 @@ export function AppSettings() {
                 <p className="text-xs text-gray-500 dark:text-gray-400">Escolha o modo visual do app.</p>
               </div>
             </div>
-            <div className="mt-4 grid grid-cols-2 gap-2 rounded-2xl bg-white p-1 dark:bg-gray-950">
+            <div className="mt-4 grid grid-cols-2 gap-1 rounded-md bg-white p-1 dark:bg-gray-950">
               {[
                 { value: 'claro', label: 'Claro' },
                 { value: 'escuro', label: 'Escuro' },
@@ -223,7 +223,7 @@ export function AppSettings() {
                   key={option.value}
                   type="button"
                   onClick={() => alterarTema(option.value)}
-                  className={`rounded-xl px-3 py-2 text-sm font-bold transition ${
+                  className={`rounded px-3 py-2 text-sm font-semibold transition ${
                     tema === option.value
                       ? 'border border-gray-300 bg-gray-950 text-white dark:border-gray-600 dark:bg-gray-900 dark:text-white'
                       : 'border border-transparent text-gray-500 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-900'
@@ -235,9 +235,9 @@ export function AppSettings() {
             </div>
           </section>
 
-          <section className="rounded-3xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-900">
+          <section className="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-900">
             <div className="flex items-center gap-3">
-              <div className="grid h-11 w-11 place-items-center rounded-2xl bg-white text-gray-900 dark:bg-gray-950 dark:text-white">
+              <div className="grid h-10 w-10 place-items-center rounded-md bg-white text-gray-900 dark:bg-gray-950 dark:text-white">
                 <BellRing size={20} />
               </div>
               <div>
@@ -248,7 +248,7 @@ export function AppSettings() {
               </div>
             </div>
 
-            <div className="mt-4 rounded-2xl border border-gray-200 bg-white p-3 text-xs text-gray-600 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-300">
+            <div className="mt-4 rounded-md border border-gray-200 bg-white p-3 text-xs text-gray-600 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-300">
               <div className="flex items-center gap-2">
                 <Smartphone size={15} />
                 <span className="font-semibold">
@@ -264,7 +264,7 @@ export function AppSettings() {
               type="button"
               disabled={carregandoPush || permissaoPush === 'unsupported'}
               onClick={pushAtivo ? desativarPush : ativarPush}
-              className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gray-950 px-4 py-3 text-sm font-bold text-white transition hover:bg-gray-800 disabled:opacity-60 dark:bg-white dark:text-gray-950 dark:hover:bg-gray-200"
+              className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-md bg-dourado-700 px-4 py-3 text-sm font-semibold text-white transition hover:bg-dourado-800 disabled:opacity-60"
             >
               {carregandoPush ? <Loader2 className="h-4 w-4 animate-spin" /> : <BellRing size={16} />}
               {pushAtivo ? 'Desativar notificações neste aparelho' : 'Ativar notificações'}
