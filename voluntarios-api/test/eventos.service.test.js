@@ -6,6 +6,7 @@ import {
   gerarDatasEvento,
   getInicioHistoricoEscalas,
   getLimiteEscalasFuturas,
+  sincronizarModeloVoluntariosEscala,
 } from '../services/eventos.service.js';
 
 test('evento sem repetição gera somente a data inicial', () => {
@@ -148,4 +149,143 @@ test('modelo mensal aplica voluntários por semana do mês em escalas vazias', a
   ]);
   assert(participacoesCriadas.every((item) => item.status === 'PENDENTE'));
   assert(participacoesCriadas.every((item) => item.atribuidoPorId === 'admin-1'));
+});
+
+test('atribuição do líder atualiza modelo e preenche ocorrências futuras da mesma semana', async () => {
+  let modeloDeleteWhere;
+  let modeloData = [];
+  let escalaWhere;
+  let participacaoDeleteWhere;
+  let participacoesCriadas = [];
+  const prisma = {
+    escalaModeloVoluntario: {
+      deleteMany: async ({ where }) => {
+        modeloDeleteWhere = where;
+        return { count: 1 };
+      },
+      createMany: async ({ data }) => {
+        modeloData = data;
+        return { count: data.length };
+      },
+    },
+    escala: {
+      findMany: async ({ where }) => {
+        escalaWhere = where;
+        return [
+          { id: 'escala-setembro-semana-1', dataHora: new Date('2026-09-06T18:00:00.000Z') },
+          { id: 'escala-agosto-semana-2', dataHora: new Date('2026-08-09T18:00:00.000Z') },
+          { id: 'escala-outubro-semana-1', dataHora: new Date('2026-10-04T18:00:00.000Z') },
+        ];
+      },
+    },
+    voluntarioEscala: {
+      deleteMany: async ({ where }) => {
+        participacaoDeleteWhere = where;
+        return { count: 1 };
+      },
+      createMany: async ({ data }) => {
+        participacoesCriadas = data;
+        return { count: data.length };
+      },
+    },
+  };
+
+  const resultado = await sincronizarModeloVoluntariosEscala(prisma, {
+    eventoId: 'evento-1',
+    equipeId: 'equipe-1',
+    dataHora: new Date('2026-08-02T18:00:00.000Z'),
+    voluntarioIds: ['ana', 'caio', 'ana', ''],
+    atribuidoPorId: 'lider-1',
+  });
+
+  assert.deepEqual(resultado, {
+    modelosCriados: 2,
+    escalasSincronizadas: 2,
+    participacoesCriadas: 4,
+  });
+  assert.deepEqual(modeloDeleteWhere, {
+    eventoId: 'evento-1',
+    equipeId: 'equipe-1',
+    semanaMes: 1,
+    usuarioId: { notIn: ['ana', 'caio'] },
+  });
+  assert.deepEqual(modeloData.map(({ id, ...item }) => item), [
+    { eventoId: 'evento-1', equipeId: 'equipe-1', semanaMes: 1, usuarioId: 'ana' },
+    { eventoId: 'evento-1', equipeId: 'equipe-1', semanaMes: 1, usuarioId: 'caio' },
+  ]);
+  assert.deepEqual(escalaWhere, {
+    eventoId: 'evento-1',
+    equipeId: 'equipe-1',
+    dataHora: { gt: new Date('2026-08-02T18:00:00.000Z') },
+  });
+  assert.deepEqual(participacaoDeleteWhere, {
+    escalaId: { in: ['escala-setembro-semana-1', 'escala-outubro-semana-1'] },
+    usuarioId: { notIn: ['ana', 'caio'] },
+  });
+  assert.deepEqual(participacoesCriadas.map((item) => [item.escalaId, item.usuarioId]), [
+    ['escala-setembro-semana-1', 'ana'],
+    ['escala-setembro-semana-1', 'caio'],
+    ['escala-outubro-semana-1', 'ana'],
+    ['escala-outubro-semana-1', 'caio'],
+  ]);
+  assert(participacoesCriadas.every((item) => item.status === 'PENDENTE'));
+  assert(participacoesCriadas.every((item) => item.atribuidoPorId === 'lider-1'));
+});
+
+test('atribuição vazia limpa modelo e participações futuras da mesma semana', async () => {
+  let modeloDeleteWhere;
+  let modeloCreateChamado = false;
+  let participacaoDeleteWhere;
+  let participacaoCreateChamado = false;
+  const prisma = {
+    escalaModeloVoluntario: {
+      deleteMany: async ({ where }) => {
+        modeloDeleteWhere = where;
+        return { count: 2 };
+      },
+      createMany: async () => {
+        modeloCreateChamado = true;
+        return { count: 0 };
+      },
+    },
+    escala: {
+      findMany: async () => [
+        { id: 'escala-setembro-semana-1', dataHora: new Date('2026-09-06T18:00:00.000Z') },
+        { id: 'escala-agosto-semana-2', dataHora: new Date('2026-08-09T18:00:00.000Z') },
+      ],
+    },
+    voluntarioEscala: {
+      deleteMany: async ({ where }) => {
+        participacaoDeleteWhere = where;
+        return { count: 3 };
+      },
+      createMany: async () => {
+        participacaoCreateChamado = true;
+        return { count: 0 };
+      },
+    },
+  };
+
+  const resultado = await sincronizarModeloVoluntariosEscala(prisma, {
+    eventoId: 'evento-1',
+    equipeId: 'equipe-1',
+    dataHora: new Date('2026-08-02T18:00:00.000Z'),
+    voluntarioIds: [],
+  });
+
+  assert.deepEqual(resultado, {
+    modelosCriados: 0,
+    escalasSincronizadas: 1,
+    participacoesCriadas: 0,
+  });
+  assert.deepEqual(modeloDeleteWhere, {
+    eventoId: 'evento-1',
+    equipeId: 'equipe-1',
+    semanaMes: 1,
+  });
+  assert.equal(modeloCreateChamado, false);
+  assert.deepEqual(participacaoDeleteWhere, {
+    escalaId: { in: ['escala-setembro-semana-1'] },
+  });
+  assert.equal(participacaoCreateChamado, false);
 });

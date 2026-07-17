@@ -6,7 +6,10 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import { notificarSubstituto } from '../services/notificacoes.service.js';
 import { normalizarTelefone } from '../utils/telefone.js';
-import { garantirOcorrenciasEventos } from '../services/eventos.service.js';
+import {
+  garantirOcorrenciasEventos,
+  sincronizarModeloVoluntariosEscala,
+} from '../services/eventos.service.js';
 import { escalaEstaEncerrada, getAgoraEscalas } from '../utils/escalas.js';
 
 const pool = new Pool({
@@ -608,7 +611,16 @@ router.patch('/:equipeId/escalas/:escalaId', autenticar, async (req, res) => {
         id: req.params.escalaId,
         equipeId: req.params.equipeId,
       },
-      select: { id: true, dataHora: true },
+      select: {
+        id: true,
+        dataHora: true,
+        eventoId: true,
+        evento: {
+          select: {
+            frequencia: true,
+          },
+        },
+      },
     });
 
     if (!escalaExistente) {
@@ -631,48 +643,69 @@ router.patch('/:equipeId/escalas/:escalaId', autenticar, async (req, res) => {
     const voluntarioIdsValidos = Array.from(new Set(voluntarioIds)).filter((id) => idsPermitidos.has(id));
     const substitutoIdsValidos = Array.from(new Set(substitutoIds)).filter((id) => voluntarioIdsValidos.includes(id));
 
-    await prisma.voluntarioEscala.deleteMany({
-      where: {
-        escalaId: req.params.escalaId,
-        usuarioId: {
-          notIn: voluntarioIdsValidos,
-        },
-      },
-    });
-
-    for (const usuarioId of voluntarioIdsValidos) {
-      const participacao = await prisma.voluntarioEscala.upsert({
+    const participacoesSubstitutos = await prisma.$transaction(async (tx) => {
+      await tx.voluntarioEscala.deleteMany({
         where: {
-          usuarioId_escalaId: {
-            usuarioId,
-            escalaId: req.params.escalaId,
-          },
-        },
-        update: {
-          substituto: substitutoIdsValidos.includes(usuarioId),
-        },
-        create: {
-          usuarioId,
           escalaId: req.params.escalaId,
-          substituto: substitutoIdsValidos.includes(usuarioId),
-          atribuidoPorId: req.usuarioAutenticado.id,
-        },
-        include: {
-          escala: {
-            include: {
-              equipe: {
-                select: { id: true, nome: true },
-              },
-            },
+          usuarioId: {
+            notIn: voluntarioIdsValidos,
           },
         },
       });
 
-      if (substitutoIdsValidos.includes(usuarioId)) {
-        await notificarSubstituto(prisma, { participacao }).catch((notificationError) => {
-          console.warn('[WARN] Falha ao notificar substituto:', notificationError.message);
+      const substitutosParaNotificar = [];
+
+      for (const usuarioId of voluntarioIdsValidos) {
+        const participacao = await tx.voluntarioEscala.upsert({
+          where: {
+            usuarioId_escalaId: {
+              usuarioId,
+              escalaId: req.params.escalaId,
+            },
+          },
+          update: {
+            substituto: substitutoIdsValidos.includes(usuarioId),
+          },
+          create: {
+            usuarioId,
+            escalaId: req.params.escalaId,
+            substituto: substitutoIdsValidos.includes(usuarioId),
+            atribuidoPorId: req.usuarioAutenticado.id,
+            dataOcorrenciaStatus: escalaExistente.dataHora,
+          },
+          include: {
+            escala: {
+              include: {
+                equipe: {
+                  select: { id: true, nome: true },
+                },
+              },
+            },
+          },
+        });
+
+        if (substitutoIdsValidos.includes(usuarioId)) {
+          substitutosParaNotificar.push(participacao);
+        }
+      }
+
+      if (escalaExistente.eventoId && escalaExistente.evento?.frequencia !== 'NAO_REPETE') {
+        await sincronizarModeloVoluntariosEscala(tx, {
+          eventoId: escalaExistente.eventoId,
+          equipeId: req.params.equipeId,
+          dataHora: escalaExistente.dataHora,
+          voluntarioIds: voluntarioIdsValidos,
+          atribuidoPorId: req.usuarioAutenticado.id,
         });
       }
+
+      return substitutosParaNotificar;
+    });
+
+    for (const participacao of participacoesSubstitutos) {
+      await notificarSubstituto(prisma, { participacao }).catch((notificationError) => {
+        console.warn('[WARN] Falha ao notificar substituto:', notificationError.message);
+      });
     }
 
     const equipe = await carregarEquipe(req.params.equipeId, usuario);

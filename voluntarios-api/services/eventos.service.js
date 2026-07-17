@@ -22,8 +22,14 @@ function dataUtc(ano, mes, dia, horas, minutos) {
   return new Date(Date.UTC(ano, mes, dia, horas, minutos, 0, 0));
 }
 
-function getSemanaMes(data) {
+export function getSemanaMes(data) {
   return Math.ceil(data.getUTCDate() / 7);
+}
+
+function normalizarUsuarioIds(usuarioIds) {
+  if (!Array.isArray(usuarioIds)) return [];
+
+  return Array.from(new Set(usuarioIds.filter(Boolean).map(String)));
 }
 
 function ocorrenciaMensal(ano, mes, diaSemana, semanaMes, horas, minutos) {
@@ -146,6 +152,96 @@ export async function aplicarModelosVoluntariosEscalas(prisma, { eventoId, datas
   });
 
   return resultado.count;
+}
+
+export async function sincronizarModeloVoluntariosEscala(
+  prisma,
+  { eventoId, equipeId, dataHora, voluntarioIds = [], atribuidoPorId = null },
+) {
+  const dataBase = new Date(dataHora);
+
+  if (!eventoId || !equipeId || Number.isNaN(dataBase.getTime())) {
+    return { modelosCriados: 0, escalasSincronizadas: 0, participacoesCriadas: 0 };
+  }
+
+  const semanaMes = getSemanaMes(dataBase);
+  const usuarioIds = normalizarUsuarioIds(voluntarioIds);
+
+  await prisma.escalaModeloVoluntario.deleteMany({
+    where: {
+      eventoId,
+      equipeId,
+      semanaMes,
+      ...(usuarioIds.length > 0 ? { usuarioId: { notIn: usuarioIds } } : {}),
+    },
+  });
+
+  const modelosCriados = usuarioIds.length > 0
+    ? await prisma.escalaModeloVoluntario.createMany({
+        data: usuarioIds.map((usuarioId) => ({
+          id: randomUUID(),
+          eventoId,
+          equipeId,
+          semanaMes,
+          usuarioId,
+        })),
+        skipDuplicates: true,
+      })
+    : { count: 0 };
+
+  const escalasFuturas = await prisma.escala.findMany({
+    where: {
+      eventoId,
+      equipeId,
+      dataHora: { gt: dataBase },
+    },
+    select: {
+      id: true,
+      dataHora: true,
+    },
+  });
+  const escalasDoModelo = escalasFuturas.filter((escala) => (
+    escala.dataHora && getSemanaMes(escala.dataHora) === semanaMes
+  ));
+  const escalaIds = escalasDoModelo.map((escala) => escala.id);
+
+  if (escalaIds.length === 0) {
+    return {
+      modelosCriados: modelosCriados.count,
+      escalasSincronizadas: 0,
+      participacoesCriadas: 0,
+    };
+  }
+
+  await prisma.voluntarioEscala.deleteMany({
+    where: {
+      escalaId: { in: escalaIds },
+      ...(usuarioIds.length > 0 ? { usuarioId: { notIn: usuarioIds } } : {}),
+    },
+  });
+
+  const participacoes = escalasDoModelo.flatMap((escala) => (
+    usuarioIds.map((usuarioId) => ({
+      usuarioId,
+      escalaId: escala.id,
+      atribuidoPorId,
+      status: 'PENDENTE',
+      dataOcorrenciaStatus: escala.dataHora,
+    }))
+  ));
+
+  const participacoesCriadas = participacoes.length > 0
+    ? await prisma.voluntarioEscala.createMany({
+        data: participacoes,
+        skipDuplicates: true,
+      })
+    : { count: 0 };
+
+  return {
+    modelosCriados: modelosCriados.count,
+    escalasSincronizadas: escalasDoModelo.length,
+    participacoesCriadas: participacoesCriadas.count,
+  };
 }
 
 export async function garantirOcorrenciasEventos(prisma, agora = new Date()) {
