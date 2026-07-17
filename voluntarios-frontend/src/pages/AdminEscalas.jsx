@@ -63,9 +63,7 @@ const formEscalaInicial = {
   tipo: 'ESPORADICA',
   frequencia: 'NAO_REPETE',
   titulo: '',
-  data: '',
-  dataFim: '',
-  horarios: ['09:00'],
+  dataHora: '',
   diaSemana: 0,
   semanaMes: 1,
   horario: '18:00',
@@ -171,10 +169,6 @@ function getUtcDateParts(dataHora) {
   };
 }
 
-function criarDataHoraInput(data, horario) {
-  return `${data}T${horario}`;
-}
-
 function criarOcorrenciasDosEventos(eventos) {
   return eventos.flatMap((evento) => {
     const ocorrencias = new Map();
@@ -218,14 +212,6 @@ function parseDataHoraInput(dataHora) {
   }
 
   return data;
-}
-
-function hojeParaInput() {
-  const hoje = new Date();
-  const ano = hoje.getFullYear();
-  const mes = String(hoje.getMonth() + 1).padStart(2, '0');
-  const dia = String(hoje.getDate()).padStart(2, '0');
-  return `${ano}-${mes}-${dia}`;
 }
 
 function agoraComoDataHoraInput() {
@@ -873,33 +859,42 @@ export default function AdminEscalas() {
     try {
       const recorrente = formEscala.tipo === 'RECORRENTE';
       const endpoint = '/api/escalas/admin/eventos';
-      let body = formEscala;
+      let body;
 
-      if (!recorrente && formEscala.frequencia === 'NAO_REPETE') {
-        const dataHoras = (formEscala.horarios || [])
-          .filter((horario) => horario)
-          .map((horario) => criarDataHoraInput(formEscala.data, horario));
-        const datas = dataHoras.map(parseDataHoraInput);
-
-        if (!formEscala.data || datas.length === 0 || datas.some((data) => !data)) {
-          throw new Error('Informe uma data e pelo menos um horário válido.');
-        }
-
-        if (dataHoras.some((dataHora) => dataHora <= agoraComoDataHoraInput())) {
-          throw new Error('As escalas esporádicas devem ter data e horário futuros.');
-        }
+      if (recorrente) {
+        const frequencia = formEscala.frequencia === 'MENSAL' ? 'MENSAL' : 'SEMANAL';
 
         body = {
-          ...formEscala,
-          dataHoras,
+          titulo: formEscala.titulo,
+          tipo: 'RECORRENTE',
+          frequencia,
+          diaSemana: Number(formEscala.diaSemana),
+          semanaMes: frequencia === 'MENSAL' ? Number(formEscala.semanaMes) : null,
+          horario: formEscala.horario,
+          local: formEscala.local,
+          descricao: formEscala.descricao,
+          equipeIds: formEscala.equipeIds,
         };
-      } else if (!recorrente) {
-        if (!formEscala.data || !formEscala.dataFim) {
-          throw new Error('Informe as datas inicial e final do evento esporádico repetido.');
+      } else {
+        const data = parseDataHoraInput(formEscala.dataHora);
+        const agora = parseDataHoraInput(agoraComoDataHoraInput());
+
+        if (!data) {
+          throw new Error('Informe a data e o horário exatos da escala esporádica.');
         }
+
+        if (agora && data <= agora) {
+          throw new Error('A escala esporádica deve ter data e horário futuros.');
+        }
+
         body = {
-          ...formEscala,
-          dataHora: criarDataHoraInput(formEscala.data, formEscala.horario),
+          titulo: formEscala.titulo,
+          tipo: 'ESPORADICA',
+          frequencia: 'NAO_REPETE',
+          dataHora: formEscala.dataHora,
+          local: formEscala.local,
+          descricao: formEscala.descricao,
+          equipeIds: formEscala.equipeIds,
         };
       }
 
@@ -2476,7 +2471,9 @@ function PainelEscalas({
                         onClick={() => onChangeEscala((atual) => ({
                           ...atual,
                           tipo: opcao.value,
-                          frequencia: opcao.value === 'RECORRENTE' ? 'SEMANAL' : 'NAO_REPETE',
+                          frequencia: opcao.value === 'RECORRENTE'
+                            ? (atual.frequencia === 'MENSAL' ? 'MENSAL' : 'SEMANAL')
+                            : 'NAO_REPETE',
                         }))}
                         className={`rounded-md px-3 py-2 text-sm font-bold transition ${
                           formEscala.tipo === opcao.value ? 'bg-gray-950 text-white' : 'text-gray-600 hover:bg-white'
@@ -2490,87 +2487,42 @@ function PainelEscalas({
 
                 <Campo label="Nome do evento" value={formEscala.titulo} onChange={(value) => onChangeEscala((atual) => ({ ...atual, titulo: value }))} />
 
-                <div>
-                  <span className="text-sm font-semibold text-gray-700">Repetição</span>
-                  <div className={`mt-2 grid gap-2 rounded-lg border border-gray-200 bg-gray-50 p-1 ${formEscala.tipo === 'ESPORADICA' ? 'grid-cols-3' : 'grid-cols-2'}`}>
-                    {[
-                      ...(formEscala.tipo === 'ESPORADICA' ? [{ value: 'NAO_REPETE', label: 'Não repete' }] : []),
-                      { value: 'SEMANAL', label: 'Semanal' },
-                      { value: 'MENSAL', label: 'Mensal' },
-                    ].map((opcao) => (
-                      <button
-                        key={opcao.value}
-                        type="button"
-                        onClick={() => onChangeEscala((atual) => ({ ...atual, frequencia: opcao.value }))}
-                        className={`rounded-md px-2 py-2 text-sm font-bold transition ${formEscala.frequencia === opcao.value ? 'bg-gray-950 text-white' : 'text-gray-600 hover:bg-white'}`}
-                      >
-                        {opcao.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {formEscala.tipo === 'ESPORADICA' && formEscala.frequencia === 'NAO_REPETE' ? (
-                  <div>
-                    <Campo label="Data" type="date" min={hojeParaInput()} value={formEscala.data} onChange={(value) => onChangeEscala((atual) => ({ ...atual, data: value }))} />
-                    <div className="mt-4">
-                      <div className="mb-2 flex items-center justify-between gap-2">
-                        <span className="text-sm font-semibold text-gray-700">Horários</span>
-                        <button
-                          type="button"
-                          onClick={() => onChangeEscala((atual) => ({ ...atual, horarios: [...(atual.horarios || []), ''] }))}
-                          className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-bold text-gray-700 transition hover:bg-gray-50"
-                        >
-                          <Plus size={13} />
-                          Adicionar horário
-                        </button>
-                      </div>
-                      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                        {(formEscala.horarios || []).map((horario, index) => (
-                          <div key={index} className="flex gap-2">
-                            <input
-                              type="time"
-                              value={horario}
-                              onChange={(event) => onChangeEscala((atual) => ({
-                                ...atual,
-                                horarios: (atual.horarios || []).map((item, itemIndex) => (itemIndex === index ? event.target.value : item)),
-                              }))}
-                              className="block min-w-0 flex-1 rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
-                            />
-                            {(formEscala.horarios || []).length > 1 && (
-                              <button
-                                type="button"
-                                onClick={() => onChangeEscala((atual) => ({
-                                  ...atual,
-                                  horarios: (atual.horarios || []).filter((_, itemIndex) => itemIndex !== index),
-                                }))}
-                                className="rounded-md border border-red-100 bg-white px-2.5 text-red-600 transition hover:bg-red-50"
-                                title="Remover horário"
-                              >
-                                <Trash2 size={15} />
-                              </button>
-                            )}
-                          </div>
+                {formEscala.tipo === 'ESPORADICA' ? (
+                  <Campo
+                    label="Data exata"
+                    type="datetime-local"
+                    min={agoraComoDataHoraInput()}
+                    value={formEscala.dataHora}
+                    onChange={(value) => onChangeEscala((atual) => ({ ...atual, dataHora: value }))}
+                  />
+                ) : (
+                  <div className="space-y-3">
+                    <div>
+                      <span className="text-sm font-semibold text-gray-700">Recorrência</span>
+                      <div className="mt-2 grid grid-cols-2 gap-2 rounded-lg border border-gray-200 bg-gray-50 p-1">
+                        {[
+                          { value: 'SEMANAL', label: 'Semanal' },
+                          { value: 'MENSAL', label: 'Mensal' },
+                        ].map((opcao) => (
+                          <button
+                            key={opcao.value}
+                            type="button"
+                            onClick={() => onChangeEscala((atual) => ({ ...atual, frequencia: opcao.value }))}
+                            className={`rounded-md px-2 py-2 text-sm font-bold transition ${formEscala.frequencia === opcao.value ? 'bg-gray-950 text-white' : 'text-gray-600 hover:bg-white'}`}
+                          >
+                            {opcao.label}
+                          </button>
                         ))}
                       </div>
-                      <p className="mt-2 text-xs text-gray-500">Exemplo: adicione 09:00, 10:00, 17:00 e 19:00 para criar quatro escalas no mesmo dia.</p>
                     </div>
-                  </div>
-                ) : (
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                    {formEscala.tipo === 'ESPORADICA' && (
-                      <Campo label="Data inicial" type="date" min={hojeParaInput()} value={formEscala.data} onChange={(value) => onChangeEscala((atual) => ({ ...atual, data: value }))} />
-                    )}
-                    {formEscala.tipo === 'ESPORADICA' && (
-                      <Campo label="Repetir até" type="date" min={formEscala.data || hojeParaInput()} value={formEscala.dataFim} onChange={(value) => onChangeEscala((atual) => ({ ...atual, dataFim: value }))} />
-                    )}
-                    {formEscala.tipo === 'RECORRENTE' && (
-                      <Select label="Dia" value={formEscala.diaSemana} options={dias} onChange={(value) => onChangeEscala((atual) => ({ ...atual, diaSemana: Number(value) }))} />
-                    )}
-                    {formEscala.tipo === 'RECORRENTE' && formEscala.frequencia === 'MENSAL' && (
-                      <Select label="Semana do mês" value={formEscala.semanaMes} options={semanas.map((semana) => ({ value: semana, label: `${semana}ª` }))} onChange={(value) => onChangeEscala((atual) => ({ ...atual, semanaMes: Number(value) }))} />
-                    )}
-                    <Campo label="Horário" type="time" value={formEscala.horario} onChange={(value) => onChangeEscala((atual) => ({ ...atual, horario: value }))} />
+
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      <Select label="Dia da semana" value={formEscala.diaSemana} options={dias} onChange={(value) => onChangeEscala((atual) => ({ ...atual, diaSemana: Number(value) }))} />
+                      {formEscala.frequencia === 'MENSAL' && (
+                        <Select label="Semana do mês" value={formEscala.semanaMes} options={semanas.map((semana) => ({ value: semana, label: `${semana}ª` }))} onChange={(value) => onChangeEscala((atual) => ({ ...atual, semanaMes: Number(value) }))} />
+                      )}
+                      <Campo label="Horário" type="time" value={formEscala.horario} onChange={(value) => onChangeEscala((atual) => ({ ...atual, horario: value }))} />
+                    </div>
                   </div>
                 )}
 
