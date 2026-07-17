@@ -2359,6 +2359,8 @@ function PainelEscalas({
 }) {
   const [visualizacao, setVisualizacao] = useState('lista');
   const [periodo, setPeriodo] = useState('futuras');
+  const [eventoSelecionadoId, setEventoSelecionadoId] = useState('');
+  const [eventoExpandidoId, setEventoExpandidoId] = useState('');
   const eventosDoPeriodo = useMemo(() => {
     const agora = getAgoraEscalas().getTime();
     return eventos.map((evento) => {
@@ -2396,6 +2398,13 @@ function PainelEscalas({
       ? 'Eventos recorrentes'
       : 'Eventos esporádicos';
   const todasEquipesSelecionadas = equipes.length > 0 && equipes.every((equipe) => formEscala.equipeIds.includes(equipe.id));
+  const selecionarEvento = (eventoId) => {
+    if (eventoSelecionadoId !== eventoId) {
+      setEventoExpandidoId('');
+    }
+
+    setEventoSelecionadoId(eventoId);
+  };
 
   return (
     <section className="mt-5 grid min-w-0 gap-5">
@@ -2698,18 +2707,41 @@ function PainelEscalas({
                   });
                   const areaEditavel = getOcorrenciasUnicas(evento)
                     .find((area) => !(area.encerrada || escalaEstaEncerrada(area.dataHora))) || null;
+                  const selecionado = eventoSelecionadoId === evento.id;
+                  const expandido = eventoExpandidoId === evento.id;
+                  const ocorrenciasEvento = getOcorrenciasUnicas(evento);
+                  const totalVoluntariosEvento = evento.areas.reduce((total, area) => (
+                    total + (area.voluntarios?.length || 0)
+                  ), 0);
+                  const equipesEvento = Array.from(new Set(evento.areas.map((area) => area.equipe?.nome).filter(Boolean)));
 
                   return (
                     <React.Fragment key={evento.id}>
                       {mostrarTituloRecorrente && (
                         <p className="pt-2 text-xs font-bold uppercase tracking-[0.14em] text-gray-500">Eventos recorrentes</p>
                       )}
-                <div className="min-w-0 overflow-hidden rounded-2xl border border-gray-200 bg-gradient-to-br from-white to-gray-50 p-4 shadow-sm sm:p-5">
-                  <div className="flex min-w-0 flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => selecionarEvento(evento.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      selecionarEvento(evento.id);
+                    }
+                  }}
+                  className={`min-w-0 overflow-hidden rounded-2xl border bg-gradient-to-br from-white to-gray-50 p-4 shadow-sm transition sm:p-5 ${
+                    selecionado ? 'border-dourado-400 ring-2 ring-dourado-200' : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div className="min-w-0 max-w-full">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="rounded-full border border-dourado-200 bg-dourado-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-dourado-700">
-                          {evento.areas.length} escala(s) no período
+                          {evento.areas.length} escala(s)
+                        </span>
+                        <span className="rounded-full border border-gray-200 bg-white px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-gray-500">
+                          {totalVoluntariosEvento} voluntário(s)
                         </span>
                         <span className={`rounded-full border px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] ${
                           evento.tipo === 'ESPORADICA'
@@ -2719,6 +2751,11 @@ function PainelEscalas({
                         >
                           {evento.tipo === 'ESPORADICA' ? 'Esporádica' : 'Recorrente'}
                         </span>
+                        {selecionado && (
+                          <span className="rounded-full bg-gray-950 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-white">
+                            Selecionada
+                          </span>
+                        )}
                       </div>
                       <h3 className="mt-3 break-words text-xl font-bold text-gray-950">{evento.titulo}</h3>
                       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
@@ -2728,45 +2765,32 @@ function PainelEscalas({
                           <span>{evento.frequencia === 'SEMANAL' ? 'Toda semana' : `${evento.semanaMes}ª semana do mês`}</span>
                         )}
                       </div>
-                      {evento.descricao && (
-                        <p className="mt-3 max-w-2xl break-words text-sm leading-6 text-gray-600">{evento.descricao}</p>
-                      )}
-                      {acoesOrdemCulto.length > 0 && (
-                        <div className="mt-4 flex flex-wrap gap-2">
-                          {acoesOrdemCulto.map((area) => (
-                            <div key={`ordem-${area.id}`} className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2">
-                              <span className="text-xs font-bold text-gray-500">{formatarData(area.dataHora)}</span>
-                              {area.ordemCulto && (
-                                <button
-                                  type="button"
-                                  onClick={() => onAbrirOrdemCulto(area.ordemCulto)}
-                                  className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-bold text-gray-700 transition hover:bg-gray-50"
-                                >
-                                  <Eye size={14} />
-                                  Visualizar ordem de culto
-                                </button>
-                              )}
-                              <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-gray-950 px-2.5 py-1.5 text-xs font-bold text-white transition hover:bg-gray-800">
-                                {salvandoId === `ordem-${area.eventoId}-${area.dataHora}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText size={14} />}
-                                {area.ordemCulto ? 'Substituir ordem de culto' : 'Enviar ordem de culto'}
-                                <input
-                                  type="file"
-                                  accept="application/pdf"
-                                  disabled={salvandoId === `ordem-${area.eventoId}-${area.dataHora}`}
-                                  onChange={(event) => {
-                                    const file = event.target.files?.[0];
-                                    event.target.value = '';
-                                    onSubmeterOrdemCulto(area, file);
-                                  }}
-                                  className="sr-only"
-                                />
-                              </label>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                      <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                        <ResumoEscalaCompacto label="Ocorrências" valor={ocorrenciasEvento.length} />
+                        <ResumoEscalaCompacto label="Áreas" valor={equipesEvento.length || evento.areas.length} />
+                        <ResumoEscalaCompacto label="Voluntários" valor={totalVoluntariosEvento} />
+                      </div>
                     </div>
-                    <div className="flex shrink-0 flex-wrap gap-2">
+                    <div className="flex shrink-0 flex-wrap gap-2" onClick={(event) => event.stopPropagation()}>
+                      {!selecionado ? (
+                        <button
+                          type="button"
+                          onClick={() => selecionarEvento(evento.id)}
+                          className="inline-flex items-center justify-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-700 transition hover:bg-gray-50"
+                        >
+                          <CalendarDays size={15} />
+                          Selecionar
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setEventoExpandidoId(expandido ? '' : evento.id)}
+                          className="inline-flex items-center justify-center gap-2 rounded-md bg-gray-950 px-3 py-2 text-sm font-bold text-white transition hover:bg-gray-800"
+                        >
+                          {expandido ? <EyeOff size={15} /> : <Eye size={15} />}
+                          {expandido ? 'Recolher detalhes' : 'Expandir detalhes'}
+                        </button>
+                      )}
                       <button
                         type="button"
                         disabled={!areaEditavel}
@@ -2789,6 +2813,49 @@ function PainelEscalas({
                       </button>
                     </div>
                   </div>
+
+                  {expandido && (
+                  <div onClick={(event) => event.stopPropagation()}>
+                    {evento.descricao && (
+                      <p className="mt-4 max-w-3xl break-words rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm leading-6 text-gray-600">
+                        {evento.descricao}
+                      </p>
+                    )}
+
+                    {acoesOrdemCulto.length > 0 && (
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {acoesOrdemCulto.map((area) => (
+                          <div key={`ordem-${area.id}`} className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2">
+                            <span className="text-xs font-bold text-gray-500">{formatarData(area.dataHora)}</span>
+                            {area.ordemCulto && (
+                              <button
+                                type="button"
+                                onClick={() => onAbrirOrdemCulto(area.ordemCulto)}
+                                className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-bold text-gray-700 transition hover:bg-gray-50"
+                              >
+                                <Eye size={14} />
+                                Visualizar ordem de culto
+                              </button>
+                            )}
+                            <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-gray-950 px-2.5 py-1.5 text-xs font-bold text-white transition hover:bg-gray-800">
+                              {salvandoId === `ordem-${area.eventoId}-${area.dataHora}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText size={14} />}
+                              {area.ordemCulto ? 'Substituir ordem de culto' : 'Enviar ordem de culto'}
+                              <input
+                                type="file"
+                                accept="application/pdf"
+                                disabled={salvandoId === `ordem-${area.eventoId}-${area.dataHora}`}
+                                onChange={(event) => {
+                                  const file = event.target.files?.[0];
+                                  event.target.value = '';
+                                  onSubmeterOrdemCulto(area, file);
+                                }}
+                                className="sr-only"
+                              />
+                            </label>
+                          </div>
+                        ))}
+                      </div>
+                    )}
 
                   <div className="mt-5 max-h-[560px] max-w-full overflow-auto rounded-xl border border-gray-200 bg-white">
                     <table className="min-w-[780px] text-left text-sm">
@@ -2883,6 +2950,8 @@ function PainelEscalas({
                       </div>
                     ) : null;
                   })}
+                  </div>
+                  )}
                 </div>
                     </React.Fragment>
                   );
@@ -2918,6 +2987,15 @@ function PainelEscalas({
         />
       )}
     </section>
+  );
+}
+
+function ResumoEscalaCompacto({ label, valor }) {
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white px-3 py-2">
+      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-400">{label}</p>
+      <p className="mt-1 text-sm font-bold text-gray-900">{valor}</p>
+    </div>
   );
 }
 

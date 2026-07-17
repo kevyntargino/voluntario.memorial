@@ -198,10 +198,12 @@ function formatarParticipacao(item, dataOcorrencia, tipoEscala) {
 }
 
 function formatarEquipe(equipe, usuario) {
+  const usuarioPodeGerenciar = podeGerenciar(usuario, equipe.id);
+
   return {
     id: equipe.id,
     nome: equipe.nome,
-    podeGerenciar: podeGerenciar(usuario, equipe.id),
+    podeGerenciar: usuarioPodeGerenciar,
     voluntarios: equipe.voluntarios.map((voluntario) => ({
       id: voluntario.id,
       nomeCompleto: voluntario.nomeCompleto,
@@ -216,7 +218,7 @@ function formatarEquipe(equipe, usuario) {
       criadoEm: voluntario.criadoEm,
       atualizadoEm: voluntario.atualizadoEm,
     })),
-    escalas: equipe.escalas.map((escala) => {
+    escalas: usuarioPodeGerenciar ? equipe.escalas.map((escala) => {
       const dataOcorrencia = getProximaOcorrencia(escala);
       const ordem = escala.evento?.ordensCulto?.find((item) => datasIguais(item.dataHora, dataOcorrencia)) || null;
 
@@ -242,7 +244,7 @@ function formatarEquipe(equipe, usuario) {
           .map((item) => formatarParticipacao(item, dataOcorrencia, escala.tipo))
           .filter(Boolean),
       };
-    }),
+    }) : [],
   };
 }
 
@@ -306,13 +308,17 @@ router.get('/minhas', autenticar, async (req, res) => {
     await garantirOcorrenciasEventos(prisma);
     const usuario = await getUsuarioComEquipes(req.usuarioAutenticado.id);
 
-    if (!usuario || (!usuario.permissoes.includes('LIDER_EQUIPE') && !usuario.permissoes.includes('ADMINISTRADOR'))) {
-      return res.status(403).json({ erro: 'Acesso restrito a líderes de equipe.' });
+    if (!usuario) {
+      return res.status(404).json({ erro: 'Usuário não encontrado.' });
     }
 
+    const equipesVisiveisIds = Array.from(new Set([
+      ...usuario.equipes.map((equipe) => equipe.id),
+      ...usuario.equipesLideradas.map((equipe) => equipe.id),
+    ]));
     const where = usuario.permissoes.includes('ADMINISTRADOR')
       ? undefined
-      : { id: { in: usuario.equipesLideradas.map((equipe) => equipe.id) } };
+      : { id: { in: equipesVisiveisIds } };
 
     const equipes = await prisma.equipe.findMany({
       where,

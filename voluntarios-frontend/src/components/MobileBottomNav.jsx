@@ -86,15 +86,19 @@ export function MobileBottomNav() {
   const [carregandoEscala, setCarregandoEscala] = useState(false);
   const [erroEscala, setErroEscala] = useState('');
   const [proximaEscala, setProximaEscala] = useState(null);
+  const [atualizandoStatus, setAtualizandoStatus] = useState('');
+  const [substituicaoAberta, setSubstituicaoAberta] = useState(false);
+  const [justificativaSubstituicao, setJustificativaSubstituicao] = useState('');
+  const [erroAcaoEscala, setErroAcaoEscala] = useState('');
   const fecharRef = useRef(null);
-  const podeGerenciarEquipe = usuario?.permissoes?.some((permissao) => ['LIDER_EQUIPE', 'ADMINISTRADOR'].includes(permissao));
+  const podeVerEquipe = Boolean(usuario);
   const isAdmin = usuario?.permissoes?.includes('ADMINISTRADOR');
   const itensEsquerda = [
     { label: 'Início', path: '/', icon: Home },
     { label: 'Escalas', path: '/escalas', icon: CalendarDays },
   ];
   const itensDireita = [
-    ...(podeGerenciarEquipe ? [{ label: 'Equipe', path: '/minha-equipe', icon: UsersRound }] : []),
+    ...(podeVerEquipe ? [{ label: 'Equipe', path: '/minha-equipe', icon: UsersRound }] : []),
     { label: 'Manuais', path: '/manuais', icon: BookOpen },
     ...(isAdmin ? [{ label: 'Admin', path: '/admin', icon: ShieldCheck }] : []),
   ].slice(0, 3);
@@ -111,6 +115,9 @@ export function MobileBottomNav() {
     setModalAberto(true);
     setCarregandoEscala(true);
     setErroEscala('');
+    setErroAcaoEscala('');
+    setSubstituicaoAberta(false);
+    setJustificativaSubstituicao('');
 
     try {
       const resposta = await fetch(buildApiUrl('/api/escalas?visao=minhas'), {
@@ -136,6 +143,82 @@ export function MobileBottomNav() {
       setCarregandoEscala(false);
     }
   }, [logout, navigate, token]);
+
+  const atualizarStatusProximaEscala = useCallback(async (status, justificativa = '') => {
+    const participacaoId = proximaEscala?.minhaParticipacao?.id;
+
+    if (!participacaoId || !token) return;
+
+    const justificativaNormalizada = String(justificativa || '').trim();
+
+    if (status === 'PEDIU_SUBSTITUICAO' && justificativaNormalizada.length < 5) {
+      setErroAcaoEscala('Informe uma justificativa com pelo menos 5 caracteres.');
+      return;
+    }
+
+    setAtualizandoStatus(status);
+    setErroAcaoEscala('');
+
+    try {
+      const resposta = await fetch(buildApiUrl(`/api/escalas/${participacaoId}/status`), {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          status,
+          justificativaSubstituicao: justificativaNormalizada,
+          dataOcorrencia: proximaEscala.dataHora,
+        }),
+      });
+      const dados = await resposta.json().catch(() => ({}));
+
+      if (!resposta.ok) {
+        if (resposta.status === 401) {
+          logout();
+          navigate('/login', { replace: true });
+          return;
+        }
+
+        throw new Error(dados.erro || 'Não foi possível atualizar sua escala.');
+      }
+
+      setProximaEscala((atual) => {
+        if (!atual?.minhaParticipacao) return atual;
+
+        const proximaParticipacao = {
+          ...atual.minhaParticipacao,
+          status,
+          justificativaSubstituicao: status === 'PEDIU_SUBSTITUICAO' ? justificativaNormalizada : null,
+          dataOcorrenciaSubstituicao: status === 'PEDIU_SUBSTITUICAO' ? atual.dataHora : null,
+          dataOcorrenciaStatus: atual.dataHora,
+        };
+
+        return {
+          ...atual,
+          minhaParticipacao: proximaParticipacao,
+          voluntarios: (atual.voluntarios || []).map((item) => (
+            item.id === participacaoId
+              ? {
+                  ...item,
+                  status,
+                  justificativaSubstituicao: proximaParticipacao.justificativaSubstituicao,
+                  dataOcorrenciaSubstituicao: proximaParticipacao.dataOcorrenciaSubstituicao,
+                  dataOcorrenciaStatus: proximaParticipacao.dataOcorrenciaStatus,
+                }
+              : item
+          )),
+        };
+      });
+      setSubstituicaoAberta(false);
+      setJustificativaSubstituicao('');
+    } catch (error) {
+      setErroAcaoEscala(error.message || 'Não foi possível atualizar sua escala.');
+    } finally {
+      setAtualizandoStatus('');
+    }
+  }, [logout, navigate, proximaEscala, token]);
 
   useEffect(() => {
     if (!modalAberto) return undefined;
@@ -204,8 +287,24 @@ export function MobileBottomNav() {
           escala={proximaEscala}
           carregando={carregandoEscala}
           erro={erroEscala}
+          erroAcao={erroAcaoEscala}
+          atualizandoStatus={atualizandoStatus}
+          substituicaoAberta={substituicaoAberta}
+          justificativaSubstituicao={justificativaSubstituicao}
           fecharRef={fecharRef}
           onClose={() => setModalAberto(false)}
+          onConfirmar={() => atualizarStatusProximaEscala('CONFIRMADA')}
+          onAbrirSubstituicao={() => {
+            setErroAcaoEscala('');
+            setSubstituicaoAberta(true);
+          }}
+          onCancelarSubstituicao={() => {
+            setErroAcaoEscala('');
+            setSubstituicaoAberta(false);
+            setJustificativaSubstituicao('');
+          }}
+          onChangeJustificativa={setJustificativaSubstituicao}
+          onSolicitarSubstituicao={() => atualizarStatusProximaEscala('PEDIU_SUBSTITUICAO', justificativaSubstituicao)}
           onAbrirEscalas={() => {
             navigate(getDestinoEscala(proximaEscala));
             setModalAberto(false);
@@ -216,10 +315,28 @@ export function MobileBottomNav() {
   );
 }
 
-function ProximaEscalaModal({ escala, carregando, erro, fecharRef, onClose, onAbrirEscalas }) {
+function ProximaEscalaModal({
+  escala,
+  carregando,
+  erro,
+  erroAcao,
+  atualizandoStatus,
+  substituicaoAberta,
+  justificativaSubstituicao,
+  fecharRef,
+  onClose,
+  onConfirmar,
+  onAbrirSubstituicao,
+  onCancelarSubstituicao,
+  onChangeJustificativa,
+  onSolicitarSubstituicao,
+  onAbrirEscalas,
+}) {
   const participacao = escala?.minhaParticipacao;
   const config = statusConfig[participacao?.status] || statusConfig.PENDENTE;
   const StatusIcon = config.icon;
+  const podeConfirmar = participacao && !['CONFIRMADA', 'AUSENTE'].includes(participacao.status);
+  const podePedirSubstituicao = participacao && !['PEDIU_SUBSTITUICAO', 'AUSENTE'].includes(participacao.status);
 
   return (
     <div className="fixed inset-0 z-[85] flex items-end justify-center bg-gray-950/65 px-0 sm:items-center sm:px-4 sm:py-6 sm:backdrop-blur-sm" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
@@ -266,6 +383,71 @@ function ProximaEscalaModal({ escala, carregando, erro, fecharRef, onClose, onAb
                   <StatusIcon size={13} />
                   {config.label}
                 </span>
+              </div>
+
+              <div className="rounded-md border border-gray-200 bg-white px-3 py-3 dark:border-gray-800 dark:bg-gray-950">
+                <p className="text-xs font-bold uppercase text-gray-500 dark:text-gray-400">Ações da escala</p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    disabled={!podeConfirmar || Boolean(atualizandoStatus)}
+                    onClick={onConfirmar}
+                    className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-3 py-2 text-sm font-bold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {atualizandoStatus === 'CONFIRMADA' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 size={16} />}
+                    Confirmar escala
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!podePedirSubstituicao || Boolean(atualizandoStatus)}
+                    onClick={onAbrirSubstituicao}
+                    className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-bold text-sky-700 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-200"
+                  >
+                    <RefreshCcw size={16} />
+                    Pedir substituição
+                  </button>
+                </div>
+
+                {substituicaoAberta && (
+                  <div className="mt-3 rounded-md border border-sky-200 bg-sky-50 p-3 dark:border-sky-800 dark:bg-sky-950/40">
+                    <label className="block text-sm font-bold text-sky-800 dark:text-sky-100">
+                      Justificativa
+                      <textarea
+                        value={justificativaSubstituicao}
+                        onChange={(event) => onChangeJustificativa(event.target.value)}
+                        rows={3}
+                        className="mt-2 block w-full rounded-md border border-sky-200 bg-white px-3 py-2 text-sm text-gray-800 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-500/10 dark:border-sky-800 dark:bg-gray-950 dark:text-white"
+                        placeholder="Explique rapidamente por que precisa de substituição."
+                      />
+                    </label>
+                    <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:justify-end">
+                      <button
+                        type="button"
+                        disabled={Boolean(atualizandoStatus)}
+                        onClick={onCancelarSubstituicao}
+                        className="min-h-9 rounded-md border border-sky-200 bg-white px-3 py-2 text-sm font-bold text-sky-700 transition hover:bg-sky-50 disabled:opacity-50 dark:border-sky-800 dark:bg-gray-950 dark:text-sky-100"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        disabled={Boolean(atualizandoStatus)}
+                        onClick={onSolicitarSubstituicao}
+                        className="inline-flex min-h-9 items-center justify-center gap-2 rounded-md bg-sky-700 px-3 py-2 text-sm font-bold text-white transition hover:bg-sky-800 disabled:opacity-50"
+                      >
+                        {atualizandoStatus === 'PEDIU_SUBSTITUICAO' ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw size={15} />}
+                        Enviar pedido
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {erroAcao && (
+                  <div role="alert" className="mt-3 flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200">
+                    <AlertCircle className="mt-0.5 h-4 w-4" />
+                    {erroAcao}
+                  </div>
+                )}
               </div>
 
               {escala.descricao && (

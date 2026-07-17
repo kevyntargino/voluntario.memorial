@@ -74,7 +74,7 @@ export default function Navbar() {
   const { token, usuario, atualizarUsuario, logout } = useAuth();
   const { navigate } = useNavigation();
   const usuarioAvatarUrl = usuario?.urlFoto || formPerfil.urlFoto || '';
-  const podeGerenciarEquipe = usuario?.permissoes?.some((permissao) => ['LIDER_EQUIPE', 'ADMINISTRADOR'].includes(permissao));
+  const podeVerEquipe = Boolean(usuario);
   const isAdmin = usuario?.permissoes?.includes('ADMINISTRADOR');
   const avisosRepresentadosPorNotificacao = useMemo(() => new Set(
     notificacoes
@@ -523,7 +523,7 @@ export default function Navbar() {
             <button type="button" onClick={() => irPara('/manuais')} className="font-sans text-gray-600 hover:text-gray-950 transition-colors font-medium dark:text-gray-300 dark:hover:text-white">
               Manuais
             </button>
-            {podeGerenciarEquipe && (
+            {podeVerEquipe && (
               <button type="button" onClick={() => irPara('/minha-equipe')} className="font-sans text-gray-600 hover:text-gray-950 transition-colors font-medium dark:text-gray-300 dark:hover:text-white">
                 Equipe
               </button>

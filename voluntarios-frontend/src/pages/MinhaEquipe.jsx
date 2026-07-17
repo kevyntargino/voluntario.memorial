@@ -134,7 +134,7 @@ function formatarOpcaoEscala(escala) {
 }
 
 export default function MinhaEquipe() {
-  const { token, usuario, logout } = useAuth();
+  const { token, logout } = useAuth();
   const { navigate, search } = useNavigation();
   const parametros = new URLSearchParams(search || '');
   const equipeUrlId = parametros.get('equipe') || '';
@@ -240,10 +240,11 @@ export default function MinhaEquipe() {
     () => equipes.find((equipe) => equipe.id === equipeId) || null,
     [equipeId, equipes],
   );
+  const podeGerenciarEquipeSelecionada = Boolean(equipeSelecionada?.podeGerenciar);
   const senhaTemporariaNovoVoluntario = gerarSenhaTemporaria(formNovoVoluntario.nomeCompleto);
 
   useEffect(() => {
-    if (!escalaSelecionadaId || !equipeSelecionada) {
+    if (!escalaSelecionadaId || !equipeSelecionada || !podeGerenciarEquipeSelecionada) {
       return;
     }
 
@@ -264,7 +265,7 @@ export default function MinhaEquipe() {
       voluntarioIds: escala.voluntarios.map((item) => item.usuario.id),
       substitutoIds: escala.voluntarios.filter((item) => item.substituto).map((item) => item.usuario.id),
     });
-  }, [equipeSelecionada, escalaSelecionadaId]);
+  }, [equipeSelecionada, escalaSelecionadaId, podeGerenciarEquipeSelecionada]);
 
   const escalasEsporadicas = useMemo(() => (
     (equipeSelecionada?.escalas || [])
@@ -430,6 +431,16 @@ export default function MinhaEquipe() {
   useEffect(() => {
     setPaginaEscalas(1);
   }, [buscaEscalas, equipeId, filtroEscala, ordemEscalas, statusEscalas, tipoEscalas]);
+
+  useEffect(() => {
+    if (!equipeSelecionada || podeGerenciarEquipeSelecionada) {
+      return;
+    }
+
+    setFormEscala(formEscalaInicial);
+    setEscalaModalId('');
+    setMostrarCadastroVoluntario(false);
+  }, [equipeSelecionada, podeGerenciarEquipeSelecionada]);
 
   const limparFiltrosEscalas = () => {
     setBuscaEscalas('');
@@ -652,22 +663,6 @@ export default function MinhaEquipe() {
     ));
   }, [equipeSelecionada]);
 
-  const podeAcessar = usuario?.permissoes?.some((permissao) => ['LIDER_EQUIPE', 'ADMINISTRADOR'].includes(permissao));
-
-  if (!podeAcessar) {
-    return (
-      <div className="flex min-h-screen flex-col bg-[#f7f4ed] text-gray-900">
-        <Navbar />
-        <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-10">
-          <div className="rounded-lg border border-red-100 bg-red-50 p-5 text-red-700">
-            Acesso restrito a líderes de equipe.
-          </div>
-        </main>
-        <Footer />
-      </div>
-    );
-  }
-
   return (
     <div className="flex min-h-screen flex-col bg-[#f7f4ed] text-gray-900">
       <Navbar />
@@ -676,10 +671,14 @@ export default function MinhaEquipe() {
         <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.2em] text-dourado-700">Liderança</p>
+              <p className="text-sm font-semibold uppercase tracking-[0.2em] text-dourado-700">
+                {podeGerenciarEquipeSelecionada ? 'Liderança' : 'Equipe'}
+              </p>
               <h1 className="mt-2 text-3xl font-bold text-gray-950">Minha equipe</h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-600">
-                Gerencie voluntários e escalas das equipes em que você atua como líder.
+                {podeGerenciarEquipeSelecionada
+                  ? 'Gerencie voluntários e escalas das equipes em que você atua como líder.'
+                  : 'Consulte os membros vinculados às equipes das quais você participa.'}
               </p>
             </div>
 
@@ -712,136 +711,146 @@ export default function MinhaEquipe() {
             Carregando equipe...
           </div>
         ) : equipeSelecionada ? (
-          <div className="mt-5 grid gap-5 xl:grid-cols-[0.85fr_1.15fr]">
+          <div className={`mt-5 grid gap-5 ${podeGerenciarEquipeSelecionada ? 'xl:grid-cols-[0.85fr_1.15fr]' : 'max-w-4xl'}`}>
             <section className="space-y-5">
-              <Painel
-                titulo="Solicitações de substituição"
-                icone={Bell}
-                badge={pedidosSubstituicao.length}
-              >
-                {pedidosSubstituicao.length === 0 ? (
-                  <p className="text-sm text-gray-500">Nenhum pedido de substituição pendente.</p>
-                ) : (
-                  <div className="space-y-3">
-                    {pedidosSubstituicao.map((pedido) => {
-                      const selecionado = pedido.id === pedidoSelecionadoId;
+              {podeGerenciarEquipeSelecionada && (
+                <>
+                  <Painel
+                    titulo="Solicitações de substituição"
+                    icone={Bell}
+                    badge={pedidosSubstituicao.length}
+                  >
+                    {pedidosSubstituicao.length === 0 ? (
+                      <p className="text-sm text-gray-500">Nenhum pedido de substituição pendente.</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {pedidosSubstituicao.map((pedido) => {
+                          const selecionado = pedido.id === pedidoSelecionadoId;
 
-                      return (
-                      <div
-                        id={`equipe-participacao-${pedido.id}`}
-                        key={pedido.id}
-                        className={`rounded-md border p-3 transition ${
-                          selecionado ? 'border-amber-300 bg-amber-50 ring-2 ring-amber-200' : 'border-sky-100 bg-sky-50'
-                        }`}
-                      >
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                          <div>
-                            <div className="flex items-start gap-2">
-                              <UsuarioInfoButton usuario={pedido.usuario} onClick={setUsuarioModal} />
-                              <div className="min-w-0">
-                                <p className="text-sm font-bold text-gray-950">{pedido.usuario.nomeCompleto}</p>
-                                <p className="mt-1 text-xs font-semibold text-sky-700">{pedido.escala.titulo || 'Escala sem título'} - {formatarData(pedido.escala.dataHora)}</p>
+                          return (
+                          <div
+                            id={`equipe-participacao-${pedido.id}`}
+                            key={pedido.id}
+                            className={`rounded-md border p-3 transition ${
+                              selecionado ? 'border-amber-300 bg-amber-50 ring-2 ring-amber-200' : 'border-sky-100 bg-sky-50'
+                            }`}
+                          >
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                              <div>
+                                <div className="flex items-start gap-2">
+                                  <UsuarioInfoButton usuario={pedido.usuario} onClick={setUsuarioModal} />
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-bold text-gray-950">{pedido.usuario.nomeCompleto}</p>
+                                    <p className="mt-1 text-xs font-semibold text-sky-700">{pedido.escala.titulo || 'Escala sem título'} - {formatarData(pedido.escala.dataHora)}</p>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="inline-flex items-center gap-2 rounded-md bg-white px-2.5 py-1.5 text-xs font-bold text-sky-700">
+                                <RefreshCcw size={14} />
+                                {selecionado ? 'Pedido selecionado' : 'Pedido aberto'}
                               </div>
                             </div>
-                          </div>
-                          <div className="inline-flex items-center gap-2 rounded-md bg-white px-2.5 py-1.5 text-xs font-bold text-sky-700">
-                            <RefreshCcw size={14} />
-                            {selecionado ? 'Pedido selecionado' : 'Pedido aberto'}
-                          </div>
-                        </div>
-                        <p className="mt-3 rounded-md bg-white px-3 py-2 text-sm text-gray-700">
-                          {pedido.justificativaSubstituicao || 'Sem justificativa informada.'}
-                        </p>
-                        <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
-                          <select
-                            value={substitutosSelecionados[pedido.id] || ''}
-                            onChange={(event) => setSubstitutosSelecionados((atuais) => ({
-                              ...atuais,
-                              [pedido.id]: event.target.value,
-                            }))}
-                            className="rounded-md border border-sky-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/10"
-                          >
-                            <option value="">Selecionar substituto</option>
-                            {equipeSelecionada.voluntarios
-                              .filter((voluntario) => voluntario.id !== pedido.usuario.id)
-                              .map((voluntario) => (
-                                <option key={voluntario.id} value={voluntario.id}>
-                                  {voluntario.telefone ? `${voluntario.nomeCompleto} - ${formatarTelefoneExibicao(voluntario.telefone)}` : voluntario.nomeCompleto}
-                                </option>
-                              ))}
-                          </select>
-                          <button
-                            type="button"
-                            disabled={salvando}
-                            onClick={() => atribuirSubstituto(pedido.id)}
-                            className="inline-flex items-center justify-center gap-2 rounded-md bg-sky-700 px-3 py-2 text-sm font-semibold text-white transition hover:bg-sky-800 disabled:opacity-60"
-                          >
-                            <UserPlus size={15} />
-                            Atribuir
-                          </button>
-                        </div>
-                      </div>
-                    );
-                    })}
-                  </div>
-                )}
-              </Painel>
-
-              <Painel
-                titulo="Escalas esporádicas solicitadas"
-                icone={CalendarPlus}
-                badge={pedidosEscalasEsporadicas.length}
-              >
-                {pedidosEscalasEsporadicas.length === 0 ? (
-                  <p className="text-sm text-gray-500">Nenhuma escala esporádica aguardando atribuição.</p>
-                ) : (
-                  <div className="space-y-3">
-                    {pedidosEscalasEsporadicas.map((escala) => (
-                      <div key={escala.id} className="rounded-md border border-amber-100 bg-amber-50 p-3">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                          <div>
-                            <p className="text-sm font-bold text-gray-950">{escala.titulo || 'Escala esporádica'}</p>
-                            <p className="mt-1 text-xs font-semibold text-amber-700">{formatarData(escala.dataHora)}</p>
-                            {escala.local && <p className="mt-1 text-xs text-gray-600">Local: {escala.local}</p>}
-                            {escala.descricao && <p className="mt-2 text-sm text-gray-700">{escala.descricao}</p>}
-                            {escala.ordemCulto && (
-                              <button type="button" onClick={() => abrirOrdemCulto(escala.ordemCulto)} className="mt-3 inline-flex items-center gap-2 rounded-md border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-800">
-                                <FileText size={15} />
-                                Visualizar ordem de culto
+                            <p className="mt-3 rounded-md bg-white px-3 py-2 text-sm text-gray-700">
+                              {pedido.justificativaSubstituicao || 'Sem justificativa informada.'}
+                            </p>
+                            <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
+                              <select
+                                value={substitutosSelecionados[pedido.id] || ''}
+                                onChange={(event) => setSubstitutosSelecionados((atuais) => ({
+                                  ...atuais,
+                                  [pedido.id]: event.target.value,
+                                }))}
+                                className="rounded-md border border-sky-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/10"
+                              >
+                                <option value="">Selecionar substituto</option>
+                                {equipeSelecionada.voluntarios
+                                  .filter((voluntario) => voluntario.id !== pedido.usuario.id)
+                                  .map((voluntario) => (
+                                    <option key={voluntario.id} value={voluntario.id}>
+                                      {voluntario.telefone ? `${voluntario.nomeCompleto} - ${formatarTelefoneExibicao(voluntario.telefone)}` : voluntario.nomeCompleto}
+                                    </option>
+                                  ))}
+                              </select>
+                              <button
+                                type="button"
+                                disabled={salvando}
+                                onClick={() => atribuirSubstituto(pedido.id)}
+                                className="inline-flex items-center justify-center gap-2 rounded-md bg-sky-700 px-3 py-2 text-sm font-semibold text-white transition hover:bg-sky-800 disabled:opacity-60"
+                              >
+                                <UserPlus size={15} />
+                                Atribuir
                               </button>
-                            )}
+                            </div>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => abrirEscalaSolicitada(escala)}
-                            className="inline-flex items-center justify-center gap-2 rounded-md bg-amber-700 px-3 py-2 text-sm font-semibold text-white transition hover:bg-amber-800"
-                          >
-                            <UserPlus size={15} />
-                            Atribuir voluntários
-                          </button>
-                        </div>
+                        );
+                        })}
                       </div>
-                    ))}
-                  </div>
-                )}
-              </Painel>
+                    )}
+                  </Painel>
+
+                  <Painel
+                    titulo="Escalas esporádicas solicitadas"
+                    icone={CalendarPlus}
+                    badge={pedidosEscalasEsporadicas.length}
+                  >
+                    {pedidosEscalasEsporadicas.length === 0 ? (
+                      <p className="text-sm text-gray-500">Nenhuma escala esporádica aguardando atribuição.</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {pedidosEscalasEsporadicas.map((escala) => (
+                          <div key={escala.id} className="rounded-md border border-amber-100 bg-amber-50 p-3">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                              <div>
+                                <p className="text-sm font-bold text-gray-950">{escala.titulo || 'Escala esporádica'}</p>
+                                <p className="mt-1 text-xs font-semibold text-amber-700">{formatarData(escala.dataHora)}</p>
+                                {escala.local && <p className="mt-1 text-xs text-gray-600">Local: {escala.local}</p>}
+                                {escala.descricao && <p className="mt-2 text-sm text-gray-700">{escala.descricao}</p>}
+                                {escala.ordemCulto && (
+                                  <button type="button" onClick={() => abrirOrdemCulto(escala.ordemCulto)} className="mt-3 inline-flex items-center gap-2 rounded-md border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-800">
+                                    <FileText size={15} />
+                                    Visualizar ordem de culto
+                                  </button>
+                                )}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => abrirEscalaSolicitada(escala)}
+                                className="inline-flex items-center justify-center gap-2 rounded-md bg-amber-700 px-3 py-2 text-sm font-semibold text-white transition hover:bg-amber-800"
+                              >
+                                <UserPlus size={15} />
+                                Atribuir voluntários
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </Painel>
+                </>
+              )}
 
               <Painel titulo="Voluntários" icone={UsersRound}>
                 <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="text-sm font-semibold text-gray-700">{equipeSelecionada.voluntarios.length} voluntário(s) cadastrado(s)</p>
-                    <p className="mt-1 text-xs text-gray-500">Consulte os dados ou cadastre um novo voluntário já vinculado a esta equipe.</p>
+                    <p className="mt-1 text-xs text-gray-500">
+                      {podeGerenciarEquipeSelecionada
+                        ? 'Consulte os dados ou cadastre um novo voluntário já vinculado a esta equipe.'
+                        : 'Consulte os membros vinculados a esta equipe.'}
+                    </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setMostrarCadastroVoluntario((atual) => !atual)}
-                    className="inline-flex items-center justify-center gap-2 rounded-md bg-gray-950 px-3 py-2 text-sm font-semibold text-white transition hover:bg-gray-800"
-                  >
-                    <UserPlus size={15} />
-                    {mostrarCadastroVoluntario ? 'Fechar cadastro' : 'Cadastrar voluntário'}
-                  </button>
+                  {podeGerenciarEquipeSelecionada && (
+                    <button
+                      type="button"
+                      onClick={() => setMostrarCadastroVoluntario((atual) => !atual)}
+                      className="inline-flex items-center justify-center gap-2 rounded-md bg-gray-950 px-3 py-2 text-sm font-semibold text-white transition hover:bg-gray-800"
+                    >
+                      <UserPlus size={15} />
+                      {mostrarCadastroVoluntario ? 'Fechar cadastro' : 'Cadastrar voluntário'}
+                    </button>
+                  )}
                 </div>
-                {mostrarCadastroVoluntario && (
+                {podeGerenciarEquipeSelecionada && mostrarCadastroVoluntario && (
                   <form onSubmit={cadastrarVoluntario} className="mb-4 grid gap-3 rounded-xl border border-gray-200 bg-white p-4">
                     <div className="grid gap-3 md:grid-cols-3">
                       <label className="block">
@@ -901,6 +910,7 @@ export default function MinhaEquipe() {
 
             </section>
 
+            {podeGerenciarEquipeSelecionada && (
             <section className="space-y-5">
               <Painel titulo="Escalas da equipe" icone={CalendarPlus}>
                 <div className="space-y-4">
@@ -1202,15 +1212,16 @@ export default function MinhaEquipe() {
                 </div>
               </Painel>
             </section>
+            )}
           </div>
         ) : (
           <div className="mt-5 rounded-2xl border border-gray-200 bg-white px-6 py-10 text-gray-500">
-            Nenhuma equipe disponível para gerenciamento.
+            Nenhuma equipe vinculada ao seu usuário.
           </div>
         )}
       </main>
 
-      {escalaModal && equipeSelecionada && (
+      {podeGerenciarEquipeSelecionada && escalaModal && equipeSelecionada && (
         <ModalEscalaEquipe
           escala={escalaModal}
           equipe={equipeSelecionada}
