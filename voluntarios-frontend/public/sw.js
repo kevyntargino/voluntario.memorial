@@ -706,16 +706,24 @@ self.addEventListener('notificationclick', (event) => {
   const bootUrl = new URL('/', self.location.origin);
   bootUrl.searchParams.set('mcom_open', targetPath);
 
-  event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
-      for (const client of clients) {
-        if ('focus' in client) {
-          client.navigate(targetUrl.href);
-          return client.focus();
-        }
+  event.waitUntil((async () => {
+    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const alvo = clients.find((client) => 'focus' in client);
+
+    if (alvo) {
+      // Janela já aberta: foca e pede navegação in-app (sem recarregar a página).
+      alvo.postMessage({ type: 'MCOM_NAVIGATE', url: targetPath });
+
+      try {
+        await alvo.focus();
+      } catch {
+        // Alguns navegadores rejeitam focus() fora do gesto; a navegação já foi solicitada.
       }
 
-      return self.clients.openWindow(bootUrl.href);
-    }),
-  );
+      return;
+    }
+
+    // Nenhuma janela aberta: abre o app já apontando para o destino (deep-link a frio).
+    await self.clients.openWindow(bootUrl.href);
+  })());
 });

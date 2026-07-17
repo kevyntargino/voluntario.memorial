@@ -10,12 +10,27 @@ function isMobileApple() {
   return /iphone|ipad|ipod/i.test(window.navigator.userAgent);
 }
 
+const PWA_DISMISSED_KEY = 'mcom_pwa_prompt_dismissed';
+
+function foiDispensado() {
+  try {
+    return window.localStorage.getItem(PWA_DISMISSED_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
 export function PwaInstallPrompt() {
   const [installEvent, setInstallEvent] = useState(null);
   const [visivel, setVisivel] = useState(false);
   const [iosFallback, setIosFallback] = useState(false);
+  const [dispensado, setDispensado] = useState(foiDispensado);
 
   useEffect(() => {
+    if (dispensado) {
+      return undefined;
+    }
+
     const handleBeforeInstallPrompt = (event) => {
       event.preventDefault();
 
@@ -38,9 +53,9 @@ export function PwaInstallPrompt() {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       window.clearTimeout(timeout);
     };
-  }, []);
+  }, [dispensado]);
 
-  if (!installEvent && !iosFallback) {
+  if (dispensado || (!installEvent && !iosFallback)) {
     return null;
   }
 
@@ -58,6 +73,13 @@ export function PwaInstallPrompt() {
 
   const dispensar = () => {
     setVisivel(false);
+    setDispensado(true);
+
+    try {
+      window.localStorage.setItem(PWA_DISMISSED_KEY, 'true');
+    } catch {
+      // Persistência opcional: se indisponível, apenas oculta nesta sessão.
+    }
   };
 
   if (!visivel) {

@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import {
   gerarNotificacoesAutomaticas,
   getStatusParticipacaoNaOcorrencia,
@@ -57,6 +59,31 @@ function criarParticipacao({
     },
   };
 }
+
+test('o enum TipoNotificacao cobre todos os tipos emitidos pelo serviço', () => {
+  const schema = readFileSync(
+    fileURLToPath(new URL('../prisma/schema.prisma', import.meta.url)),
+    'utf8',
+  );
+  const bloco = schema.match(/enum TipoNotificacao \{([^}]*)\}/);
+
+  assert.ok(bloco, 'enum TipoNotificacao não encontrado no schema.prisma');
+
+  const valoresEnum = new Set(
+    bloco[1]
+      .split('\n')
+      .map((linha) => linha.trim())
+      .filter((linha) => linha && !linha.startsWith('//')),
+  );
+
+  // Todos os `tipo` usados em services/notificacoes.service.js precisam existir no enum,
+  // senão o prisma.notificacao.create falha em produção (ex.: ORDEM_CULTO).
+  const tiposEmitidos = ['CONFIRMACAO_ESCALA', 'AVISO', 'SUBSTITUTO', 'ALERTA_LIDER', 'ORDEM_CULTO'];
+
+  for (const tipo of tiposEmitidos) {
+    assert.ok(valoresEnum.has(tipo), `TipoNotificacao não contém "${tipo}"`);
+  }
+});
 
 test('gera pedido individual de confirmação 5 dias antes', async () => {
   const prisma = criarPrisma([criarParticipacao()]);

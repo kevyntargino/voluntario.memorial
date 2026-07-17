@@ -22,6 +22,14 @@ export async function registrarServiceWorker() {
         },
       }));
     }
+
+    if (event.data?.type === 'MCOM_NAVIGATE' && typeof event.data.url === 'string') {
+      window.dispatchEvent(new CustomEvent('mcom-navigate', {
+        detail: {
+          url: event.data.url,
+        },
+      }));
+    }
   });
 
   if (navigator.onLine) {

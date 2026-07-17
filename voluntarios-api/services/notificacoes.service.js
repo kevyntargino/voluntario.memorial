@@ -154,8 +154,10 @@ export async function criarNotificacoes(prisma, notificacoes) {
         console.warn('[WARN] Falha ao enviar push notification:', erro.message);
       });
     } catch (erro) {
+      // P2002 = notificação duplicada (mesma chave): ignorada por ser idempotente.
+      // Demais falhas de um item não devem abortar o lote inteiro; registra e segue.
       if (erro.code !== 'P2002') {
-        throw erro;
+        console.warn('[WARN] Falha ao criar notificação:', item.chave, erro.message);
       }
     }
   }

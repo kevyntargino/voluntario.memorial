@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { NavigationProvider, useNavigation } from './context/NavigationContext';
 import Login from './pages/Login';
@@ -68,6 +68,22 @@ function App() {
 
     setLocation({ pathname: nextUrl.pathname, search: nextUrl.search });
   };
+
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
+
+  useEffect(() => {
+    const handleNavigate = (event) => {
+      const url = event.detail?.url;
+
+      if (typeof url === 'string' && url) {
+        navigateRef.current(url);
+      }
+    };
+
+    window.addEventListener('mcom-navigate', handleNavigate);
+    return () => window.removeEventListener('mcom-navigate', handleNavigate);
+  }, []);
 
   return (
     <NavigationProvider value={{ ...location, navigate }}>

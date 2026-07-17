@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   CalendarDays,
@@ -157,11 +157,12 @@ export default function MinhaEquipe() {
   const [tipoEscalas, setTipoEscalas] = useState('TODAS');
   const [statusEscalas, setStatusEscalas] = useState('TODOS');
   const [ordemEscalas, setOrdemEscalas] = useState('proximas');
-  const [modoEscalasEquipe, setModoEscalasEquipe] = useState('lista');
+  const [modoEscalasEquipe, setModoEscalasEquipe] = useState('calendario');
   const [filtrosEscalasAbertos, setFiltrosEscalasAbertos] = useState(false);
   const [mesEscalasEquipe, setMesEscalasEquipe] = useState(inicioMesAtual);
   const [paginaEscalas, setPaginaEscalas] = useState(1);
   const [itensPorPaginaEscalas, setItensPorPaginaEscalas] = useState(5);
+  const [escalaModalId, setEscalaModalId] = useState('');
 
   const carregarEquipes = useCallback(async () => {
     setErro('');
@@ -256,18 +257,13 @@ export default function MinhaEquipe() {
     setTipoEscalas('TODAS');
     setStatusEscalas('TODOS');
     setFiltroEscala(`ESCALA:${escala.id}`);
+    setEscalaModalId(escala.id);
     setFormEscala({
       id: escala.id,
+      titulo: escala.titulo || '',
       voluntarioIds: escala.voluntarios.map((item) => item.usuario.id),
       substitutoIds: escala.voluntarios.filter((item) => item.substituto).map((item) => item.usuario.id),
     });
-
-    window.setTimeout(() => {
-      document.getElementById(`equipe-escala-${escala.id}`)?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'center',
-      });
-    }, 120);
   }, [equipeSelecionada, escalaSelecionadaId]);
 
   const escalasEsporadicas = useMemo(() => (
@@ -421,6 +417,11 @@ export default function MinhaEquipe() {
       ))
       .sort((a, b) => a.data.getTime() - b.data.getTime())
   ), [escalasFiltradas, mesEscalasEquipe]);
+  const escalaModal = useMemo(() => (
+    escalaModalId
+      ? equipeSelecionada?.escalas?.find((escala) => escala.id === escalaModalId) || null
+      : null
+  ), [equipeSelecionada, escalaModalId]);
 
   useEffect(() => {
     setPaginaEscalas((pagina) => Math.min(pagina, totalPaginasEscalas));
@@ -507,19 +508,33 @@ export default function MinhaEquipe() {
     });
   };
 
+  const abrirEscalaModal = (escala) => {
+    setErro('');
+    setSucesso('');
+    setEscalaModalId(escala.id);
+
+    // Sem voluntários atribuídos: já abre o modal direto no modo de atribuição.
+    if ((escala.voluntarios || []).length === 0) {
+      editarEscala(escala);
+    } else {
+      setFormEscala(formEscalaInicial);
+    }
+  };
+
+  const fecharEscalaModal = () => {
+    setEscalaModalId('');
+    setFormEscala(formEscalaInicial);
+  };
+
   const abrirEscalaSolicitada = (escala) => {
     setBuscaEscalas('');
     setTipoEscalas('TODAS');
     setStatusEscalas('TODOS');
     setFiltroEscala(`ESCALA:${escala.id}`);
+    setErro('');
+    setSucesso('');
+    setEscalaModalId(escala.id);
     editarEscala(escala);
-
-    window.setTimeout(() => {
-      document.getElementById(`equipe-escala-${escala.id}`)?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'center',
-      });
-    }, 120);
   };
 
   const atribuirSubstituto = async (pedidoId) => {
@@ -674,6 +689,7 @@ export default function MinhaEquipe() {
                 setEquipeId(event.target.value);
                 setFormEscala(formEscalaInicial);
                 setFiltroEscala('TODAS');
+                setEscalaModalId('');
               }}
               className="rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm font-semibold outline-none focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
             >
@@ -973,11 +989,7 @@ export default function MinhaEquipe() {
                       onMesAnterior={() => setMesEscalasEquipe((atual) => new Date(Date.UTC(atual.getUTCFullYear(), atual.getUTCMonth() - 1, 1)))}
                       onProximoMes={() => setMesEscalasEquipe((atual) => new Date(Date.UTC(atual.getUTCFullYear(), atual.getUTCMonth() + 1, 1)))}
                       onHoje={() => setMesEscalasEquipe(inicioMesAtual())}
-                      onSelecionarEscala={(escala) => {
-                        setFiltroEscala(`ESCALA:${escala.id}`);
-                        editarEscala(escala);
-                        setModoEscalasEquipe('lista');
-                      }}
+                      onSelecionarEscala={abrirEscalaModal}
                     />
                   ) : (
                   <div className="space-y-3">
@@ -1197,6 +1209,24 @@ export default function MinhaEquipe() {
         )}
       </main>
 
+      {escalaModal && equipeSelecionada && (
+        <ModalEscalaEquipe
+          escala={escalaModal}
+          equipe={equipeSelecionada}
+          formEscala={formEscala}
+          salvando={salvando}
+          erro={erro}
+          onClose={fecharEscalaModal}
+          onEditar={() => editarEscala(escalaModal)}
+          onCancelarEdicao={() => setFormEscala(formEscalaInicial)}
+          onAlternarVoluntario={alternarVoluntarioNaEscala}
+          onAlternarSubstituto={alternarSubstituto}
+          onSalvar={salvarEscala}
+          onAbrirUsuario={setUsuarioModal}
+          onAbrirOrdemCulto={abrirOrdemCulto}
+        />
+      )}
+
       <UsuarioModal usuario={usuarioModal} onClose={() => setUsuarioModal(null)} />
       <Footer />
     </div>
@@ -1325,27 +1355,34 @@ function CalendarioEscalasEquipe({
               }`}>
                 {dia.getUTCDate()}
               </span>
-              <div className="mt-1.5 space-y-1">
-                {itens.slice(0, 3).map(({ escala }) => {
+              <div className="mt-1 grid grid-cols-2 gap-0.5 sm:mt-2 sm:flex sm:flex-wrap">
+                {itens.slice(0, 4).map(({ escala }) => {
                   const pendentes = (escala.voluntarios || []).filter((item) => item.status === 'PENDENTE').length;
+                  const titulo = `${escala.titulo || 'Escala sem título'} - ${formatarData(escala.dataHora)} - ${escala.voluntarios?.length || 0} voluntário(s)${pendentes > 0 ? ` - ${pendentes} pendente(s)` : ''}`;
 
                   return (
                     <button
                       key={escala.id}
                       type="button"
                       onClick={() => onSelecionarEscala(escala)}
-                      className="block w-full truncate rounded-md border border-gray-200 bg-gray-50 px-1.5 py-1 text-left text-[11px] font-semibold text-gray-700 transition hover:border-gray-300 hover:bg-white"
-                      title={`${escala.titulo || 'Escala sem título'} - ${formatarData(escala.dataHora)}`}
+                      className="grid h-5 w-5 place-items-center rounded-full transition hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-950 sm:h-6 sm:w-6"
+                      aria-label={titulo}
+                      title={titulo}
                     >
-                      {escala.titulo || 'Escala sem título'}
-                      {pendentes > 0 && <span className="ml-1 text-amber-700">({pendentes})</span>}
+                      <span className={`h-2.5 w-2.5 rounded-full ring-2 ring-white sm:h-3 sm:w-3 ${escala.tipo === 'ESPORADICA' ? 'bg-amber-500' : 'bg-blue-600'}`} />
                     </button>
                   );
                 })}
-                {itens.length > 3 && (
-                  <span className="block rounded-md bg-gray-100 px-1.5 py-1 text-[11px] font-bold text-gray-500">
-                    +{itens.length - 3} escala(s)
-                  </span>
+                {itens.length > 4 && (
+                  <button
+                    type="button"
+                    onClick={() => onSelecionarEscala(itens[4].escala)}
+                    className="grid h-5 w-5 place-items-center rounded-full text-[10px] font-bold text-gray-500 transition hover:bg-gray-100 sm:h-6 sm:w-6"
+                    aria-label={`Mais ${itens.length - 4} escala(s) neste dia`}
+                    title={`Mais ${itens.length - 4} escala(s)`}
+                  >
+                    +{itens.length - 4}
+                  </button>
                 )}
               </div>
             </div>
@@ -1353,12 +1390,244 @@ function CalendarioEscalasEquipe({
         })}
       </div>
 
-      {escalas.length === 0 && (
+      {escalas.length === 0 ? (
         <div className="border-t border-gray-100 px-5 py-8 text-center text-sm text-gray-500">
           Nenhuma escala encontrada neste mês com os filtros selecionados.
         </div>
+      ) : (
+        <div className="flex flex-col gap-3 border-t border-gray-100 bg-gray-50 px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+          <div className="flex flex-wrap gap-x-4 gap-y-2">
+            <span className="inline-flex items-center gap-2 text-xs font-semibold text-gray-600">
+              <span className="h-2.5 w-2.5 rounded-full bg-blue-600" />
+              Recorrente
+            </span>
+            <span className="inline-flex items-center gap-2 text-xs font-semibold text-gray-600">
+              <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
+              Esporádica
+            </span>
+          </div>
+          <span className="text-xs font-semibold text-gray-500">{escalas.length} escala(s) no mês</span>
+        </div>
       )}
     </section>
+  );
+}
+
+function ModalEscalaEquipe({
+  escala,
+  equipe,
+  formEscala,
+  salvando,
+  erro,
+  onClose,
+  onEditar,
+  onCancelarEdicao,
+  onAlternarVoluntario,
+  onAlternarSubstituto,
+  onSalvar,
+  onAbrirUsuario,
+  onAbrirOrdemCulto,
+}) {
+  const fecharRef = useRef(null);
+  const editando = formEscala.id === escala.id;
+  const voluntarios = escala.voluntarios || [];
+  const voluntariosEquipe = equipe.voluntarios || [];
+
+  useEffect(() => {
+    const fecharComEscape = (event) => {
+      if (event.key === 'Escape') onClose();
+    };
+
+    document.addEventListener('keydown', fecharComEscape);
+    const overflowAnterior = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    fecharRef.current?.focus();
+
+    return () => {
+      document.removeEventListener('keydown', fecharComEscape);
+      document.body.style.overflow = overflowAnterior;
+    };
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-end justify-center bg-gray-950/65 sm:items-center sm:p-4 sm:backdrop-blur-sm" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <div role="dialog" aria-modal="true" aria-labelledby="modal-escala-equipe-titulo" className="max-h-[92dvh] w-full max-w-2xl overflow-y-auto rounded-t-lg border border-gray-200 bg-white shadow-2xl sm:rounded-lg">
+        <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-gray-200 bg-white px-4 py-4 sm:px-5">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full border border-dourado-200 bg-dourado-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-dourado-700">
+                {equipe.nome}
+              </span>
+              <span className={`rounded-full border px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] ${
+                escala.tipo === 'ESPORADICA'
+                  ? 'border-amber-200 bg-amber-50 text-amber-700'
+                  : 'border-gray-200 bg-white text-gray-500'
+              }`}
+              >
+                {escala.tipo === 'ESPORADICA' ? 'Esporádica' : 'Recorrente'}
+              </span>
+            </div>
+            <h2 id="modal-escala-equipe-titulo" className="mt-2 text-xl font-bold text-gray-950">{escala.titulo || 'Escala sem título'}</h2>
+            <p className="mt-1 text-sm text-gray-500">
+              {formatarData(escala.dataHora)}
+              {escala.local ? ` · ${escala.local}` : ''}
+              {escala.tipo === 'RECORRENTE' && escala.semanaMes != null ? ` · ${escala.semanaMes}º ${escala.diaSemana === 0 ? 'domingo' : 'sábado'}` : ''}
+            </p>
+          </div>
+          <button ref={fecharRef} type="button" onClick={onClose} className="grid h-10 w-10 shrink-0 place-items-center rounded-md border border-gray-300 text-gray-500 transition hover:bg-gray-50 hover:text-gray-900" aria-label="Fechar detalhes da escala" title="Fechar">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="space-y-5 p-4 sm:p-5">
+          {erro && (
+            <div className="flex items-center gap-2 rounded-md border border-red-100 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+              <AlertCircle size={16} />
+              {erro}
+            </div>
+          )}
+
+          {escala.descricao && (
+            <div>
+              <h3 className="text-sm font-bold text-gray-950">Descrição</h3>
+              <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-gray-600">{escala.descricao}</p>
+            </div>
+          )}
+
+          {escala.ordemCulto && (
+            <button
+              type="button"
+              onClick={() => onAbrirOrdemCulto(escala.ordemCulto)}
+              className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2.5 text-sm font-bold text-gray-800 transition hover:bg-gray-50 sm:w-auto"
+            >
+              <FileText size={17} />
+              Visualizar ordem de culto
+            </button>
+          )}
+
+          <div>
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="inline-flex items-center gap-2 text-sm font-bold text-gray-950"><UsersRound size={17} /> Voluntários atribuídos</h3>
+              <span className="text-xs font-semibold text-gray-500">{voluntarios.length} voluntário(s)</span>
+            </div>
+
+            {editando ? (
+              <form onSubmit={onSalvar} className="mt-3 rounded-xl border border-dourado-200 bg-dourado-50/50 p-4">
+                <div className="flex flex-col gap-2 border-b border-dourado-100 pb-3 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.14em] text-dourado-700">
+                      {voluntarios.length === 0 ? 'Atribuir voluntários' : 'Editar voluntários'}
+                    </p>
+                    <p className="mt-1 text-sm text-gray-600">Selecione quem participará desta escala e marque substitutos quando necessário.</p>
+                  </div>
+                  <span className="text-xs font-bold text-gray-500">{formEscala.voluntarioIds.length} selecionado(s)</span>
+                </div>
+
+                {voluntariosEquipe.length === 0 ? (
+                  <div className="mt-4 rounded-md border border-dashed border-gray-200 bg-white px-3 py-5 text-sm text-gray-500">
+                    Nenhum voluntário cadastrado nesta equipe.
+                  </div>
+                ) : (
+                  <div className="mt-4 grid gap-2 md:grid-cols-2">
+                    {voluntariosEquipe.map((voluntario) => {
+                      const escalado = formEscala.voluntarioIds.includes(voluntario.id);
+                      const substituto = formEscala.substitutoIds.includes(voluntario.id);
+
+                      return (
+                        <div key={voluntario.id} className={`rounded-md border p-3 transition ${escalado ? 'border-dourado-300 bg-white' : 'border-gray-200 bg-gray-50'}`}>
+                          <div className="flex items-start gap-2">
+                            <input
+                              type="checkbox"
+                              checked={escalado}
+                              onChange={() => onAlternarVoluntario(voluntario.id)}
+                              className="mt-1 h-4 w-4 accent-gray-950"
+                              aria-label={`Atribuir ${voluntario.nomeCompleto}`}
+                            />
+                            <UsuarioInfoButton usuario={voluntario} onClick={onAbrirUsuario} className="h-7 w-7" />
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-bold text-gray-900">{voluntario.nomeCompleto}</p>
+                              {voluntario.telefone && <p className="truncate text-[11px] font-medium text-gray-400">{formatarTelefoneExibicao(voluntario.telefone)}</p>}
+                            </div>
+                          </div>
+                          <label className={`mt-3 flex items-center gap-2 border-t pt-2 text-xs font-semibold ${substituto ? 'border-violet-100 text-violet-700' : 'border-gray-100 text-gray-500'}`}>
+                            <input
+                              type="checkbox"
+                              checked={substituto}
+                              onChange={() => onAlternarSubstituto(voluntario.id)}
+                              className="h-4 w-4 accent-violet-600"
+                            />
+                            Marcar como substituto
+                          </label>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <div className="mt-4 flex flex-wrap gap-2 border-t border-dourado-100 pt-4">
+                  <button disabled={salvando} className="inline-flex items-center justify-center gap-2 rounded-md bg-gray-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-gray-800 disabled:opacity-60">
+                    {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save size={16} />}
+                    Salvar atribuições
+                  </button>
+                  <button type="button" disabled={salvando} onClick={onCancelarEdicao} className="rounded-md border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-60">
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <>
+                <div className="mt-3 grid gap-2 md:grid-cols-2">
+                  {voluntarios.length === 0 ? (
+                    <div className="rounded-md border border-dashed border-gray-200 bg-gray-50 px-3 py-4 text-sm text-gray-500 md:col-span-2">
+                      Nenhum voluntário da equipe foi atribuído para esta escala.
+                    </div>
+                  ) : voluntarios.map((item) => {
+                    const config = statusConfig[item.status] || statusConfig.PENDENTE;
+                    const Icon = config.icon;
+
+                    return (
+                      <div key={item.id} className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3">
+                        <div className="flex items-start gap-2">
+                          <UsuarioInfoButton usuario={item.usuario} onClick={onAbrirUsuario} />
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                              <p className="text-sm font-bold text-gray-900">{item.usuario.nomeCompleto}</p>
+                              {item.usuario.telefone && (
+                                <span className="text-[11px] font-medium text-gray-400">{formatarTelefoneExibicao(item.usuario.telefone)}</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          <span className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] font-semibold ${config.className}`}>
+                            <Icon size={11} />
+                            {config.label}
+                          </span>
+                          {item.substituto && (
+                            <span className="inline-flex rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[11px] font-semibold text-violet-700">
+                              Substituto
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={onEditar}
+                  className="mt-4 inline-flex items-center justify-center gap-2 rounded-md bg-gray-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-gray-800"
+                >
+                  <UserPlus size={16} />
+                  {voluntarios.length === 0 ? 'Atribuir voluntários' : 'Editar voluntários'}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 

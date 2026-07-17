@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { AlertTriangle, Loader2, Mail, Phone, ShieldCheck, Trash2, UserRound, X } from 'lucide-react';
 import { formatarTelefoneExibicao } from '../lib/telefone';
 
@@ -71,6 +71,17 @@ export function UsuarioInfoButton({ usuario, onClick, className = '' }) {
 export function UsuarioModal({ usuario, onClose, podeExcluir = false, onExcluir, excluindo = false }) {
   const [confirmandoExclusao, setConfirmandoExclusao] = useState(false);
 
+  useEffect(() => {
+    const fecharComEsc = (event) => {
+      if (event.key === 'Escape') {
+        onClose?.();
+      }
+    };
+
+    window.addEventListener('keydown', fecharComEsc);
+    return () => window.removeEventListener('keydown', fecharComEsc);
+  }, [onClose]);
+
   if (!usuario) return null;
 
   const confirmarExclusao = async () => {
@@ -79,8 +90,17 @@ export function UsuarioModal({ usuario, onClose, podeExcluir = false, onExcluir,
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/45 px-4 py-6 backdrop-blur-sm">
-      <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-gray-200 bg-white shadow-2xl">
+    <div
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-gray-950/45 px-4 py-6 backdrop-blur-sm"
+      onClick={() => onClose?.()}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Dados de ${usuario.nomeCompleto || 'usuário'}`}
+        onClick={(event) => event.stopPropagation()}
+        className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-gray-200 bg-white shadow-2xl"
+      >
         <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-gray-100 bg-white/95 px-5 py-4 backdrop-blur">
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full border border-gray-200 bg-gray-50 text-gray-500">
@@ -162,7 +182,7 @@ export function UsuarioModal({ usuario, onClose, podeExcluir = false, onExcluir,
               <ListaTags titulo="Permissões" itens={(usuario.permissoes || []).map(formatarPermissao)} />
               <ListaTags titulo="Equipes como voluntário" itens={usuario.equipes || []} prefixo="Voluntário: " />
               <ListaTags titulo="Equipes lideradas" itens={usuario.equipesLideradas || []} prefixo="Líder: " />
-              <CampoDetalhe label="Foto" valor={usuario.urlFoto} />
+              <CampoDetalhe label="Foto" valor={usuario.urlFoto ? 'Sim' : 'Não'} />
             </div>
 
             <div className="flex flex-wrap gap-2 rounded-xl border border-gray-200 bg-gray-50 p-3 text-xs font-semibold text-gray-500">

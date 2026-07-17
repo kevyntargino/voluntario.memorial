@@ -78,6 +78,21 @@ export function AppSettings() {
     return () => window.removeEventListener('mcom-theme-change', sincronizarTema);
   }, []);
 
+  useEffect(() => {
+    if (!aberto) {
+      return undefined;
+    }
+
+    const fecharComEsc = (event) => {
+      if (event.key === 'Escape') {
+        setAberto(false);
+      }
+    };
+
+    window.addEventListener('keydown', fecharComEsc);
+    return () => window.removeEventListener('keydown', fecharComEsc);
+  }, [aberto]);
+
   const alterarTema = (proximoTema) => {
     setTema(proximoTema);
     aplicarTema(proximoTema);
@@ -182,8 +197,17 @@ export function AppSettings() {
   }
 
   return (
-    <div className="fixed inset-0 z-[70] bg-gray-950/50 pt-14 backdrop-blur-sm md:hidden">
-      <div className="mx-auto flex h-full max-w-md flex-col overflow-hidden rounded-t-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-950">
+    <div
+      className="fixed inset-0 z-[70] bg-gray-950/50 pt-14 backdrop-blur-sm md:hidden"
+      onClick={() => setAberto(false)}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Configurações do app"
+        onClick={(event) => event.stopPropagation()}
+        className="mx-auto flex h-full max-w-md flex-col overflow-hidden rounded-t-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-950"
+      >
         <div className="flex items-start justify-between gap-4 border-b border-gray-100 px-5 py-5 dark:border-gray-800">
           <div>
             <span className="inline-flex items-center gap-2 text-[11px] font-bold uppercase text-dourado-700 dark:text-dourado-300">
@@ -257,8 +281,8 @@ export function AppSettings() {
               </div>
             </div>
 
-            {erro && <p className="mt-3 rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200">{erro}</p>}
-            {sucesso && <p className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-200">{sucesso}</p>}
+            {erro && <p role="alert" aria-live="assertive" className="mt-3 rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200">{erro}</p>}
+            {sucesso && <p role="status" aria-live="polite" className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-200">{sucesso}</p>}
 
             <button
               type="button"

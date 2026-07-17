@@ -549,7 +549,7 @@ export default function Escalas() {
     return Array.from(eventos.values());
   }, [escalasPaginadas]);
 
-  const totalVoluntarios = contarVoluntariosUnicos(escalasVisiveis);
+  const totalVoluntarios = useMemo(() => contarVoluntariosUnicos(escalasVisiveis), [escalasVisiveis]);
   const ocorrenciasCalendario = useMemo(() => {
     const eventos = new Map();
 
@@ -695,12 +695,13 @@ export default function Escalas() {
             />
 
             <div>
-              <p className="mb-1 text-[11px] font-semibold uppercase text-gray-500 dark:text-gray-400">Busca</p>
+              <p id="escalas-busca-label" className="mb-1 text-[11px] font-semibold uppercase text-gray-500 dark:text-gray-400">Busca</p>
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                 <input
                   value={busca}
                   onChange={(event) => setBusca(event.target.value)}
+                  aria-labelledby="escalas-busca-label"
                   className="block h-9 w-full rounded-md border border-gray-300 bg-white pl-9 pr-3 text-sm text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-gray-400 dark:focus:ring-gray-400/20"
                   placeholder="Buscar por área, título ou voluntário"
                 />
@@ -830,7 +831,7 @@ export default function Escalas() {
         </section>
 
         {erro && (
-          <div className="mt-5 flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200">
+          <div role="alert" aria-live="assertive" className="mt-5 flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200">
             <AlertCircle size={16} />
             {erro}
           </div>
@@ -1470,10 +1471,10 @@ function AvatarVoluntario({ usuario }) {
 function AcoesEscala({ participacao, escala, atualizandoId, onAbrirSubstituicao, onAtualizarStatus }) {
   return (
     <div className="inline-flex gap-1.5">
-      <button type="button" title="Confirmar escala" aria-label="Confirmar escala" disabled={atualizandoId === participacao.id || ['CONFIRMADA', 'AUSENTE'].includes(participacao.status)} onClick={() => onAtualizarStatus(participacao.id, 'CONFIRMADA', '', escala.dataHora)} className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-gray-950 text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-gray-950">
+      <button type="button" title="Confirmar escala" aria-label="Confirmar escala" disabled={atualizandoId === participacao.id || ['CONFIRMADA', 'AUSENTE'].includes(participacao.status)} onClick={() => onAtualizarStatus(participacao.id, 'CONFIRMADA', '', escala.dataHora)} className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-gray-950 text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-gray-950">
         {atualizandoId === participacao.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 size={15} />}
       </button>
-      <button type="button" title="Solicitar substituição" aria-label="Solicitar substituição" disabled={atualizandoId === participacao.id || ['PEDIU_SUBSTITUICAO', 'AUSENTE'].includes(participacao.status)} onClick={() => onAbrirSubstituicao(participacao.id)} className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-300 bg-white text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/60 dark:bg-gray-950 dark:text-white">
+      <button type="button" title="Solicitar substituição" aria-label="Solicitar substituição" disabled={atualizandoId === participacao.id || ['PEDIU_SUBSTITUICAO', 'AUSENTE'].includes(participacao.status)} onClick={() => onAbrirSubstituicao(participacao.id)} className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/60 dark:bg-gray-950 dark:text-white">
         <RefreshCcw size={15} />
       </button>
     </div>

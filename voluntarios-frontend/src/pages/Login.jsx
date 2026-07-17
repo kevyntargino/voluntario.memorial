@@ -55,9 +55,7 @@ export default function Login() {
         return;
       }
 
-      // Sucesso: A API retornou o status 200, o token e os dados do usuário
-      console.log(dados.mensagem);
-
+      // Sucesso: A API retornou o status 200, o token e os dados do usuário.
       // Salva o Token JWT e as informações do usuário no localStorage do navegador
       login(dados.token, dados.usuario);
       navigate('/', { replace: true });
@@ -91,7 +89,7 @@ export default function Login() {
             
             {/* Mensagem de Erro */}
             {erro && (
-              <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg border border-red-100 flex items-center">
+              <div role="alert" aria-live="assertive" className="bg-red-50 text-red-600 text-sm p-3 rounded-lg border border-red-100 flex items-center">
                 {erro}
               </div>
             )}
@@ -107,7 +105,10 @@ export default function Login() {
                 </div>
                 <input
                   id="email"
+                  name="email"
                   type="email"
+                  autoComplete="email"
+                  inputMode="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   disabled={carregando}
@@ -128,7 +129,9 @@ export default function Login() {
                 </div>
                 <input
                   id="senha"
+                  name="password"
                   type={mostrarSenha ? "text" : "password"}
+                  autoComplete="current-password"
                   value={senha}
                   onChange={(e) => setSenha(e.target.value)}
                   disabled={carregando}
@@ -139,6 +142,8 @@ export default function Login() {
                   type="button"
                   onClick={() => setMostrarSenha(!mostrarSenha)}
                   disabled={carregando}
+                  aria-label={mostrarSenha ? 'Ocultar senha' : 'Mostrar senha'}
+                  aria-pressed={mostrarSenha}
                   className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-700 transition-colors disabled:opacity-50"
                 >
                   {mostrarSenha ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
@@ -172,15 +177,6 @@ export default function Login() {
               )}
             </button>
           </form>
-
-          {/* Divisor e Cadastro */}
-          <div className="mt-8">
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-100" />
-              </div>
-            </div>
-          </div>
         </div>
 
       </div>

@@ -65,6 +65,7 @@ enum TipoNotificacao {
   AVISO
   SUBSTITUTO
   ALERTA_LIDER
+  ORDEM_CULTO
 }
 
 // ==========================================
