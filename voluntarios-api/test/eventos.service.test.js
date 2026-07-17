@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  aplicarModelosVoluntariosEscalas,
   garantirOcorrenciasEventos,
   gerarDatasEvento,
   getInicioHistoricoEscalas,
@@ -102,4 +103,49 @@ test('manutenção remove escalas anteriores a 90 dias', async () => {
 
   assert.equal(filtroExclusao.eventoId.not, null);
   assert.equal(filtroExclusao.dataHora.lt.toISOString(), '2026-04-17T00:00:00.000Z');
+});
+
+test('modelo mensal aplica voluntários por semana do mês em escalas vazias', async () => {
+  let filtroEscalas;
+  let participacoesCriadas = [];
+  const prisma = {
+    escalaModeloVoluntario: {
+      findMany: async () => [
+        { equipeId: 'equipe-1', semanaMes: 1, usuarioId: 'carlos' },
+        { equipeId: 'equipe-1', semanaMes: 1, usuarioId: 'janine' },
+        { equipeId: 'equipe-1', semanaMes: 2, usuarioId: 'eduardo' },
+      ],
+    },
+    escala: {
+      findMany: async ({ where }) => {
+        filtroEscalas = where;
+        return [
+          { id: 'escala-semana-1', equipeId: 'equipe-1', dataHora: new Date('2026-08-02T18:00:00.000Z') },
+          { id: 'escala-semana-2', equipeId: 'equipe-1', dataHora: new Date('2026-08-09T18:00:00.000Z') },
+          { id: 'escala-sem-modelo', equipeId: 'equipe-2', dataHora: new Date('2026-08-02T18:00:00.000Z') },
+        ];
+      },
+    },
+    voluntarioEscala: {
+      createMany: async ({ data }) => {
+        participacoesCriadas = data;
+        return { count: data.length };
+      },
+    },
+  };
+
+  const total = await aplicarModelosVoluntariosEscalas(prisma, {
+    eventoId: 'evento-1',
+    atribuidoPorId: 'admin-1',
+  });
+
+  assert.equal(total, 3);
+  assert.deepEqual(filtroEscalas.voluntarios, { none: {} });
+  assert.deepEqual(participacoesCriadas.map((item) => [item.escalaId, item.usuarioId]), [
+    ['escala-semana-1', 'carlos'],
+    ['escala-semana-1', 'janine'],
+    ['escala-semana-2', 'eduardo'],
+  ]);
+  assert(participacoesCriadas.every((item) => item.status === 'PENDENTE'));
+  assert(participacoesCriadas.every((item) => item.atribuidoPorId === 'admin-1'));
 });

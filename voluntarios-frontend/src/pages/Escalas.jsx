@@ -615,16 +615,14 @@ export default function Escalas() {
     || statusFiltro !== 'TODOS'
     || tipoFiltro !== 'TODAS'
     || ordem !== 'proximas';
-  const totalFiltrosAtivos = [
+  const totalFiltrosPainelAtivos = [
     filtroConfirmacoes || Boolean(participacaoSelecionadaId),
     Boolean(eventoSelecionadoId),
     diaSelecionado !== 'TODOS',
     semanaSelecionada !== 'TODAS',
-    Boolean(busca.trim()),
     areaFiltro !== 'TODAS',
     statusFiltro !== 'TODOS',
     tipoFiltro !== 'TODAS',
-    ordem !== 'proximas',
   ].filter(Boolean).length;
 
   const limparFiltros = () => {
@@ -684,24 +682,8 @@ export default function Escalas() {
           </div>
         </header>
 
-        <section className="mt-4 border-y border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900 md:rounded-lg md:border md:shadow-sm">
-          <button
-            type="button"
-            onClick={() => setFiltrosAbertos((aberto) => !aberto)}
-            className="flex min-h-12 w-full items-center justify-between gap-3 px-4 py-3 text-left md:hidden"
-            aria-expanded={filtrosAbertos}
-          >
-            <span className="inline-flex items-center gap-2 text-sm font-bold text-gray-800 dark:text-gray-100">
-              <SlidersHorizontal size={17} />
-              Filtros e ordenação
-            </span>
-            <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">
-              {totalFiltrosAtivos > 0 ? `${totalFiltrosAtivos} ativo(s)` : filtrosAbertos ? 'Fechar' : 'Abrir'}
-            </span>
-          </button>
-
-          <div className={`${filtrosAbertos ? 'block' : 'hidden'} border-t border-gray-200 p-4 dark:border-gray-800 md:block md:border-t-0`}>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-[auto_minmax(140px,0.7fr)_minmax(140px,0.7fr)_minmax(160px,0.8fr)_minmax(220px,1.2fr)] xl:items-end">
+        <section className="mt-4 rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900 dark:shadow-black/20">
+          <div className="grid gap-3 p-4 lg:grid-cols-[auto_minmax(220px,1fr)_minmax(170px,0.45fr)_auto] lg:items-end">
             <Segmento
               label="Visão"
               options={[
@@ -712,118 +694,138 @@ export default function Escalas() {
               onChange={alterarVisao}
             />
 
-            <SelectFiltro
-              label="Tipo"
-              value={tipoFiltro}
-              onChange={setTipoFiltro}
-              options={filtrosTipo}
-            />
-
-            <SelectFiltro
-              label="Status"
-              value={statusFiltro}
-              onChange={(valor) => {
-                setStatusFiltro(valor);
-                if (valor !== 'PENDENTE') {
-                  setFiltroConfirmacoes(false);
-                  setParticipacaoSelecionadaId('');
-                  navigate('/escalas', { replace: true });
-                }
-              }}
-              options={filtrosStatus}
-            />
-
-            <SelectFiltro
-              label="Área"
-              value={areaFiltro}
-              onChange={setAreaFiltro}
-              options={[
-                { value: 'TODAS', label: 'Todas as áreas' },
-                ...areas.map((area) => ({ value: area, label: area })),
-              ]}
-            />
-
             <div>
               <p className="mb-1 text-[11px] font-semibold uppercase text-gray-500 dark:text-gray-400">Busca</p>
               <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-              <input
-                value={busca}
-                onChange={(event) => setBusca(event.target.value)}
-                className="block h-9 w-full rounded-md border border-gray-300 bg-white pl-9 pr-3 text-sm text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-gray-400 dark:focus:ring-gray-400/20"
-                placeholder="Buscar por área, título ou voluntário"
-              />
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <input
+                  value={busca}
+                  onChange={(event) => setBusca(event.target.value)}
+                  className="block h-9 w-full rounded-md border border-gray-300 bg-white pl-9 pr-3 text-sm text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-gray-400 dark:focus:ring-gray-400/20"
+                  placeholder="Buscar por área, título ou voluntário"
+                />
               </div>
             </div>
+
+            <SelectFiltro
+              label="Ordenar"
+              value={ordem}
+              onChange={setOrdem}
+              options={[
+                { value: 'proximas', label: 'Mais próximas' },
+                { value: 'distantes', label: 'Mais distantes' },
+                { value: 'area', label: 'Área' },
+                { value: 'pendentes', label: 'Pendentes primeiro' },
+              ]}
+            />
+
+            <button
+              type="button"
+              onClick={() => setFiltrosAbertos((aberto) => !aberto)}
+              className={`inline-flex h-9 items-center justify-center gap-2 rounded-md border px-3 text-sm font-semibold transition ${
+                filtrosAbertos || totalFiltrosPainelAtivos > 0
+                  ? 'border-gray-950 bg-gray-950 text-white hover:bg-gray-800 dark:border-white dark:bg-white dark:text-gray-950'
+                  : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:hover:bg-gray-800'
+              }`}
+              aria-expanded={filtrosAbertos}
+            >
+              <SlidersHorizontal size={16} />
+              <span>Filtros</span>
+              {totalFiltrosPainelAtivos > 0 && (
+                <span className="rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] font-bold leading-none">
+                  {totalFiltrosPainelAtivos}
+                </span>
+              )}
+            </button>
           </div>
 
-          <div className="mt-4 grid gap-4 border-t border-gray-100 pt-4 dark:border-gray-800 lg:grid-cols-[1fr_auto] lg:items-end">
-            <div className="space-y-3">
-              {modoVisualizacao === 'lista' && tipoFiltro !== 'ESPORADICA' && !filtroConfirmacoes && (
-                <div className="flex flex-wrap gap-2">
-                  <Segmento
-                    label="Dia"
-                    options={dias}
-                    value={diaSelecionado}
-                    onChange={setDiaSelecionado}
-                  />
-                </div>
-              )}
-              {modoVisualizacao === 'lista' && tipoFiltro !== 'ESPORADICA' && !filtroConfirmacoes && (
-                <div className="flex flex-wrap gap-2">
-                  {['TODAS', ...semanas].map((semana) => (
-                    <button
-                      key={semana}
-                      type="button"
-                      onClick={() => setSemanaSelecionada(semana)}
-                      className={`h-8 rounded-md px-2.5 text-xs font-semibold transition ${
-                        semanaSelecionada === semana
-                          ? 'bg-gray-950 text-white dark:bg-white dark:text-gray-950'
-                          : 'border border-gray-300 bg-white text-gray-600 hover:border-gray-400 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-300 dark:hover:border-gray-500'
-                      }`}
-                    >
-                      {semana === 'TODAS' ? 'Todas as semanas' : `${semana}ª semana`}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="flex flex-wrap items-end gap-3 lg:justify-end">
+          <div className={`${filtrosAbertos ? 'block' : 'hidden'} border-t border-gray-200 p-4 dark:border-gray-800`}>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <SelectFiltro
-                label="Ordenar"
-                value={ordem}
-                onChange={setOrdem}
+                label="Tipo"
+                value={tipoFiltro}
+                onChange={setTipoFiltro}
+                options={filtrosTipo}
+              />
+
+              <SelectFiltro
+                label="Status"
+                value={statusFiltro}
+                onChange={(valor) => {
+                  setStatusFiltro(valor);
+                  if (valor !== 'PENDENTE') {
+                    setFiltroConfirmacoes(false);
+                    setParticipacaoSelecionadaId('');
+                    navigate('/escalas', { replace: true });
+                  }
+                }}
+                options={filtrosStatus}
+              />
+
+              <SelectFiltro
+                label="Área"
+                value={areaFiltro}
+                onChange={setAreaFiltro}
                 options={[
-                  { value: 'proximas', label: 'Mais próximas' },
-                  { value: 'distantes', label: 'Mais distantes' },
-                  { value: 'area', label: 'Área' },
-                  { value: 'pendentes', label: 'Pendentes primeiro' },
+                  { value: 'TODAS', label: 'Todas as áreas' },
+                  ...areas.map((area) => ({ value: area, label: area })),
                 ]}
               />
             </div>
-          </div>
 
-          <div className="mt-4 flex flex-wrap gap-2">
-            {filtroConfirmacoes && (
-              <button
-                type="button"
-                onClick={limparFiltros}
-                className="min-h-10 rounded-md border border-gray-950 bg-gray-950 px-3 py-2 text-sm font-semibold text-white transition hover:bg-gray-800 dark:border-gray-600 dark:bg-gray-800 dark:hover:bg-gray-700"
-              >
-                {participacaoSelecionadaId ? 'Mostrando a pendência selecionada - limpar' : 'Mostrando pendentes - limpar'}
-              </button>
-            )}
-            {temFiltrosAtivos && !filtroConfirmacoes && (
-              <button
-                type="button"
-                onClick={limparFiltros}
-                className="min-h-10 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-200 dark:hover:bg-gray-800"
-              >
-                Limpar filtros
-              </button>
-            )}
-          </div>
+            <div className="mt-4 grid gap-4 border-t border-gray-100 pt-4 dark:border-gray-800">
+              <div className="space-y-3">
+                {modoVisualizacao === 'lista' && tipoFiltro !== 'ESPORADICA' && !filtroConfirmacoes && (
+                  <div className="flex flex-wrap gap-2">
+                    <Segmento
+                      label="Dia"
+                      options={dias}
+                      value={diaSelecionado}
+                      onChange={setDiaSelecionado}
+                    />
+                  </div>
+                )}
+                {modoVisualizacao === 'lista' && tipoFiltro !== 'ESPORADICA' && !filtroConfirmacoes && (
+                  <div className="flex flex-wrap gap-2">
+                    {['TODAS', ...semanas].map((semana) => (
+                      <button
+                        key={semana}
+                        type="button"
+                        onClick={() => setSemanaSelecionada(semana)}
+                        className={`h-8 rounded-md px-2.5 text-xs font-semibold transition ${
+                          semanaSelecionada === semana
+                            ? 'bg-gray-950 text-white dark:bg-white dark:text-gray-950'
+                            : 'border border-gray-300 bg-white text-gray-600 hover:border-gray-400 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-300 dark:hover:border-gray-500'
+                        }`}
+                      >
+                        {semana === 'TODAS' ? 'Todas as semanas' : `${semana}ª semana`}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              {filtroConfirmacoes && (
+                <button
+                  type="button"
+                  onClick={limparFiltros}
+                  className="min-h-10 rounded-md border border-gray-950 bg-gray-950 px-3 py-2 text-sm font-semibold text-white transition hover:bg-gray-800 dark:border-gray-600 dark:bg-gray-800 dark:hover:bg-gray-700"
+                >
+                  {participacaoSelecionadaId ? 'Mostrando a pendência selecionada - limpar' : 'Mostrando pendentes - limpar'}
+                </button>
+              )}
+              {temFiltrosAtivos && !filtroConfirmacoes && (
+                <button
+                  type="button"
+                  onClick={limparFiltros}
+                  className="min-h-10 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-200 dark:hover:bg-gray-800"
+                >
+                  Limpar filtros
+                </button>
+              )}
+            </div>
           </div>
         </section>
 

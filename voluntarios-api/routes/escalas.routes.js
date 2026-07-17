@@ -11,6 +11,7 @@ import {
 } from '../services/notificacoes.service.js';
 import { escalaEstaEncerrada, getAgoraEscalas } from '../utils/escalas.js';
 import {
+  aplicarModelosVoluntariosEscalas,
   garantirOcorrenciasEventos,
   gerarDatasEvento,
   getInicioHistoricoEscalas,
@@ -89,6 +90,47 @@ function apagarArquivosOrdensCulto(ordensCulto) {
 
 function getSemanaMes(data) {
   return Math.ceil(data.getUTCDate() / 7);
+}
+
+function normalizarModeloVoluntarios(modeloVoluntarios, equipes) {
+  if (!Array.isArray(modeloVoluntarios) || modeloVoluntarios.length === 0) {
+    return { modelos: [] };
+  }
+
+  const equipesPorId = new Map(equipes.map((equipe) => [
+    equipe.id,
+    new Set((equipe.voluntarios || []).map((voluntario) => voluntario.id)),
+  ]));
+  const modelos = [];
+  const vistos = new Set();
+
+  for (const item of modeloVoluntarios) {
+    const equipeId = String(item?.equipeId || '');
+    const semanaMes = Number(item?.semanaMes);
+    const usuarioIds = Array.isArray(item?.usuarioIds) ? item.usuarioIds : [];
+    const voluntariosDaEquipe = equipesPorId.get(equipeId);
+
+    if (!voluntariosDaEquipe) {
+      return { erro: 'O modelo de voluntários contém uma equipe que não faz parte do evento.' };
+    }
+
+    if (!Number.isInteger(semanaMes) || semanaMes < 1 || semanaMes > 5) {
+      return { erro: 'O modelo de voluntários deve usar semanas de 1 a 5.' };
+    }
+
+    for (const usuarioId of [...new Set(usuarioIds.filter(Boolean).map(String))]) {
+      if (!voluntariosDaEquipe.has(usuarioId)) {
+        return { erro: 'O modelo contém voluntário que não pertence à equipe selecionada.' };
+      }
+
+      const chave = `${equipeId}:${semanaMes}:${usuarioId}`;
+      if (vistos.has(chave)) continue;
+      vistos.add(chave);
+      modelos.push({ equipeId, semanaMes, usuarioId });
+    }
+  }
+
+  return { modelos };
 }
 
 function parseDataHoraEvento(valor) {
@@ -479,6 +521,21 @@ router.get('/admin', autenticar, exigirAdmin, async (req, res) => {
       include: {
         equipes: { select: { id: true, nome: true } },
         ordensCulto: true,
+        modelosEscalaVoluntarios: {
+          include: {
+            equipe: { select: { id: true, nome: true } },
+            usuario: {
+              select: {
+                id: true,
+                nomeCompleto: true,
+                email: true,
+                telefone: true,
+                urlFoto: true,
+              },
+            },
+          },
+          orderBy: [{ semanaMes: 'asc' }, { criadoEm: 'asc' }],
+        },
         escalas: {
           where: { dataHora: { gte: getInicioHistoricoEscalas() } },
           include: {
@@ -506,13 +563,19 @@ router.get('/admin', autenticar, exigirAdmin, async (req, res) => {
 
     return res.status(200).json({
       equipes,
-      eventos: eventos.map(({ ordensCulto, ...evento }) => ({
+      eventos: eventos.map(({ ordensCulto, modelosEscalaVoluntarios, ...evento }) => ({
         ...evento,
         ordensCulto: ordensCulto.map((ordem) => ({
           id: ordem.id,
           titulo: ordem.titulo,
           dataHora: ordem.dataHora,
           arquivoUrl: `/api/ordens-culto/${ordem.id}/arquivo`,
+        })),
+        modelosVoluntarios: modelosEscalaVoluntarios.map((modelo) => ({
+          id: modelo.id,
+          semanaMes: modelo.semanaMes,
+          equipe: modelo.equipe,
+          usuario: modelo.usuario,
         })),
         escalas: evento.escalas.map((escala) => formatarEscalaCompleta(escala, req.usuarioAutenticado.id)),
       })),
@@ -533,7 +596,7 @@ router.post('/admin/eventos', autenticar, exigirAdmin, async (req, res) => {
   try {
     const {
       titulo, tipo, frequencia, dataHora, dataHoras, dataFim, diaSemana, semanaMes,
-      horario, local, descricao, equipeIds = [],
+      horario, local, descricao, equipeIds = [], modeloVoluntarios = [],
     } = req.body ?? {};
     const tipoNormalizado = tipo === 'RECORRENTE' ? 'RECORRENTE' : 'ESPORADICA';
     const frequenciaNormalizada = ['NAO_REPETE', 'SEMANAL', 'MENSAL'].includes(frequencia)
@@ -581,10 +644,19 @@ router.post('/admin/eventos', autenticar, exigirAdmin, async (req, res) => {
 
     const equipes = await prisma.equipe.findMany({
       where: { id: { in: equipeIds } },
-      select: { id: true, nome: true, lideres: { select: { id: true } } },
+      select: {
+        id: true,
+        nome: true,
+        lideres: { select: { id: true } },
+        voluntarios: { select: { id: true } },
+      },
     });
     if (equipes.length !== new Set(equipeIds).size) {
       return res.status(400).json({ erro: 'Uma ou mais equipes selecionadas são inválidas.' });
+    }
+    const modelo = normalizarModeloVoluntarios(modeloVoluntarios, equipes);
+    if (modelo.erro) {
+      return res.status(400).json({ erro: modelo.erro });
     }
 
     const resultado = await prisma.$transaction(async (tx) => {
@@ -608,8 +680,20 @@ router.post('/admin/eventos', autenticar, exigirAdmin, async (req, res) => {
         ? datasInformadas.map(parseDataHoraEvento).filter(Boolean)
         : gerarDatasEvento(evento, getLimiteEscalasFuturas());
 
+      if (modelo.modelos.length > 0) {
+        await tx.escalaModeloVoluntario.createMany({
+          data: modelo.modelos.map((item) => ({
+            id: randomUUID(),
+            eventoId: evento.id,
+            ...item,
+          })),
+          skipDuplicates: true,
+        });
+      }
+
       await tx.escala.createMany({
         data: datas.flatMap((ocorrencia) => equipes.map((equipe) => ({
+          id: randomUUID(),
           eventoId: evento.id,
           titulo: evento.titulo,
           local: evento.local,
@@ -623,6 +707,14 @@ router.post('/admin/eventos', autenticar, exigirAdmin, async (req, res) => {
         }))),
         skipDuplicates: true,
       });
+
+      if (modelo.modelos.length > 0) {
+        await aplicarModelosVoluntariosEscalas(tx, {
+          eventoId: evento.id,
+          datas,
+          atribuidoPorId: req.usuarioAutenticado.id,
+        });
+      }
 
       return { evento, primeiraOcorrencia: datas[0] };
     });

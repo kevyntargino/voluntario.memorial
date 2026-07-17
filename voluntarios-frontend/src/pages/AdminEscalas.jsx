@@ -71,6 +71,7 @@ const formEscalaInicial = {
   local: '',
   descricao: '',
   equipeIds: [],
+  modeloVoluntarios: {},
 };
 const formAvisoInicial = { titulo: '', mensagem: '', dataAviso: '', publico: 'TODOS', equipeIds: [], usuarioIds: [] };
 const formEquipeInicial = { nome: '' };
@@ -217,6 +218,21 @@ function parseDataHoraInput(dataHora) {
   }
 
   return data;
+}
+
+function serializarModeloVoluntarios(modeloVoluntarios = {}, equipeIds = []) {
+  const equipesPermitidas = new Set(equipeIds);
+
+  return Object.entries(modeloVoluntarios)
+    .filter(([equipeId]) => equipesPermitidas.has(equipeId))
+    .flatMap(([equipeId, semanasModelo]) => (
+      Object.entries(semanasModelo || {}).map(([semanaMes, usuarioIds]) => ({
+        equipeId,
+        semanaMes: Number(semanaMes),
+        usuarioIds: Array.isArray(usuarioIds) ? usuarioIds : [],
+      }))
+    ))
+    .filter((item) => item.usuarioIds.length > 0);
 }
 
 function hojeParaInput() {
@@ -754,12 +770,56 @@ export default function AdminEscalas() {
 
   const alternarEquipe = (campo, equipeId) => {
     const setter = campo === 'aviso' ? setFormAviso : setFormEscala;
-    setter((atual) => ({
-      ...atual,
-      equipeIds: atual.equipeIds.includes(equipeId)
-        ? atual.equipeIds.filter((id) => id !== equipeId)
-        : [...atual.equipeIds, equipeId],
-    }));
+    setter((atual) => {
+      const removendo = atual.equipeIds.includes(equipeId);
+      const modeloVoluntarios = { ...(atual.modeloVoluntarios || {}) };
+
+      if (campo !== 'aviso' && removendo) {
+        delete modeloVoluntarios[equipeId];
+      }
+
+      return {
+        ...atual,
+        equipeIds: removendo
+          ? atual.equipeIds.filter((id) => id !== equipeId)
+          : [...atual.equipeIds, equipeId],
+        ...(campo !== 'aviso' ? { modeloVoluntarios } : {}),
+      };
+    });
+  };
+
+  const alternarTodasEquipesEscala = () => {
+    setFormEscala((atual) => {
+      const equipeIds = equipes.map((equipe) => equipe.id);
+      const todasSelecionadas = equipeIds.length > 0 && equipeIds.every((id) => atual.equipeIds.includes(id));
+
+      return {
+        ...atual,
+        equipeIds: todasSelecionadas ? [] : equipeIds,
+        modeloVoluntarios: todasSelecionadas ? {} : atual.modeloVoluntarios,
+      };
+    });
+  };
+
+  const alternarModeloVoluntario = (equipeId, semanaMes, usuarioId) => {
+    setFormEscala((atual) => {
+      const modeloEquipe = atual.modeloVoluntarios?.[equipeId] || {};
+      const voluntariosSemana = modeloEquipe[semanaMes] || [];
+      const proximosVoluntarios = voluntariosSemana.includes(usuarioId)
+        ? voluntariosSemana.filter((id) => id !== usuarioId)
+        : [...voluntariosSemana, usuarioId];
+
+      return {
+        ...atual,
+        modeloVoluntarios: {
+          ...(atual.modeloVoluntarios || {}),
+          [equipeId]: {
+            ...modeloEquipe,
+            [semanaMes]: proximosVoluntarios,
+          },
+        },
+      };
+    });
   };
 
   const alternarUsuarioAviso = (usuarioId) => {
@@ -877,6 +937,13 @@ export default function AdminEscalas() {
           dataHora: criarDataHoraInput(formEscala.data, formEscala.horario),
         };
       }
+
+      body = {
+        ...body,
+        modeloVoluntarios: recorrente
+          ? serializarModeloVoluntarios(formEscala.modeloVoluntarios, formEscala.equipeIds)
+          : [],
+      };
 
       const resposta = await fetch(buildApiUrl(endpoint), {
         method: 'POST',
@@ -1399,6 +1466,8 @@ export default function AdminEscalas() {
                 onConfirmarExclusaoEscala={excluirEscalaAdmin}
                 onChangeEscala={setFormEscala}
                 onAlternarEquipe={(equipeId) => alternarEquipe('esporadica', equipeId)}
+                onAlternarTodasEquipes={alternarTodasEquipesEscala}
+                onAlternarModeloVoluntario={alternarModeloVoluntario}
                 onCriarEsporadica={criarEsporadica}
                 onAbrirUsuario={setUsuarioModal}
                 onSubmeterOrdemCulto={submeterOrdemCulto}
@@ -2326,6 +2395,8 @@ function PainelEscalas({
   onConfirmarExclusaoEscala,
   onChangeEscala,
   onAlternarEquipe,
+  onAlternarTodasEquipes,
+  onAlternarModeloVoluntario,
   onCriarEsporadica,
   onAbrirUsuario,
   onSubmeterOrdemCulto,
@@ -2369,6 +2440,7 @@ function PainelEscalas({
     : tipoEscalas === 'RECORRENTE'
       ? 'Eventos recorrentes'
       : 'Eventos esporádicos';
+  const todasEquipesSelecionadas = equipes.length > 0 && equipes.every((equipe) => formEscala.equipeIds.includes(equipe.id));
 
   return (
     <section className="mt-5 grid min-w-0 gap-5">
@@ -2547,6 +2619,14 @@ function PainelEscalas({
                   <CampoTexto label="Descrição" value={formEscala.descricao} onChange={(value) => onChangeEscala((atual) => ({ ...atual, descricao: value }))} />
                 </div>
                 <GrupoChecks titulo="Equipes/funções do evento">
+                  <label className="flex items-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-900">
+                    <input
+                      type="checkbox"
+                      checked={todasEquipesSelecionadas}
+                      onChange={onAlternarTodasEquipes}
+                    />
+                    Selecionar todas as equipes
+                  </label>
                   {equipes.map((equipe) => (
                     <label key={equipe.id} className="flex items-center gap-2 text-sm font-semibold text-gray-700">
                       <input type="checkbox" checked={formEscala.equipeIds.includes(equipe.id)} onChange={() => onAlternarEquipe(equipe.id)} />
@@ -2554,6 +2634,56 @@ function PainelEscalas({
                     </label>
                   ))}
                 </GrupoChecks>
+
+                {formEscala.tipo === 'RECORRENTE' && formEscala.equipeIds.length > 0 && (
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                    <div className="border-b border-gray-200 pb-3">
+                      <h3 className="text-sm font-bold text-gray-950">Modelo mensal de voluntários</h3>
+                    </div>
+                    <div className="mt-4 space-y-4">
+                      {equipes
+                        .filter((equipe) => formEscala.equipeIds.includes(equipe.id))
+                        .map((equipe) => (
+                          <div key={`modelo-${equipe.id}`} className="rounded-lg border border-gray-200 bg-white p-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <p className="text-sm font-bold text-gray-900">{equipe.nome}</p>
+                              <span className="text-xs font-semibold text-gray-400">{equipe.voluntarios?.length || 0} voluntário(s)</span>
+                            </div>
+                            {(equipe.voluntarios || []).length === 0 ? (
+                              <p className="mt-3 rounded-md border border-dashed border-gray-200 bg-gray-50 px-3 py-4 text-sm text-gray-500">
+                                Cadastre voluntários nesta equipe para montar o modelo.
+                              </p>
+                            ) : (
+                              <div className="mt-3 grid gap-3 lg:grid-cols-5">
+                                {semanas.map((semana) => {
+                                  const selecionados = formEscala.modeloVoluntarios?.[equipe.id]?.[semana] || [];
+
+                                  return (
+                                    <div key={`${equipe.id}-${semana}`} className="rounded-md border border-gray-200 bg-gray-50 p-3">
+                                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-gray-500">{semana}ª semana</p>
+                                      <div className="mt-2 space-y-2">
+                                        {equipe.voluntarios.map((voluntario) => (
+                                          <label key={`${equipe.id}-${semana}-${voluntario.id}`} className="flex items-start gap-2 text-xs font-semibold text-gray-700">
+                                            <input
+                                              type="checkbox"
+                                              checked={selecionados.includes(voluntario.id)}
+                                              onChange={() => onAlternarModeloVoluntario(equipe.id, semana, voluntario.id)}
+                                              className="mt-0.5"
+                                            />
+                                            <span className="min-w-0 break-words">{voluntario.nomeCompleto}</span>
+                                          </label>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
                 <button disabled={salvandoId === 'nova-escala'} className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-gray-950 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">
                   {salvandoId === 'nova-escala' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send size={16} />}
                   Criar evento e gerar escalas

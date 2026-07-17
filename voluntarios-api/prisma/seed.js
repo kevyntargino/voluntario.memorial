@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import bcrypt from 'bcrypt';
+import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
@@ -29,13 +30,15 @@ const usuariosSeed = [
 
 const equipesSeed = [
   { nome: 'Midia', voluntarios: ['lider@teste.com', 'voluntario@teste.com', 'ana.midia@teste.com', 'caio.midia@teste.com'], lider: true },
-  { nome: 'Iluminação', voluntarios: ['voluntario@teste.com', 'bruno.iluminacao@teste.com', 'luiza.iluminacao@teste.com'] },
+  { nome: 'Iluminação', voluntarios: ['voluntario@teste.com', 'bruno.iluminacao@teste.com', 'luiza.iluminacao@teste.com'], lider: true },
   { nome: 'Filmagem', voluntarios: ['lider@teste.com', 'voluntario@teste.com', 'carla.filmagem@teste.com', 'marcos.filmagem@teste.com'], lider: true },
   { nome: 'Fotografia', voluntarios: ['lider@teste.com', 'voluntario@teste.com', 'diego.fotografia@teste.com', 'nina.fotografia@teste.com'], lider: true },
-  { nome: 'DTV', voluntarios: ['voluntario@teste.com', 'elisa.dtv@teste.com', 'rafael.dtv@teste.com'] },
-  { nome: 'Direção', voluntarios: ['voluntario@teste.com', 'fabio.direcao@teste.com', 'iara.direcao@teste.com'] },
-  { nome: 'Redes Sociais', voluntarios: ['voluntario@teste.com', 'gabi.redes@teste.com', 'pedro.redes@teste.com'] },
+  { nome: 'DTV', voluntarios: ['voluntario@teste.com', 'elisa.dtv@teste.com', 'rafael.dtv@teste.com'], lider: true },
+  { nome: 'Direção', voluntarios: ['voluntario@teste.com', 'fabio.direcao@teste.com', 'iara.direcao@teste.com'], lider: true },
+  { nome: 'Redes Sociais', voluntarios: ['voluntario@teste.com', 'gabi.redes@teste.com', 'pedro.redes@teste.com'], lider: true },
 ];
+const todasEquipes = equipesSeed.map((equipe) => equipe.nome);
+const localCultos = 'Espaço alternativo';
 
 const DIA_MS = 86400000;
 
@@ -47,10 +50,10 @@ function adicionarDias(data, dias, horas = data.getUTCHours(), minutos = data.ge
   return dataUtc(data.getUTCFullYear(), data.getUTCMonth(), data.getUTCDate() + dias, horas, minutos);
 }
 
-function proximoDiaSemana(referencia, diaSemana, horas, deslocamentoMinimo = 0) {
-  const inicio = adicionarDias(referencia, deslocamentoMinimo, horas);
+function proximoDiaSemana(referencia, diaSemana, horas, minutos = 0, deslocamentoMinimo = 0) {
+  const inicio = adicionarDias(referencia, deslocamentoMinimo, horas, minutos);
   const diferenca = (diaSemana - inicio.getUTCDay() + 7) % 7;
-  return adicionarDias(inicio, diferenca, horas);
+  return adicionarDias(inicio, diferenca, horas, minutos);
 }
 
 function ocorrenciasSemanais(inicio, fim) {
@@ -59,24 +62,10 @@ function ocorrenciasSemanais(inicio, fim) {
   return datas;
 }
 
-function ocorrenciaMensal(ano, mes, diaSemana, semanaMes, horas) {
-  const encontradas = [];
-  for (let dia = 1; dia <= 31; dia += 1) {
-    const data = dataUtc(ano, mes, dia, horas);
-    if (data.getUTCMonth() !== mes) break;
-    if (data.getUTCDay() === diaSemana) encontradas.push(data);
-  }
-  return encontradas[semanaMes - 1] || null;
-}
-
-function ocorrenciasMensais(referencia, mesesAntes, mesesDepois, diaSemana, semanaMes, horas) {
-  const datas = [];
-  for (let offset = -mesesAntes; offset <= mesesDepois; offset += 1) {
-    const base = dataUtc(referencia.getUTCFullYear(), referencia.getUTCMonth() + offset, 1, horas);
-    const data = ocorrenciaMensal(base.getUTCFullYear(), base.getUTCMonth(), diaSemana, semanaMes, horas);
-    if (data) datas.push(data);
-  }
-  return datas;
+function janelaSemanal(agora, diaSemana, horas, minutos = 0) {
+  const inicio = proximoDiaSemana(adicionarDias(agora, -90, horas, minutos), diaSemana, horas, minutos);
+  const fim = proximoDiaSemana(adicionarDias(agora, 60, horas, minutos), diaSemana, horas, minutos);
+  return ocorrenciasSemanais(inicio, fim);
 }
 
 async function limparBanco() {
@@ -125,50 +114,33 @@ async function criarEquipes(usuarios) {
 }
 
 function montarEventos(agora) {
-  const domingoPassado = proximoDiaSemana(adicionarDias(agora, -90, 18), 0, 18);
-  const domingoFuturo = proximoDiaSemana(adicionarDias(agora, 60, 18), 0, 18);
-  const sabadosMensais = ocorrenciasMensais(agora, 2, 2, 6, 2, 19);
-  const conferenciaInicio = proximoDiaSemana(agora, 3, 19, 5);
-  const conferenciaFim = adicionarDias(conferenciaInicio, 21, 19);
-  const noiteLouvor = proximoDiaSemana(agora, 5, 20, 8);
-  const workshopPassado = adicionarDias(agora, -21, 14);
-
   return [
     {
+      titulo: 'Culto dos Conectados - Sábado 19h', tipo: 'RECORRENTE', frequencia: 'SEMANAL',
+      local: localCultos, descricao: 'Culto dos Conectados realizado todos os sábados às 19h.',
+      diaSemana: 6, semanaMes: null,
+      datas: janelaSemanal(agora, 6, 19), equipes: todasEquipes,
+    },
+    {
+      titulo: 'Culto da Manhã - Domingo 10h15', tipo: 'RECORRENTE', frequencia: 'SEMANAL',
+      local: localCultos, descricao: 'Culto da manhã realizado todos os domingos às 10h15.',
+      diaSemana: 0, semanaMes: null,
+      datas: janelaSemanal(agora, 0, 10, 15), equipes: todasEquipes,
+    },
+    {
       titulo: 'Culto de Celebração - Domingo 18h', tipo: 'RECORRENTE', frequencia: 'SEMANAL',
-      local: 'Templo Principal', descricao: 'Celebração semanal da igreja.', diaSemana: 0, semanaMes: null,
-      datas: ocorrenciasSemanais(domingoPassado, domingoFuturo), equipes: equipesSeed.map((item) => item.nome),
-    },
-    {
-      titulo: 'Encontro MCom - Segundo Sábado', tipo: 'RECORRENTE', frequencia: 'MENSAL',
-      local: 'Auditório', descricao: 'Encontro mensal de alinhamento e capacitação.', diaSemana: 6, semanaMes: 2,
-      datas: sabadosMensais, equipes: ['Midia', 'Filmagem', 'Fotografia', 'Redes Sociais'],
-    },
-    {
-      titulo: 'Conferência MCom', tipo: 'ESPORADICA', frequencia: 'SEMANAL',
-      local: 'Templo Principal', descricao: 'Série especial de quatro noites da conferência.',
-      diaSemana: conferenciaInicio.getUTCDay(), semanaMes: null,
-      datas: ocorrenciasSemanais(conferenciaInicio, conferenciaFim), equipes: equipesSeed.map((item) => item.nome),
-      dataFim: conferenciaFim,
-    },
-    {
-      titulo: 'Noite de Louvor', tipo: 'ESPORADICA', frequencia: 'NAO_REPETE',
-      local: 'Templo Principal', descricao: 'Evento especial de louvor e adoração.',
-      diaSemana: noiteLouvor.getUTCDay(), semanaMes: null,
-      datas: [noiteLouvor], equipes: ['Midia', 'Iluminação', 'Filmagem', 'Fotografia', 'DTV'],
-    },
-    {
-      titulo: 'Workshop de Fotografia', tipo: 'ESPORADICA', frequencia: 'NAO_REPETE',
-      local: 'Sala Criativa', descricao: 'Evento passado para validar o histórico de escalas.',
-      diaSemana: workshopPassado.getUTCDay(), semanaMes: null,
-      datas: [workshopPassado], equipes: ['Fotografia', 'Redes Sociais'],
+      local: localCultos, descricao: 'Culto de celebração realizado todos os domingos às 18h.',
+      diaSemana: 0, semanaMes: null,
+      datas: janelaSemanal(agora, 0, 18), equipes: todasEquipes,
     },
   ];
 }
 
-async function criarEventoComEscalas(definicao, equipes, admin, indiceEvento) {
+async function criarEventoComEscalas(definicao, equipes, admin) {
+  const eventoId = randomUUID();
   const evento = await prisma.evento.create({
     data: {
+      id: eventoId,
       titulo: definicao.titulo,
       local: definicao.local,
       descricao: definicao.descricao,
@@ -182,71 +154,60 @@ async function criarEventoComEscalas(definicao, equipes, admin, indiceEvento) {
     },
   });
 
-  let indiceEscala = 0;
+  const agora = new Date();
+  const modelos = [];
+  const escalas = [];
+  const participacoes = [];
+
+  for (const nomeEquipe of definicao.equipes) {
+    const equipe = equipes.get(nomeEquipe);
+
+    for (const semanaMes of [1, 2, 3, 4, 5]) {
+      for (const membro of equipe.voluntarios) {
+        modelos.push({
+          id: randomUUID(),
+          eventoId: evento.id,
+          equipeId: equipe.id,
+          semanaMes,
+          usuarioId: membro.id,
+        });
+      }
+    }
+  }
+
   for (const dataHora of definicao.datas) {
     for (const nomeEquipe of definicao.equipes) {
       const equipe = equipes.get(nomeEquipe);
-      const escala = await prisma.escala.create({
-        data: {
-          eventoId: evento.id,
-          titulo: evento.titulo,
-          local: evento.local,
-          descricao: evento.descricao,
-          tipo: evento.tipo,
-          dataHora,
-          solicitadaPeloAdmin: true,
-          equipeId: equipe.id,
-        },
+      const escalaId = randomUUID();
+      const passada = dataHora < agora;
+
+      escalas.push({
+        id: escalaId,
+        eventoId: evento.id,
+        titulo: evento.titulo,
+        local: evento.local,
+        descricao: evento.descricao,
+        tipo: evento.tipo,
+        dataHora,
+        solicitadaPeloAdmin: true,
+        equipeId: equipe.id,
       });
 
-      const membros = equipe.voluntarios;
-      const primeiro = membros[(indiceEscala + indiceEvento) % membros.length];
-      const segundo = membros[(indiceEscala + indiceEvento + 1) % membros.length];
-      const passada = dataHora < new Date();
-      const ausencia = passada && indiceEscala % 13 === 0;
-      const pediuSubstituicao = passada && !ausencia && indiceEscala % 9 === 0;
-
-      await prisma.voluntarioEscala.create({
-        data: {
-          usuarioId: primeiro.id,
-          escalaId: escala.id,
+      for (const membro of equipe.voluntarios) {
+        participacoes.push({
+          usuarioId: membro.id,
+          escalaId,
           atribuidoPorId: admin.id,
-          status: ausencia ? 'AUSENTE' : pediuSubstituicao ? 'PEDIU_SUBSTITUICAO' : passada || indiceEscala % 3 === 0 ? 'CONFIRMADA' : 'PENDENTE',
+          status: passada ? 'CONFIRMADA' : 'PENDENTE',
           dataOcorrenciaStatus: dataHora,
-          justificativaSubstituicao: ausencia
-            ? 'Ausência registrada para teste do histórico.'
-            : pediuSubstituicao ? 'Compromisso familiar informado com antecedência.' : null,
-          dataOcorrenciaSubstituicao: ausencia || pediuSubstituicao ? dataHora : null,
-        },
-      });
-
-      if ((ausencia || pediuSubstituicao) && segundo.id !== primeiro.id) {
-        await prisma.voluntarioEscala.create({
-          data: {
-            usuarioId: segundo.id,
-            escalaId: escala.id,
-            atribuidoPorId: admin.id,
-            status: 'CONFIRMADA',
-            dataOcorrenciaStatus: dataHora,
-            substituto: true,
-            dataOcorrenciaSubstituicao: dataHora,
-          },
-        });
-      } else if (segundo.id !== primeiro.id && indiceEscala % 2 === 0) {
-        await prisma.voluntarioEscala.create({
-          data: {
-            usuarioId: segundo.id,
-            escalaId: escala.id,
-            atribuidoPorId: admin.id,
-            status: passada ? 'CONFIRMADA' : 'PENDENTE',
-            dataOcorrenciaStatus: dataHora,
-          },
         });
       }
-
-      indiceEscala += 1;
     }
   }
+
+  await prisma.escalaModeloVoluntario.createMany({ data: modelos });
+  await prisma.escala.createMany({ data: escalas });
+  await prisma.voluntarioEscala.createMany({ data: participacoes });
 
   return evento;
 }
@@ -258,8 +219,8 @@ async function main() {
   const eventos = montarEventos(new Date());
   const admin = usuarios.get('admin@teste.com');
 
-  for (const [indice, evento] of eventos.entries()) {
-    await criarEventoComEscalas(evento, equipes, admin, indice);
+  for (const evento of eventos) {
+    await criarEventoComEscalas(evento, equipes, admin);
   }
 
   const totais = await Promise.all([

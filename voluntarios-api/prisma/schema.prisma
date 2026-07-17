@@ -93,6 +93,7 @@ model Usuario {
   escalas           VoluntarioEscala[]      @relation("EscalasDoVoluntario")
   escalasAtribuidas VoluntarioEscala[]      @relation("AtribuidorEscala")
   ordensCriadas     OrdemCulto[]            @relation("CriadorOrdemCulto")
+  modelosEscala     EscalaModeloVoluntario[]
   avisosCriados     Aviso[]                 @relation("CriadorAviso")
   avisosRecebidos   AvisoDestinatario[]
   avisosVisualizados AvisoVisualizacao[]
@@ -128,6 +129,7 @@ model Equipe {
   lideres     Usuario[] @relation("LiderEquipes")
   escalas     Escala[]
   eventos     Evento[] @relation("EventoEquipes")
+  modelosEscalaVoluntarios EscalaModeloVoluntario[]
   manuais     Manual[]  @relation("EquipeManuais")
   avisos      Aviso[]   @relation("EquipeAvisos")
 
@@ -150,6 +152,7 @@ model Evento {
   equipes     Equipe[]         @relation("EventoEquipes")
   escalas     Escala[]
   ordensCulto OrdemCulto[]
+  modelosEscalaVoluntarios EscalaModeloVoluntario[]
 
   criadoEm    DateTime         @default(now()) @map("criado_em")
   atualizadoEm DateTime        @updatedAt @map("atualizado_em")
@@ -240,6 +243,27 @@ model OrdemCulto {
   @@index([eventoId, dataHora])
 
   @@map("ordens_culto")
+}
+
+model EscalaModeloVoluntario {
+  id         String   @id @default(uuid()) @db.Uuid
+  semanaMes Int      @map("semana_mes")
+
+  eventoId  String   @map("evento_id") @db.Uuid
+  evento    Evento   @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+
+  equipeId  String   @map("equipe_id") @db.Uuid
+  equipe    Equipe   @relation(fields: [equipeId], references: [id], onDelete: Cascade)
+
+  usuarioId String   @map("usuario_id") @db.Uuid
+  usuario   Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  criadoEm  DateTime @default(now()) @map("criado_em")
+
+  @@unique([eventoId, equipeId, semanaMes, usuarioId])
+  @@index([eventoId, equipeId, semanaMes])
+  @@index([usuarioId])
+  @@map("modelos_escalas_voluntarios")
 }
 
 model Manual {

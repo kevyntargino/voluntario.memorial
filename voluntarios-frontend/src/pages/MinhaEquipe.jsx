@@ -1,14 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
+  CalendarDays,
   CalendarPlus,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Clock3,
   FileText,
+  List,
   Loader2,
   Save,
+  SlidersHorizontal,
   UserPlus,
   UsersRound,
   RefreshCcw,
@@ -65,9 +68,36 @@ const filtrosStatusEscala = [
   { value: 'AUSENTE', label: 'Ausentes' },
 ];
 const opcoesItensPorPaginaEscalas = [5, 10, 20, 30];
+const diasCalendario = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
 function normalizar(texto) {
   return String(texto || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+function inicioMesAtual() {
+  const agora = new Date();
+  return new Date(Date.UTC(agora.getFullYear(), agora.getMonth(), 1));
+}
+
+function chaveDataUtc(data) {
+  return [
+    data.getUTCFullYear(),
+    String(data.getUTCMonth() + 1).padStart(2, '0'),
+    String(data.getUTCDate()).padStart(2, '0'),
+  ].join('-');
+}
+
+function getDiasDoCalendario(mesReferencia) {
+  const ano = mesReferencia.getUTCFullYear();
+  const mes = mesReferencia.getUTCMonth();
+  const primeiroDia = new Date(Date.UTC(ano, mes, 1));
+  const ultimoDia = new Date(Date.UTC(ano, mes + 1, 0));
+  const inicio = new Date(Date.UTC(ano, mes, 1 - primeiroDia.getUTCDay()));
+  const totalCelulas = primeiroDia.getUTCDay() + ultimoDia.getUTCDate() > 35 ? 42 : 35;
+
+  return Array.from({ length: totalCelulas }, (_, indice) => (
+    new Date(Date.UTC(inicio.getUTCFullYear(), inicio.getUTCMonth(), inicio.getUTCDate() + indice))
+  ));
 }
 
 function gerarSenhaTemporaria(nomeCompleto) {
@@ -127,6 +157,9 @@ export default function MinhaEquipe() {
   const [tipoEscalas, setTipoEscalas] = useState('TODAS');
   const [statusEscalas, setStatusEscalas] = useState('TODOS');
   const [ordemEscalas, setOrdemEscalas] = useState('proximas');
+  const [modoEscalasEquipe, setModoEscalasEquipe] = useState('lista');
+  const [filtrosEscalasAbertos, setFiltrosEscalasAbertos] = useState(false);
+  const [mesEscalasEquipe, setMesEscalasEquipe] = useState(inicioMesAtual);
   const [paginaEscalas, setPaginaEscalas] = useState(1);
   const [itensPorPaginaEscalas, setItensPorPaginaEscalas] = useState(5);
 
@@ -372,6 +405,22 @@ export default function MinhaEquipe() {
     || statusEscalas !== 'TODOS'
     || ordemEscalas !== 'proximas',
   );
+  const filtrosPainelEscalasAtivos = [
+    filtroEscala !== 'TODAS',
+    tipoEscalas !== 'TODAS',
+    statusEscalas !== 'TODOS',
+  ].filter(Boolean).length;
+  const escalasCalendarioEquipe = useMemo(() => (
+    escalasFiltradas
+      .map((escala) => ({ escala, data: escala.dataHora ? new Date(escala.dataHora) : null }))
+      .filter(({ data }) => (
+        data
+        && !Number.isNaN(data.getTime())
+        && data.getUTCFullYear() === mesEscalasEquipe.getUTCFullYear()
+        && data.getUTCMonth() === mesEscalasEquipe.getUTCMonth()
+      ))
+      .sort((a, b) => a.data.getTime() - b.data.getTime())
+  ), [escalasFiltradas, mesEscalasEquipe]);
 
   useEffect(() => {
     setPaginaEscalas((pagina) => Math.min(pagina, totalPaginasEscalas));
@@ -609,7 +658,7 @@ export default function MinhaEquipe() {
       <Navbar />
 
       <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
-        <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+        <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="text-sm font-semibold uppercase tracking-[0.2em] text-dourado-700">Liderança</p>
@@ -641,7 +690,7 @@ export default function MinhaEquipe() {
         {sucesso && <Feedback tipo="sucesso" mensagem={sucesso} />}
 
         {carregando ? (
-          <div className="mt-5 flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-6 py-12 text-gray-500 shadow-sm">
+          <div className="mt-5 flex items-center gap-3 rounded-2xl border border-gray-200 bg-white px-6 py-12 text-gray-500 shadow-sm">
             <Loader2 className="h-5 w-5 animate-spin" />
             Carregando equipe...
           </div>
@@ -838,47 +887,70 @@ export default function MinhaEquipe() {
             <section className="space-y-5">
               <Painel titulo="Escalas da equipe" icone={CalendarPlus}>
                 <div className="space-y-4">
-                  <div className="grid gap-3 lg:grid-cols-[1.3fr_0.85fr_0.85fr_0.85fr]">
-                    <label className="relative block">
-                      <span className="mb-2 block text-xs font-bold uppercase tracking-[0.14em] text-gray-400">Pesquisar</span>
-                      <Search className="pointer-events-none absolute left-3 top-[2.4rem] h-4 w-4 text-gray-400" />
-                      <input
-                        value={buscaEscalas}
-                        onChange={(event) => setBuscaEscalas(event.target.value)}
-                        className="block w-full rounded-md border border-gray-200 bg-white py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
-                        placeholder="Nome, telefone, título ou status"
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                    <div className="grid gap-3 lg:grid-cols-[auto_minmax(220px,1fr)_minmax(170px,0.45fr)_auto] lg:items-end">
+                      <SeletorVisualizacaoEquipe value={modoEscalasEquipe} onChange={setModoEscalasEquipe} />
+                      <label className="relative block">
+                        <span className="mb-2 block text-xs font-bold uppercase tracking-[0.14em] text-gray-400">Pesquisar</span>
+                        <Search className="pointer-events-none absolute left-3 top-[2.4rem] h-4 w-4 text-gray-400" />
+                        <input
+                          value={buscaEscalas}
+                          onChange={(event) => setBuscaEscalas(event.target.value)}
+                          className="block w-full rounded-md border border-gray-200 bg-white py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
+                          placeholder="Nome, telefone, título ou status"
+                        />
+                      </label>
+                      <SelectFiltro
+                        label="Ordenar"
+                        value={ordemEscalas}
+                        onChange={setOrdemEscalas}
+                        options={[
+                          { value: 'proximas', label: 'Mais próximas' },
+                          { value: 'distantes', label: 'Mais distantes' },
+                          { value: 'status', label: 'Pendências primeiro' },
+                        ]}
                       />
-                    </label>
-                    <SelectFiltro label="Tipo" value={tipoEscalas} onChange={setTipoEscalas} options={filtrosTipoEscala} />
-                    <SelectFiltro label="Status" value={statusEscalas} onChange={setStatusEscalas} options={filtrosStatusEscala} />
-                    <SelectFiltro
-                      label="Ordenar"
-                      value={ordemEscalas}
-                      onChange={setOrdemEscalas}
-                      options={[
-                        { value: 'proximas', label: 'Mais próximas' },
-                        { value: 'distantes', label: 'Mais distantes' },
-                        { value: 'status', label: 'Pendências primeiro' },
-                      ]}
-                    />
-                  </div>
+                      <button
+                        type="button"
+                        onClick={() => setFiltrosEscalasAbertos((aberto) => !aberto)}
+                        className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm font-semibold transition ${
+                          filtrosEscalasAbertos || filtrosPainelEscalasAtivos > 0
+                            ? 'border-gray-950 bg-gray-950 text-white hover:bg-gray-800'
+                            : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                        }`}
+                        aria-expanded={filtrosEscalasAbertos}
+                      >
+                        <SlidersHorizontal size={15} />
+                        Filtros
+                        {filtrosPainelEscalasAtivos > 0 && (
+                          <span className="rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] font-bold leading-none">
+                            {filtrosPainelEscalasAtivos}
+                          </span>
+                        )}
+                      </button>
+                    </div>
 
-                  <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
-                    <SelectFiltro
-                      label="Ocorrência"
-                      value={filtroEscala}
-                      onChange={setFiltroEscala}
-                      options={opcoesFiltroEscala}
-                    />
-                    <button
-                      type="button"
-                      onClick={limparFiltrosEscalas}
-                      disabled={!filtrosEscalasAtivos}
-                      className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <X size={15} />
-                      Limpar filtros
-                    </button>
+                    {filtrosEscalasAbertos && (
+                      <div className="mt-4 grid gap-3 border-t border-gray-200 pt-4 lg:grid-cols-[minmax(0,1fr)_0.6fr_0.6fr_auto] lg:items-end">
+                        <SelectFiltro
+                          label="Ocorrência"
+                          value={filtroEscala}
+                          onChange={setFiltroEscala}
+                          options={opcoesFiltroEscala}
+                        />
+                        <SelectFiltro label="Tipo" value={tipoEscalas} onChange={setTipoEscalas} options={filtrosTipoEscala} />
+                        <SelectFiltro label="Status" value={statusEscalas} onChange={setStatusEscalas} options={filtrosStatusEscala} />
+                        <button
+                          type="button"
+                          onClick={limparFiltrosEscalas}
+                          disabled={!filtrosEscalasAtivos}
+                          className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <X size={15} />
+                          Limpar
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex flex-col gap-1 rounded-md border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600 sm:flex-row sm:items-center sm:justify-between">
@@ -886,12 +958,28 @@ export default function MinhaEquipe() {
                       {escalasFiltradas.length} de {equipeSelecionada.escalas.length} escala(s)
                     </p>
                     <p>
-                      {escalasFiltradas.length > 0
-                        ? `Mostrando ${inicioEscalas}-${fimEscalas} em ${itensPorPaginaEscalas} por página`
-                        : 'Ajuste os filtros para localizar escalas'}
+                      {modoEscalasEquipe === 'calendario'
+                        ? `${escalasCalendarioEquipe.length} escala(s) neste mês`
+                        : escalasFiltradas.length > 0
+                          ? `Mostrando ${inicioEscalas}-${fimEscalas} em ${itensPorPaginaEscalas} por página`
+                          : 'Ajuste os filtros para localizar escalas'}
                     </p>
                   </div>
 
+                  {modoEscalasEquipe === 'calendario' ? (
+                    <CalendarioEscalasEquipe
+                      mes={mesEscalasEquipe}
+                      escalas={escalasCalendarioEquipe}
+                      onMesAnterior={() => setMesEscalasEquipe((atual) => new Date(Date.UTC(atual.getUTCFullYear(), atual.getUTCMonth() - 1, 1)))}
+                      onProximoMes={() => setMesEscalasEquipe((atual) => new Date(Date.UTC(atual.getUTCFullYear(), atual.getUTCMonth() + 1, 1)))}
+                      onHoje={() => setMesEscalasEquipe(inicioMesAtual())}
+                      onSelecionarEscala={(escala) => {
+                        setFiltroEscala(`ESCALA:${escala.id}`);
+                        editarEscala(escala);
+                        setModoEscalasEquipe('lista');
+                      }}
+                    />
+                  ) : (
                   <div className="space-y-3">
                     {equipeSelecionada.escalas.length === 0 ? (
                       <p className="text-sm text-gray-500">Nenhuma escala cadastrada para esta equipe.</p>
@@ -1083,8 +1171,9 @@ export default function MinhaEquipe() {
                       </div>
                     ))}
                   </div>
+                  )}
 
-                  {escalasFiltradas.length > 0 && (
+                  {modoEscalasEquipe === 'lista' && escalasFiltradas.length > 0 && (
                     <PaginacaoEscalasEquipe
                       totalItens={escalasFiltradas.length}
                       paginaAtual={paginaEscalas}
@@ -1102,7 +1191,7 @@ export default function MinhaEquipe() {
             </section>
           </div>
         ) : (
-          <div className="mt-5 rounded-lg border border-gray-200 bg-white px-6 py-10 text-gray-500">
+          <div className="mt-5 rounded-2xl border border-gray-200 bg-white px-6 py-10 text-gray-500">
             Nenhuma equipe disponível para gerenciamento.
           </div>
         )}
@@ -1116,7 +1205,7 @@ export default function MinhaEquipe() {
 
 function Painel({ titulo, icone: Icon, badge, children }) {
   return (
-    <section className="rounded-lg border border-gray-200 bg-white shadow-sm">
+    <section className="rounded-2xl border border-gray-200 bg-white shadow-sm">
       <div className="flex items-center justify-between gap-2 border-b border-gray-100 px-5 py-4">
         <div className="flex items-center gap-2">
           <Icon className="h-5 w-5 text-dourado-600" />
@@ -1129,6 +1218,146 @@ function Painel({ titulo, icone: Icon, badge, children }) {
         )}
       </div>
       <div className="p-5">{children}</div>
+    </section>
+  );
+}
+
+function SeletorVisualizacaoEquipe({ value, onChange }) {
+  return (
+    <div>
+      <p className="mb-2 block text-xs font-bold uppercase tracking-[0.14em] text-gray-400">Exibição</p>
+      <div className="inline-flex rounded-md border border-gray-200 bg-white p-0.5">
+        {[
+          { value: 'lista', label: 'Lista', icon: List },
+          { value: 'calendario', label: 'Calendário', icon: CalendarDays },
+        ].map((opcao) => {
+          const Icon = opcao.icon;
+
+          return (
+            <button
+              key={opcao.value}
+              type="button"
+              onClick={() => onChange(opcao.value)}
+              className={`inline-flex h-9 w-9 items-center justify-center rounded transition ${
+                value === opcao.value
+                  ? 'bg-gray-950 text-white'
+                  : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
+              }`}
+              title={opcao.label}
+              aria-label={`Visualizar como ${opcao.label.toLowerCase()}`}
+              aria-pressed={value === opcao.value}
+            >
+              <Icon size={16} />
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function CalendarioEscalasEquipe({
+  mes,
+  escalas,
+  onMesAnterior,
+  onProximoMes,
+  onHoje,
+  onSelecionarEscala,
+}) {
+  const diasMes = useMemo(() => getDiasDoCalendario(mes), [mes]);
+  const escalasPorDia = useMemo(() => {
+    const mapa = new Map();
+
+    for (const item of escalas) {
+      const chave = chaveDataUtc(item.data);
+      mapa.set(chave, [...(mapa.get(chave) || []), item]);
+    }
+
+    return mapa;
+  }, [escalas]);
+  const agora = new Date();
+  const hoje = chaveDataUtc(new Date(Date.UTC(agora.getFullYear(), agora.getMonth(), agora.getDate())));
+  const tituloMes = new Intl.DateTimeFormat('pt-BR', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(mes);
+
+  return (
+    <section className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+      <div className="flex flex-col gap-3 border-b border-gray-200 px-4 py-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.14em] text-gray-400">Calendário</p>
+          <h3 className="mt-1 text-lg font-bold capitalize text-gray-950">{tituloMes}</h3>
+        </div>
+        <div className="grid grid-cols-[1fr_2.5rem_2.5rem] items-center gap-2 sm:flex">
+          <button type="button" onClick={onHoje} className="grid h-10 min-w-10 place-items-center rounded-md border border-gray-200 px-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 sm:flex sm:px-3" aria-label="Voltar para o mês atual" title="Mês atual">
+            <CalendarDays size={17} className="sm:hidden" />
+            <span className="hidden sm:inline">Hoje</span>
+          </button>
+          <button type="button" onClick={onMesAnterior} className="grid h-10 w-10 place-items-center rounded-md border border-gray-200 text-gray-600 transition hover:bg-gray-50" aria-label="Mês anterior" title="Mês anterior">
+            <ChevronLeft size={18} />
+          </button>
+          <button type="button" onClick={onProximoMes} className="grid h-10 w-10 place-items-center rounded-md border border-gray-200 text-gray-600 transition hover:bg-gray-50" aria-label="Próximo mês" title="Próximo mês">
+            <ChevronRight size={18} />
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-7 border-b border-gray-200 bg-gray-50">
+        {diasCalendario.map((dia) => (
+          <div key={dia} className="px-1 py-2.5 text-center text-[10px] font-bold uppercase text-gray-500 sm:text-xs">{dia}</div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7">
+        {diasMes.map((dia) => {
+          const chave = chaveDataUtc(dia);
+          const itens = escalasPorDia.get(chave) || [];
+          const pertenceAoMes = dia.getUTCMonth() === mes.getUTCMonth();
+          const isHoje = chave === hoje;
+
+          return (
+            <div key={chave} className={`min-h-[5.5rem] min-w-0 border-b border-r border-gray-100 p-1.5 sm:min-h-32 sm:p-2 ${pertenceAoMes ? 'bg-white' : 'bg-gray-50/70'}`}>
+              <span className={`grid h-6 w-6 place-items-center rounded-full text-xs font-semibold sm:h-7 sm:w-7 sm:text-sm ${
+                isHoje
+                  ? 'bg-gray-950 text-white'
+                  : pertenceAoMes ? 'text-gray-800' : 'text-gray-400'
+              }`}>
+                {dia.getUTCDate()}
+              </span>
+              <div className="mt-1.5 space-y-1">
+                {itens.slice(0, 3).map(({ escala }) => {
+                  const pendentes = (escala.voluntarios || []).filter((item) => item.status === 'PENDENTE').length;
+
+                  return (
+                    <button
+                      key={escala.id}
+                      type="button"
+                      onClick={() => onSelecionarEscala(escala)}
+                      className="block w-full truncate rounded-md border border-gray-200 bg-gray-50 px-1.5 py-1 text-left text-[11px] font-semibold text-gray-700 transition hover:border-gray-300 hover:bg-white"
+                      title={`${escala.titulo || 'Escala sem título'} - ${formatarData(escala.dataHora)}`}
+                    >
+                      {escala.titulo || 'Escala sem título'}
+                      {pendentes > 0 && <span className="ml-1 text-amber-700">({pendentes})</span>}
+                    </button>
+                  );
+                })}
+                {itens.length > 3 && (
+                  <span className="block rounded-md bg-gray-100 px-1.5 py-1 text-[11px] font-bold text-gray-500">
+                    +{itens.length - 3} escala(s)
+                  </span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {escalas.length === 0 && (
+        <div className="border-t border-gray-100 px-5 py-8 text-center text-sm text-gray-500">
+          Nenhuma escala encontrada neste mês com os filtros selecionados.
+        </div>
+      )}
     </section>
   );
 }

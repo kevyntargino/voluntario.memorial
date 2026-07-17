@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 export const DIAS_ESCALAS_FUTURAS = 60;
 export const DIAS_HISTORICO_ESCALAS = 90;
 
@@ -18,6 +20,10 @@ export function getInicioHistoricoEscalas(agora = new Date()) {
 
 function dataUtc(ano, mes, dia, horas, minutos) {
   return new Date(Date.UTC(ano, mes, dia, horas, minutos, 0, 0));
+}
+
+function getSemanaMes(data) {
+  return Math.ceil(data.getUTCDate() / 7);
 }
 
 function ocorrenciaMensal(ano, mes, diaSemana, semanaMes, horas, minutos) {
@@ -75,6 +81,73 @@ export function gerarDatasEvento(evento, limitePersonalizado) {
   return datas;
 }
 
+export async function aplicarModelosVoluntariosEscalas(prisma, { eventoId, datas = null, atribuidoPorId = null }) {
+  const filtroDatas = Array.isArray(datas) && datas.length > 0
+    ? { dataHora: { in: datas } }
+    : {};
+  const [modelos, escalas] = await Promise.all([
+    prisma.escalaModeloVoluntario.findMany({
+      where: { eventoId },
+      select: {
+        equipeId: true,
+        semanaMes: true,
+        usuarioId: true,
+      },
+    }),
+    prisma.escala.findMany({
+      where: {
+        eventoId,
+        ...filtroDatas,
+        voluntarios: { none: {} },
+      },
+      select: {
+        id: true,
+        equipeId: true,
+        dataHora: true,
+      },
+    }),
+  ]);
+
+  if (modelos.length === 0 || escalas.length === 0) {
+    return 0;
+  }
+
+  const modelosPorChave = new Map();
+
+  for (const modelo of modelos) {
+    const chave = `${modelo.equipeId}:${modelo.semanaMes}`;
+    const voluntarios = modelosPorChave.get(chave) || [];
+    voluntarios.push(modelo.usuarioId);
+    modelosPorChave.set(chave, voluntarios);
+  }
+
+  const participacoes = escalas.flatMap((escala) => {
+    if (!escala.dataHora) return [];
+
+    const semanaMes = getSemanaMes(escala.dataHora);
+    const voluntarios = modelosPorChave.get(`${escala.equipeId}:${semanaMes}`) || [];
+
+    return voluntarios.map((usuarioId) => ({
+      usuarioId,
+      escalaId: escala.id,
+      atribuidoPorId,
+      status: 'PENDENTE',
+      dataOcorrenciaStatus: escala.dataHora,
+    }));
+  });
+
+  if (participacoes.length === 0) {
+    return 0;
+  }
+
+  const resultado = await prisma.voluntarioEscala.createMany({
+    data: participacoes,
+    skipDuplicates: true,
+  });
+
+  return resultado.count;
+}
+
 export async function garantirOcorrenciasEventos(prisma, agora = new Date()) {
   const limite = getLimiteEscalasFuturas(agora);
   const inicioHistorico = getInicioHistoricoEscalas(agora);
@@ -101,6 +174,7 @@ export async function garantirOcorrenciasEventos(prisma, agora = new Date()) {
 
     await prisma.escala.createMany({
       data: datas.flatMap((dataHora) => evento.equipes.map((equipe) => ({
+        id: randomUUID(),
         eventoId: evento.id,
         titulo: evento.titulo,
         local: evento.local,
@@ -113,6 +187,11 @@ export async function garantirOcorrenciasEventos(prisma, agora = new Date()) {
         equipeId: equipe.id,
       }))),
       skipDuplicates: true,
+    });
+
+    await aplicarModelosVoluntariosEscalas(prisma, {
+      eventoId: evento.id,
+      datas,
     });
   }
 }
