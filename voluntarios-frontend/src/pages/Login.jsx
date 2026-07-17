@@ -147,7 +147,7 @@ export default function Login() {
             </div>
 
             {/* Link Esqueci a Senha */}
-            <div className="flex items-center justify-end">
+            <div className="flex items-center justify-center">
               <button type="button" className="text-sm font-medium text-gray-500 hover:text-black transition-colors">
                 Esqueci minha senha
               </button>
@@ -179,18 +179,6 @@ export default function Login() {
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-gray-100" />
               </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="bg-white px-3 text-gray-400 dark:bg-gray-900">Novo por aqui?</span>
-              </div>
-            </div>
-
-            <div className="mt-6">
-              <button
-                type="button"
-                className="flex w-full justify-center rounded-md border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
-              >
-                Criar uma conta
-              </button>
             </div>
           </div>
         </div>
