@@ -631,6 +631,113 @@ router.post('/admin/eventos', autenticar, exigirAdmin, async (req, res) => {
   }
 });
 
+router.patch('/admin/eventos/:id/ocorrencias', autenticar, exigirAdmin, async (req, res) => {
+  try {
+    const { titulo, local, descricao, dataHoraAtual, dataHora } = req.body ?? {};
+    const ocorrenciaAtual = parseDataHoraEvento(dataHoraAtual);
+    const novaOcorrencia = parseDataHoraEvento(dataHora || dataHoraAtual);
+    const tituloNormalizado = typeof titulo === 'string' ? titulo.trim() : '';
+    const dadosTexto = {
+      titulo: tituloNormalizado,
+      local: typeof local === 'string' && local.trim() ? local.trim() : null,
+      descricao: typeof descricao === 'string' && descricao.trim() ? descricao.trim() : null,
+    };
+
+    if (tituloNormalizado.length < 3) {
+      return res.status(400).json({ erro: 'Informe o título da escala.' });
+    }
+
+    if (!ocorrenciaAtual || !novaOcorrencia) {
+      return res.status(400).json({ erro: 'Informe uma data e horário válidos para a escala.' });
+    }
+
+    if (escalaEstaEncerrada(ocorrenciaAtual)) {
+      return res.status(409).json({ erro: 'Escalas passadas são somente para consulta e não podem ser alteradas.' });
+    }
+
+    if (novaOcorrencia <= getAgoraEvento()) {
+      return res.status(400).json({ erro: 'A escala deve ter data e horário futuros.' });
+    }
+
+    const evento = await prisma.evento.findFirst({
+      where: { id: req.params.id, ativo: true },
+      include: {
+        escalas: {
+          where: { dataHora: ocorrenciaAtual },
+          select: { id: true },
+        },
+      },
+    });
+
+    if (!evento || evento.escalas.length === 0) {
+      return res.status(404).json({ erro: 'Ocorrência do evento não encontrada.' });
+    }
+
+    const alterouData = !datasIguais(ocorrenciaAtual, novaOcorrencia);
+
+    if (alterouData && evento.frequencia !== 'NAO_REPETE') {
+      return res.status(400).json({ erro: 'A data de eventos recorrentes segue a regra de recorrência.' });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.evento.update({
+        where: { id: evento.id },
+        data: dadosTexto,
+      });
+
+      await tx.escala.updateMany({
+        where: { eventoId: evento.id },
+        data: dadosTexto,
+      });
+
+      if (!alterouData) return;
+
+      await tx.escala.updateMany({
+        where: { eventoId: evento.id, dataHora: ocorrenciaAtual },
+        data: {
+          dataHora: novaOcorrencia,
+        },
+      });
+
+      await tx.ordemCulto.updateMany({
+        where: { eventoId: evento.id, dataHora: ocorrenciaAtual },
+        data: {
+          dataHora: novaOcorrencia,
+          dataCulto: novaOcorrencia,
+        },
+      });
+
+      const primeiraEscala = await tx.escala.findFirst({
+        where: { eventoId: evento.id },
+        orderBy: { dataHora: 'asc' },
+        select: { dataHora: true },
+      });
+      const dataInicio = primeiraEscala?.dataHora || novaOcorrencia;
+
+      await tx.evento.update({
+        where: { id: evento.id },
+        data: {
+          dataInicio,
+          diaSemana: dataInicio.getUTCDay(),
+          semanaMes: getSemanaMes(dataInicio),
+        },
+      });
+    });
+
+    return res.status(200).json({
+      mensagem: 'Escala atualizada com sucesso.',
+      dataHora: novaOcorrencia.toISOString(),
+    });
+  } catch (erro) {
+    if (erro.code === 'P2002') {
+      return res.status(409).json({ erro: 'Já existe uma escala desse evento nesta data e horário.' });
+    }
+
+    console.error('[ERRO LOG] PATCH /api/escalas/admin/eventos/:id/ocorrencias:', erro);
+    return res.status(500).json({ erro: 'Erro interno no servidor. Tente novamente mais tarde.' });
+  }
+});
+
 router.patch('/admin/recorrentes/:id', autenticar, exigirAdmin, async (req, res) => {
   try {
     const { titulo, diaSemana, semanaMes, horario } = req.body ?? {};

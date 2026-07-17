@@ -17,6 +17,7 @@ import {
   List,
   Megaphone,
   ArrowDownUp,
+  Pencil,
   Plus,
   RefreshCcw,
   Save,
@@ -97,6 +98,50 @@ function formatarData(dataHora) {
 function toTime(dataHora) {
   if (!dataHora) return '18:00';
   return new Date(dataHora).toISOString().slice(11, 16);
+}
+
+function toDateTimeInput(dataHora) {
+  if (!dataHora) return '';
+  const data = new Date(dataHora);
+  return Number.isNaN(data.getTime()) ? '' : data.toISOString().slice(0, 16);
+}
+
+function getAreasEvento(evento) {
+  return evento?.areas || evento?.escalas || [];
+}
+
+function getOcorrenciasUnicas(evento) {
+  const ocorrencias = new Map();
+
+  getAreasEvento(evento).forEach((area) => {
+    if (area.dataHora && !ocorrencias.has(area.dataHora)) {
+      ocorrencias.set(area.dataHora, area);
+    }
+  });
+
+  return Array.from(ocorrencias.values())
+    .sort((a, b) => new Date(a.dataHora).getTime() - new Date(b.dataHora).getTime());
+}
+
+function getAreaPorDataHora(evento, dataHora) {
+  return getAreasEvento(evento).find((area) => area.dataHora === dataHora) || null;
+}
+
+function criarFormEdicaoEscala(evento, area) {
+  const dataHora = area?.dataHora || evento?.dataHora || '';
+
+  return {
+    eventoId: area?.eventoId || evento?.id || '',
+    tipo: evento?.tipo || area?.tipo || 'ESPORADICA',
+    frequencia: evento?.frequencia || 'NAO_REPETE',
+    dataHoraAtual: dataHora,
+    dataHora: toDateTimeInput(dataHora),
+    titulo: evento?.titulo || area?.titulo || '',
+    local: evento?.local || area?.local || '',
+    descricao: evento?.descricao || area?.descricao || '',
+    ordemCulto: area?.ordemCulto || null,
+    ordemArquivo: null,
+  };
 }
 
 function getUtcDateParts(dataHora) {
@@ -289,6 +334,8 @@ export default function AdminEscalas() {
   const [buscaEscalas, setBuscaEscalas] = useState('');
   const [ordemEscalas, setOrdemEscalas] = useState('proximas');
   const [escalaEditandoId, setEscalaEditandoId] = useState(null);
+  const [escalaEmEdicao, setEscalaEmEdicao] = useState(null);
+  const [formEdicaoEscala, setFormEdicaoEscala] = useState(null);
   const [mostrarFormEscala, setMostrarFormEscala] = useState(false);
   const [mostrarFormManual, setMostrarFormManual] = useState(false);
   const [manualEditandoId, setManualEditandoId] = useState(null);
@@ -657,8 +704,10 @@ export default function AdminEscalas() {
       setSucesso(dados.mensagem || 'Equipe excluída.');
       setEquipeSelecionadaId(null);
       await carregarDados();
+      return true;
     } catch (error) {
       setErro(error.message || 'Não foi possível excluir a equipe.');
+      return false;
     } finally {
       setSalvandoId(null);
     }
@@ -833,6 +882,18 @@ export default function AdminEscalas() {
     }
   };
 
+  const enviarOrdemCulto = async (escala, file) => {
+    const arquivo = await prepararArquivoPdf(file, 10);
+    const resposta = await fetchComTimeout(buildApiUrl('/api/ordens-culto/admin'), {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ eventoId: escala.eventoId, dataHora: escala.dataHora, arquivo }),
+    }, 90000);
+    const dados = await resposta.json().catch(() => ({}));
+    if (!resposta.ok) throw new Error(dados.erro || 'Não foi possível enviar a ordem de culto.');
+    return dados;
+  };
+
   const submeterOrdemCulto = async (escala, file) => {
     if (!file) return;
     setErro('');
@@ -840,18 +901,93 @@ export default function AdminEscalas() {
     setSalvandoId(`ordem-${escala.eventoId}-${escala.dataHora}`);
 
     try {
-      const arquivo = await prepararArquivoPdf(file, 10);
-      const resposta = await fetchComTimeout(buildApiUrl('/api/ordens-culto/admin'), {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ eventoId: escala.eventoId, dataHora: escala.dataHora, arquivo }),
-      }, 90000);
-      const dados = await resposta.json().catch(() => ({}));
-      if (!resposta.ok) throw new Error(dados.erro || 'Não foi possível enviar a ordem de culto.');
+      const dados = await enviarOrdemCulto(escala, file);
       setSucesso(dados.mensagem || 'Ordem de culto enviada.');
       await carregarDados();
     } catch (error) {
       setErro(error.message || 'Não foi possível enviar a ordem de culto.');
+    } finally {
+      setSalvandoId(null);
+    }
+  };
+
+  const abrirEdicaoEscala = (evento, area) => {
+    const ocorrencias = getOcorrenciasUnicas(evento);
+    const areaBase = area
+      || ocorrencias.find((item) => !(item.encerrada || escalaEstaEncerrada(item.dataHora)))
+      || ocorrencias[0]
+      || null;
+
+    if (!areaBase) {
+      setErro('Não foi possível localizar a escala para edição.');
+      return;
+    }
+
+    setErro('');
+    setEscalaEmEdicao(evento);
+    setFormEdicaoEscala(criarFormEdicaoEscala(evento, areaBase));
+  };
+
+  const selecionarOcorrenciaEdicao = (dataHora) => {
+    const area = getAreaPorDataHora(escalaEmEdicao, dataHora);
+
+    setFormEdicaoEscala((atual) => ({
+      ...atual,
+      dataHoraAtual: dataHora,
+      dataHora: toDateTimeInput(dataHora),
+      ordemCulto: area?.ordemCulto || null,
+      ordemArquivo: null,
+    }));
+  };
+
+  const fecharEdicaoEscala = () => {
+    setEscalaEmEdicao(null);
+    setFormEdicaoEscala(null);
+  };
+
+  const salvarEdicaoEscala = async (event) => {
+    event.preventDefault();
+    if (!formEdicaoEscala) return;
+
+    setErro('');
+    setSucesso('');
+    setSalvandoId(`editar-escala-${formEdicaoEscala.eventoId}`);
+
+    try {
+      const resposta = await fetchComTimeout(buildApiUrl(`/api/escalas/admin/eventos/${formEdicaoEscala.eventoId}/ocorrencias`), {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          titulo: formEdicaoEscala.titulo,
+          local: formEdicaoEscala.local,
+          descricao: formEdicaoEscala.descricao,
+          dataHoraAtual: formEdicaoEscala.dataHoraAtual,
+          dataHora: formEdicaoEscala.dataHora,
+        }),
+      }, 90000);
+      const dados = await resposta.json().catch(() => ({}));
+
+      if (!resposta.ok) throw new Error(dados.erro || 'Não foi possível salvar a escala.');
+
+      if (formEdicaoEscala.ordemArquivo) {
+        try {
+          await enviarOrdemCulto({
+            eventoId: formEdicaoEscala.eventoId,
+            dataHora: dados.dataHora || formEdicaoEscala.dataHora,
+          }, formEdicaoEscala.ordemArquivo);
+        } catch (error) {
+          await carregarDados();
+          throw new Error(`Escala atualizada, mas a ordem de culto não foi anexada: ${error.message}`);
+        }
+      }
+
+      setSucesso(formEdicaoEscala.ordemArquivo
+        ? 'Escala atualizada e ordem de culto anexada.'
+        : dados.mensagem || 'Escala atualizada.');
+      fecharEdicaoEscala();
+      await carregarDados();
+    } catch (error) {
+      setErro(error.message || 'Não foi possível salvar a escala.');
     } finally {
       setSalvandoId(null);
     }
@@ -1170,8 +1306,10 @@ export default function AdminEscalas() {
                 buscaEscalas={buscaEscalas}
                 ordemEscalas={ordemEscalas}
                 escalaEditandoId={escalaEditandoId}
+                escalaEmEdicao={escalaEmEdicao}
                 formRecorrentes={formRecorrentes}
                 formEscala={formEscala}
+                formEdicaoEscala={formEdicaoEscala}
                 salvandoId={salvandoId}
                 onAlterarRecorrente={alterarRecorrente}
                 onSalvarRecorrente={salvarRecorrente}
@@ -1180,6 +1318,11 @@ export default function AdminEscalas() {
                 onBuscaEscalas={setBuscaEscalas}
                 onOrdemEscalas={setOrdemEscalas}
                 onEditarEscala={setEscalaEditandoId}
+                onAbrirEdicaoEscala={abrirEdicaoEscala}
+                onFecharEdicaoEscala={fecharEdicaoEscala}
+                onChangeEdicaoEscala={setFormEdicaoEscala}
+                onSelecionarOcorrenciaEdicao={selecionarOcorrenciaEdicao}
+                onSalvarEdicaoEscala={salvarEdicaoEscala}
                 onChangeEscala={setFormEscala}
                 onAlternarEquipe={(equipeId) => alternarEquipe('esporadica', equipeId)}
                 onCriarEsporadica={criarEsporadica}
@@ -1619,6 +1762,8 @@ function PainelEquipes({ equipes, usuarios, equipeSelecionada, formEquipe, salva
   const equipeAtiva = equipeSelecionada || equipes[0] || null;
   const [novoLiderId, setNovoLiderId] = useState('');
   const [novoVoluntarioId, setNovoVoluntarioId] = useState('');
+  const [equipeConfirmandoExclusao, setEquipeConfirmandoExclusao] = useState(null);
+  const excluindoEquipe = Boolean(equipeConfirmandoExclusao && salvandoId === equipeConfirmandoExclusao.id);
   const lideresDisponiveis = useMemo(() => (
     usuarios.filter((usuario) => !usuario.equipesLideradas?.some((equipe) => equipe.id === equipeAtiva?.id))
   ), [equipeAtiva?.id, usuarios]);
@@ -1629,6 +1774,7 @@ function PainelEquipes({ equipes, usuarios, equipeSelecionada, formEquipe, salva
   useEffect(() => {
     setNovoLiderId('');
     setNovoVoluntarioId('');
+    setEquipeConfirmandoExclusao(null);
   }, [equipeAtiva?.id]);
 
   const adicionarLider = () => {
@@ -1639,6 +1785,13 @@ function PainelEquipes({ equipes, usuarios, equipeSelecionada, formEquipe, salva
   const adicionarVoluntario = () => {
     if (!novoVoluntarioId || !equipeAtiva) return;
     onAtualizarVinculo({ usuarioId: novoVoluntarioId, equipeId: equipeAtiva.id, tipo: 'voluntario', adicionar: true });
+  };
+
+  const confirmarExclusaoEquipe = async () => {
+    if (!equipeConfirmandoExclusao || !onExcluirEquipe) return;
+
+    const excluiu = await onExcluirEquipe(equipeConfirmandoExclusao.id);
+    if (excluiu) setEquipeConfirmandoExclusao(null);
   };
 
   return (
@@ -1694,7 +1847,7 @@ function PainelEquipes({ equipes, usuarios, equipeSelecionada, formEquipe, salva
                 <h2 className="mt-1 text-2xl font-bold text-gray-950">{equipeAtiva.nome}</h2>
                 <p className="mt-1 text-sm text-gray-500">{equipeAtiva.voluntarios?.length || 0} voluntário(s) cadastrados.</p>
               </div>
-              <button type="button" disabled={salvandoId === equipeAtiva.id} onClick={() => onExcluirEquipe(equipeAtiva.id)} className="inline-flex items-center justify-center gap-2 rounded-md border border-red-100 bg-white px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-60">
+              <button type="button" disabled={salvandoId === equipeAtiva.id} onClick={() => setEquipeConfirmandoExclusao(equipeAtiva)} className="inline-flex items-center justify-center gap-2 rounded-md border border-red-100 bg-white px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-60">
                 <Trash2 size={16} />
                 Excluir equipe
               </button>
@@ -1798,6 +1951,43 @@ function PainelEquipes({ equipes, usuarios, equipeSelecionada, formEquipe, salva
           </>
         )}
       </div>
+
+      {equipeConfirmandoExclusao && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-gray-950/45 px-4 py-6 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-5 shadow-2xl">
+            <div className="flex items-start gap-3">
+              <div className="rounded-full bg-red-50 p-2 text-red-600">
+                <AlertCircle size={22} />
+              </div>
+              <div>
+                <p className="text-sm font-bold uppercase tracking-[0.16em] text-red-700">Confirmar exclusão</p>
+                <h2 className="mt-2 text-xl font-bold leading-7 text-gray-950">
+                  Tem certeza que quer excluir a equipe {equipeConfirmandoExclusao.nome || 'selecionada'}?
+                </h2>
+              </div>
+            </div>
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                disabled={excluindoEquipe}
+                onClick={() => setEquipeConfirmandoExclusao(null)}
+                className="rounded-md border border-gray-200 bg-white px-4 py-2.5 text-sm font-bold text-gray-700 transition hover:bg-gray-50 disabled:opacity-60"
+              >
+                Não
+              </button>
+              <button
+                type="button"
+                disabled={excluindoEquipe}
+                onClick={confirmarExclusaoEquipe}
+                className="inline-flex items-center justify-center gap-2 rounded-md bg-red-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-red-700 disabled:opacity-60"
+              >
+                {excluindoEquipe ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 size={16} />}
+                Sim
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
@@ -2037,8 +2227,10 @@ function PainelEscalas({
   buscaEscalas,
   ordemEscalas,
   escalaEditandoId,
+  escalaEmEdicao,
   formRecorrentes,
   formEscala,
+  formEdicaoEscala,
   salvandoId,
   onAlterarRecorrente,
   onSalvarRecorrente,
@@ -2047,6 +2239,11 @@ function PainelEscalas({
   onBuscaEscalas,
   onOrdemEscalas,
   onEditarEscala,
+  onAbrirEdicaoEscala,
+  onFecharEdicaoEscala,
+  onChangeEdicaoEscala,
+  onSelecionarOcorrenciaEdicao,
+  onSalvarEdicaoEscala,
   onChangeEscala,
   onAlternarEquipe,
   onCriarEsporadica,
@@ -2421,6 +2618,8 @@ function PainelEscalas({
                     const encerrada = area.encerrada || escalaEstaEncerrada(area.dataHora);
                     return primeiraEscalaDaOcorrencia && area.eventoId && !encerrada;
                   });
+                  const areaEditavel = getOcorrenciasUnicas(evento)
+                    .find((area) => !(area.encerrada || escalaEstaEncerrada(area.dataHora))) || null;
 
                   return (
                     <React.Fragment key={evento.id}>
@@ -2489,6 +2688,16 @@ function PainelEscalas({
                         </div>
                       )}
                     </div>
+                    <button
+                      type="button"
+                      disabled={!areaEditavel}
+                      onClick={() => onAbrirEdicaoEscala(evento, areaEditavel)}
+                      className="inline-flex shrink-0 items-center justify-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      title={areaEditavel ? 'Editar escala' : 'Escalas passadas não podem ser editadas'}
+                    >
+                      <Pencil size={15} />
+                      Editar
+                    </button>
                   </div>
 
                   <div className="mt-5 max-h-[560px] max-w-full overflow-auto rounded-xl border border-gray-200 bg-white">
@@ -2596,7 +2805,131 @@ function PainelEscalas({
         </div>
       </div>
 
+      {escalaEmEdicao && formEdicaoEscala && (
+        <ModalEdicaoEscala
+          evento={escalaEmEdicao}
+          form={formEdicaoEscala}
+          salvandoId={salvandoId}
+          onChange={onChangeEdicaoEscala}
+          onSelecionarOcorrencia={onSelecionarOcorrenciaEdicao}
+          onSubmit={onSalvarEdicaoEscala}
+          onClose={onFecharEdicaoEscala}
+          onAbrirOrdemCulto={onAbrirOrdemCulto}
+        />
+      )}
     </section>
+  );
+}
+
+function ModalEdicaoEscala({
+  evento,
+  form,
+  salvandoId,
+  onChange,
+  onSelecionarOcorrencia,
+  onSubmit,
+  onClose,
+  onAbrirOrdemCulto,
+}) {
+  const salvando = salvandoId === `editar-escala-${form.eventoId}`;
+  const ocorrencias = getOcorrenciasUnicas(evento);
+  const areasDaOcorrencia = getAreasEvento(evento)
+    .filter((area) => area.dataHora === form.dataHoraAtual);
+  const podeEditarData = form.frequencia === 'NAO_REPETE';
+
+  return (
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-gray-950/45 px-4 py-6 backdrop-blur-sm" onMouseDown={(event) => event.target === event.currentTarget && !salvando && onClose()}>
+      <form onSubmit={onSubmit} role="dialog" aria-modal="true" aria-labelledby="titulo-modal-edicao-escala" className="max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-gray-100 px-5 py-4">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-dourado-700">Editar escala</p>
+            <h2 id="titulo-modal-edicao-escala" className="mt-1 text-xl font-bold text-gray-950">{form.titulo || 'Escala sem título'}</h2>
+          </div>
+          <button type="button" disabled={salvando} onClick={onClose} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-gray-200 text-gray-500 transition hover:bg-gray-50 hover:text-gray-900 disabled:opacity-50" title="Fechar" aria-label="Fechar">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="max-h-[70vh] space-y-4 overflow-y-auto px-5 py-5">
+          {ocorrencias.length > 1 && (
+            <Select
+              label="Ocorrência"
+              value={form.dataHoraAtual}
+              options={ocorrencias.map((area) => ({ value: area.dataHora, label: formatarData(area.dataHora) }))}
+              onChange={onSelecionarOcorrencia}
+            />
+          )}
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Campo label="Título" value={form.titulo} onChange={(value) => onChange((atual) => ({ ...atual, titulo: value }))} />
+            <Campo
+              label="Data e horário"
+              type="datetime-local"
+              value={form.dataHora}
+              disabled={!podeEditarData}
+              onChange={(value) => onChange((atual) => ({ ...atual, dataHora: value }))}
+            />
+            <Campo label="Local" value={form.local} onChange={(value) => onChange((atual) => ({ ...atual, local: value }))} />
+            <div className="lg:row-span-2">
+              <CampoTexto label="Descrição" value={form.descricao} onChange={(value) => onChange((atual) => ({ ...atual, descricao: value }))} />
+            </div>
+          </div>
+
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-gray-400">Funções desta ocorrência</p>
+            <div className="flex flex-wrap gap-2">
+              {areasDaOcorrencia.map((area) => (
+                <span key={area.id} className="rounded border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-bold text-gray-600">
+                  {area.equipe?.nome || 'Sem equipe'}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-bold text-gray-950">Ordem de culto</p>
+                <p className="mt-1 text-xs text-gray-500">
+                  {form.ordemArquivo?.name || (form.ordemCulto ? form.ordemCulto.titulo : 'Nenhum PDF anexado')}
+                </p>
+              </div>
+              {form.ordemCulto && (
+                <button
+                  type="button"
+                  onClick={() => onAbrirOrdemCulto(form.ordemCulto)}
+                  className="inline-flex items-center justify-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-700 transition hover:bg-gray-100"
+                >
+                  <Eye size={15} />
+                  Visualizar atual
+                </button>
+              )}
+            </div>
+            <label className="mt-3 block">
+              <span className="sr-only">Anexar ordem de culto em PDF</span>
+              <input
+                key={form.dataHoraAtual}
+                type="file"
+                accept="application/pdf"
+                disabled={salvando}
+                onChange={(event) => onChange((atual) => ({ ...atual, ordemArquivo: event.target.files?.[0] || null }))}
+                className="block w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none transition file:mr-3 file:rounded-md file:border-0 file:bg-gray-950 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10 disabled:opacity-60"
+              />
+            </label>
+          </div>
+        </div>
+
+        <div className="flex flex-col-reverse gap-2 border-t border-gray-100 px-5 py-4 sm:flex-row sm:justify-end">
+          <button type="button" disabled={salvando} onClick={onClose} className="rounded-md border border-gray-200 bg-white px-4 py-2.5 text-sm font-bold text-gray-700 transition hover:bg-gray-50 disabled:opacity-60">
+            Cancelar
+          </button>
+          <button disabled={salvando} className="inline-flex items-center justify-center gap-2 rounded-md bg-gray-950 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-gray-800 disabled:opacity-60">
+            {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : form.ordemArquivo ? <FileText size={16} /> : <Save size={16} />}
+            Salvar escala
+          </button>
+        </div>
+      </form>
+    </div>
   );
 }
 
@@ -2975,11 +3308,19 @@ function GrupoChecks({ titulo, children }) {
   );
 }
 
-function Campo({ label, value, onChange, type = 'text', placeholder = '', min }) {
+function Campo({ label, value, onChange, type = 'text', placeholder = '', min, disabled = false }) {
   return (
     <label className="block">
       <span className="text-sm font-semibold text-gray-700">{label}</span>
-      <input type={type} value={value} min={min} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} className="mt-2 block w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10" />
+      <input
+        type={type}
+        value={value}
+        min={min}
+        placeholder={placeholder}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+        className={`mt-2 block w-full rounded-md border border-gray-200 px-3 py-2.5 text-sm outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10 disabled:cursor-not-allowed disabled:opacity-70 ${disabled ? 'bg-gray-50 text-gray-500' : 'bg-white'}`}
+      />
     </label>
   );
 }
