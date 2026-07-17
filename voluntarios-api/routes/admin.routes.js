@@ -6,6 +6,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import { normalizarTelefone } from '../utils/telefone.js';
 import { getInicioHistoricoEscalas } from '../services/eventos.service.js';
+import { apagarObjetoStorage, extrairKeyStorageDeUrl } from '../utils/storage.js';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -553,11 +554,37 @@ router.delete('/usuarios/:id', autenticar, exigirAdmin, async (req, res) => {
       return res.status(400).json({ erro: 'Você não pode excluir seu próprio usuário.' });
     }
 
+    const usuario = await prisma.usuario.findUnique({
+      where: {
+        id: req.params.id,
+      },
+      select: {
+        urlFoto: true,
+      },
+    });
+
+    if (!usuario) {
+      return res.status(404).json({ erro: 'Usuário não encontrado.' });
+    }
+
     await prisma.usuario.delete({
       where: {
         id: req.params.id,
       },
     });
+
+    const fotoKey = extrairKeyStorageDeUrl(usuario.urlFoto, {
+      proxyMarkers: ['/api/auth/fotos/'],
+    });
+
+    if (fotoKey) {
+      apagarObjetoStorage(fotoKey, {
+        prefixosPermitidos: ['usuarios/'],
+        label: 'foto do usuário excluído',
+      }).catch((deleteError) => {
+        console.warn('[WARN] Falha ao remover foto do usuário excluído:', deleteError.message);
+      });
+    }
 
     return res.status(200).json({ mensagem: 'Usuário excluído com sucesso.' });
   } catch (erro) {

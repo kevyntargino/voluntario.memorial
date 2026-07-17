@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
+import { apagarObjetoStorage } from '../utils/storage.js';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -253,17 +254,10 @@ async function uploadPdfManual({ manualId, arquivo }) {
 }
 
 async function apagarArquivoStorage(key) {
-  if (!key || !key.startsWith('manuais/')) {
-    return;
-  }
-
-  const deleteUrl = criarPresignedUrl({ key, method: 'DELETE', expiresIn: 300 });
-  const resposta = await fetch(deleteUrl, { method: 'DELETE' });
-
-  if (!resposta.ok && resposta.status !== 404) {
-    const detalhe = await resposta.text().catch(() => '');
-    console.warn('[WARN] Falha ao excluir PDF do R2:', resposta.status, detalhe);
-  }
+  return apagarObjetoStorage(key, {
+    prefixosPermitidos: ['manuais/'],
+    label: 'PDF do manual',
+  });
 }
 
 router.get('/', autenticar, async (req, res) => {

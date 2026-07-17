@@ -7,6 +7,7 @@ import { Pool } from 'pg';
 import { validarPdfBase64 } from '../services/pdf.service.js';
 import { notificarOrdemCulto } from '../services/notificacoes.service.js';
 import { escalaEstaEncerrada } from '../utils/escalas.js';
+import { apagarObjetoStorage } from '../utils/storage.js';
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
@@ -113,9 +114,10 @@ async function fetchComTimeout(url, options = {}, timeoutMs = 60000) {
 }
 
 async function apagarArquivo(key) {
-  if (!key?.startsWith('ordens-culto/')) return;
-  const resposta = await fetch(criarPresignedUrl({ key, method: 'DELETE', expiresIn: 300 }), { method: 'DELETE' });
-  if (!resposta.ok && resposta.status !== 404) console.warn('[WARN] Falha ao excluir ordem de culto antiga:', resposta.status);
+  return apagarObjetoStorage(key, {
+    prefixosPermitidos: ['ordens-culto/'],
+    label: 'ordem de culto',
+  });
 }
 
 function formatarOrdem(ordem) {

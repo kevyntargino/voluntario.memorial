@@ -16,6 +16,7 @@ import {
   getInicioHistoricoEscalas,
   getLimiteEscalasFuturas,
 } from '../services/eventos.service.js';
+import { apagarObjetoStorage } from '../utils/storage.js';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -71,6 +72,19 @@ function exigirAdmin(req, res, next) {
   }
 
   return next();
+}
+
+function apagarArquivosOrdensCulto(ordensCulto) {
+  const keys = [...new Set((ordensCulto || []).map((ordem) => ordem.arquivoKey).filter(Boolean))];
+
+  for (const key of keys) {
+    apagarObjetoStorage(key, {
+      prefixosPermitidos: ['ordens-culto/'],
+      label: 'ordem de culto removida',
+    }).catch((deleteError) => {
+      console.warn('[WARN] Falha ao remover ordem de culto do storage:', deleteError.message);
+    });
+  }
 }
 
 function getSemanaMes(data) {
@@ -766,6 +780,13 @@ router.delete('/admin/eventos/:id/ocorrencias', autenticar, exigirAdmin, async (
 
     if (evento.frequencia !== 'NAO_REPETE') {
       const agora = getAgoraEscalas();
+      const ordensCultoRemovidas = await prisma.ordemCulto.findMany({
+        where: {
+          eventoId: evento.id,
+          dataHora: { gte: agora },
+        },
+        select: { arquivoKey: true },
+      });
       const removidas = await prisma.$transaction(async (tx) => {
         await tx.evento.update({
           where: { id: evento.id },
@@ -787,11 +808,20 @@ router.delete('/admin/eventos/:id/ocorrencias', autenticar, exigirAdmin, async (
         return resultado.count;
       });
 
+      apagarArquivosOrdensCulto(ordensCultoRemovidas);
+
       return res.status(200).json({
         mensagem: `${removidas} escala(s) futura(s) removida(s). O evento recorrente não gerará novas ocorrências.`,
       });
     }
 
+    const ordensCultoRemovidas = await prisma.ordemCulto.findMany({
+      where: {
+        eventoId: evento.id,
+        dataHora: ocorrencia,
+      },
+      select: { arquivoKey: true },
+    });
     const removidas = await prisma.$transaction(async (tx) => {
       await tx.ordemCulto.deleteMany({
         where: {
@@ -827,6 +857,8 @@ router.delete('/admin/eventos/:id/ocorrencias', autenticar, exigirAdmin, async (
 
       return resultado.count;
     });
+
+    apagarArquivosOrdensCulto(ordensCultoRemovidas);
 
     return res.status(200).json({
       mensagem: `${removidas} escala(s) removida(s) com sucesso.`,

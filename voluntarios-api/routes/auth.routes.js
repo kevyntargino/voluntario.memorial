@@ -6,6 +6,7 @@ import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import { normalizarTelefone } from '../utils/telefone.js';
+import { apagarObjetoStorage } from '../utils/storage.js';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -166,10 +167,6 @@ function criarPresignedGetUrl({ key, expiresIn = 300 }) {
   return criarPresignedUrl({ key, method: 'GET', expiresIn });
 }
 
-function criarPresignedDeleteUrl({ key, expiresIn = 300 }) {
-  return criarPresignedUrl({ key, method: 'DELETE', expiresIn });
-}
-
 function getApiBaseUrl(req) {
   const host = req.get('x-forwarded-host') || req.get('host');
   const protocol = req.get('x-forwarded-proto') || req.protocol || 'http';
@@ -177,17 +174,10 @@ function getApiBaseUrl(req) {
 }
 
 async function apagarFotoDoStorage(key) {
-  if (!key || !key.startsWith('usuarios/')) {
-    return;
-  }
-
-  const deleteUrl = criarPresignedDeleteUrl({ key });
-  const resposta = await fetch(deleteUrl, { method: 'DELETE' });
-
-  if (!resposta.ok && resposta.status !== 404) {
-    const detalhe = await resposta.text().catch(() => '');
-    console.warn('[WARN] Falha ao excluir foto do R2:', resposta.status, detalhe);
-  }
+  return apagarObjetoStorage(key, {
+    prefixosPermitidos: ['usuarios/'],
+    label: 'foto do usuário',
+  });
 }
 
 async function autenticar(req, res, next) {
