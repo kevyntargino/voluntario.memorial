@@ -106,6 +106,7 @@ Rotas administrativas:
 
 - `GET /escalas/admin`: lista dados para administracao.
 - `POST /escalas/admin/eventos`: cria evento.
+- `DELETE /escalas/admin/eventos/:id/ocorrencias`: exclui uma ocorrencia ou remove futuras ocorrencias de evento recorrente.
 - `PATCH /escalas/admin/recorrentes/:id`: edita evento/escala recorrente.
 - `POST /escalas/admin/esporadicas`: cria escala/evento esporadico.
 - `POST /escalas/admin/recorrentes`: cria escala/evento recorrente.

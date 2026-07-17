@@ -738,6 +738,109 @@ router.patch('/admin/eventos/:id/ocorrencias', autenticar, exigirAdmin, async (r
   }
 });
 
+router.delete('/admin/eventos/:id/ocorrencias', autenticar, exigirAdmin, async (req, res) => {
+  try {
+    const ocorrencia = parseDataHoraEvento(req.query.dataHora);
+
+    if (!ocorrencia) {
+      return res.status(400).json({ erro: 'Informe a data e horário da escala.' });
+    }
+
+    if (escalaEstaEncerrada(ocorrencia)) {
+      return res.status(409).json({ erro: 'Escalas passadas são somente para consulta e não podem ser alteradas.' });
+    }
+
+    const evento = await prisma.evento.findFirst({
+      where: { id: req.params.id, ativo: true },
+      include: {
+        escalas: {
+          where: { dataHora: ocorrencia },
+          select: { id: true },
+        },
+      },
+    });
+
+    if (!evento || evento.escalas.length === 0) {
+      return res.status(404).json({ erro: 'Ocorrência do evento não encontrada.' });
+    }
+
+    if (evento.frequencia !== 'NAO_REPETE') {
+      const agora = getAgoraEscalas();
+      const removidas = await prisma.$transaction(async (tx) => {
+        await tx.evento.update({
+          where: { id: evento.id },
+          data: { ativo: false },
+        });
+        await tx.ordemCulto.deleteMany({
+          where: {
+            eventoId: evento.id,
+            dataHora: { gte: agora },
+          },
+        });
+        const resultado = await tx.escala.deleteMany({
+          where: {
+            eventoId: evento.id,
+            dataHora: { gte: agora },
+          },
+        });
+
+        return resultado.count;
+      });
+
+      return res.status(200).json({
+        mensagem: `${removidas} escala(s) futura(s) removida(s). O evento recorrente não gerará novas ocorrências.`,
+      });
+    }
+
+    const removidas = await prisma.$transaction(async (tx) => {
+      await tx.ordemCulto.deleteMany({
+        where: {
+          eventoId: evento.id,
+          dataHora: ocorrencia,
+        },
+      });
+      const resultado = await tx.escala.deleteMany({
+        where: {
+          eventoId: evento.id,
+          dataHora: ocorrencia,
+        },
+      });
+      const primeiraEscalaRestante = await tx.escala.findFirst({
+        where: { eventoId: evento.id },
+        orderBy: { dataHora: 'asc' },
+        select: { dataHora: true },
+      });
+
+      if (!primeiraEscalaRestante) {
+        await tx.evento.delete({ where: { id: evento.id } });
+        return resultado.count;
+      }
+
+      await tx.evento.update({
+        where: { id: evento.id },
+        data: {
+          dataInicio: primeiraEscalaRestante.dataHora,
+          diaSemana: primeiraEscalaRestante.dataHora.getUTCDay(),
+          semanaMes: getSemanaMes(primeiraEscalaRestante.dataHora),
+        },
+      });
+
+      return resultado.count;
+    });
+
+    return res.status(200).json({
+      mensagem: `${removidas} escala(s) removida(s) com sucesso.`,
+    });
+  } catch (erro) {
+    if (erro.code === 'P2025') {
+      return res.status(404).json({ erro: 'Evento ou escala não encontrado.' });
+    }
+
+    console.error('[ERRO LOG] DELETE /api/escalas/admin/eventos/:id/ocorrencias:', erro);
+    return res.status(500).json({ erro: 'Erro interno no servidor. Tente novamente mais tarde.' });
+  }
+});
+
 router.patch('/admin/recorrentes/:id', autenticar, exigirAdmin, async (req, res) => {
   try {
     const { titulo, diaSemana, semanaMes, horario } = req.body ?? {};

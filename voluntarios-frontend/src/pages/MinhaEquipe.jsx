@@ -3,6 +3,8 @@ import {
   AlertCircle,
   CalendarPlus,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Clock3,
   FileText,
   Loader2,
@@ -12,6 +14,7 @@ import {
   RefreshCcw,
   Search,
   Bell,
+  X,
 } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import { Footer } from '../components/Footer';
@@ -61,6 +64,7 @@ const filtrosStatusEscala = [
   { value: 'PEDIU_SUBSTITUICAO', label: 'Substituição' },
   { value: 'AUSENTE', label: 'Ausentes' },
 ];
+const opcoesItensPorPaginaEscalas = [5, 10, 20, 30];
 
 function normalizar(texto) {
   return String(texto || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -82,6 +86,23 @@ function formatarData(dataHora) {
   }).format(new Date(dataHora));
 }
 
+function getEscalaFiltroId(filtroEscala) {
+  if (filtroEscala.startsWith('ESCALA:')) {
+    return filtroEscala.replace('ESCALA:', '');
+  }
+
+  if (filtroEscala.startsWith('ESPORADICA:')) {
+    return filtroEscala.replace('ESPORADICA:', '');
+  }
+
+  return '';
+}
+
+function formatarOpcaoEscala(escala) {
+  const titulo = escala.titulo || (escala.tipo === 'ESPORADICA' ? 'Escala esporádica' : 'Escala fixa');
+  return `${titulo} - ${formatarData(escala.dataHora)}`;
+}
+
 export default function MinhaEquipe() {
   const { token, usuario, logout } = useAuth();
   const { navigate, search } = useNavigation();
@@ -98,7 +119,7 @@ export default function MinhaEquipe() {
   const [salvando, setSalvando] = useState(false);
   const [formEscala, setFormEscala] = useState(formEscalaInicial);
   const [substitutosSelecionados, setSubstitutosSelecionados] = useState({});
-  const [filtroEscala, setFiltroEscala] = useState(filtrosRecorrentes[0].chave);
+  const [filtroEscala, setFiltroEscala] = useState('TODAS');
   const [usuarioModal, setUsuarioModal] = useState(null);
   const [mostrarCadastroVoluntario, setMostrarCadastroVoluntario] = useState(false);
   const [formNovoVoluntario, setFormNovoVoluntario] = useState(formNovoVoluntarioInicial);
@@ -106,6 +127,8 @@ export default function MinhaEquipe() {
   const [tipoEscalas, setTipoEscalas] = useState('TODAS');
   const [statusEscalas, setStatusEscalas] = useState('TODOS');
   const [ordemEscalas, setOrdemEscalas] = useState('proximas');
+  const [paginaEscalas, setPaginaEscalas] = useState(1);
+  const [itensPorPaginaEscalas, setItensPorPaginaEscalas] = useState(5);
 
   const carregarEquipes = useCallback(async () => {
     setErro('');
@@ -199,7 +222,7 @@ export default function MinhaEquipe() {
     setBuscaEscalas('');
     setTipoEscalas('TODAS');
     setStatusEscalas('TODOS');
-    setFiltroEscala(`ESPORADICA:${escala.id}`);
+    setFiltroEscala(`ESCALA:${escala.id}`);
     setFormEscala({
       id: escala.id,
       voluntarioIds: escala.voluntarios.map((item) => item.usuario.id),
@@ -228,16 +251,23 @@ export default function MinhaEquipe() {
     const termo = normalizar(buscaEscalas);
     let base = equipeSelecionada.escalas || [];
 
-    if (filtroEscala.startsWith('ESPORADICA:')) {
-      const escalaId = filtroEscala.replace('ESPORADICA:', '');
+    if (filtroEscala.startsWith('ESCALA:') || filtroEscala.startsWith('ESPORADICA:')) {
+      const escalaId = getEscalaFiltroId(filtroEscala);
       base = base.filter((escala) => escala.id === escalaId);
+    } else if (filtroEscala === 'RECORRENTES') {
+      base = base.filter((escala) => escala.tipo === 'RECORRENTE');
+    } else if (filtroEscala === 'ESPORADICAS') {
+      base = base.filter((escala) => escala.tipo === 'ESPORADICA');
     } else if (filtroEscala !== 'TODAS') {
-      const filtro = filtrosRecorrentes.find((item) => item.chave === filtroEscala) || filtrosRecorrentes[0];
-      base = base.filter((escala) => (
-        escala.tipo === 'RECORRENTE'
-        && escala.diaSemana === filtro.diaSemana
-        && escala.semanaMes === filtro.semanaMes
-      ));
+      const filtro = filtrosRecorrentes.find((item) => item.chave === filtroEscala);
+
+      if (filtro) {
+        base = base.filter((escala) => (
+          escala.tipo === 'RECORRENTE'
+          && escala.diaSemana === filtro.diaSemana
+          && escala.semanaMes === filtro.semanaMes
+        ));
+      }
     }
 
     return base
@@ -279,15 +309,86 @@ export default function MinhaEquipe() {
       return;
     }
 
-    if (filtroEscala.startsWith('ESPORADICA:')) {
-      const escalaId = filtroEscala.replace('ESPORADICA:', '');
+    if (filtroEscala.startsWith('ESCALA:') || filtroEscala.startsWith('ESPORADICA:')) {
+      const escalaId = getEscalaFiltroId(filtroEscala);
       const escalaAindaExiste = equipeSelecionada.escalas.some((escala) => escala.id === escalaId);
 
       if (!escalaAindaExiste) {
-        setFiltroEscala(filtrosRecorrentes[0].chave);
+        setFiltroEscala('TODAS');
       }
     }
   }, [equipeSelecionada, filtroEscala]);
+
+  const escalaFiltroId = getEscalaFiltroId(filtroEscala);
+  const escalaSelecionadaNoFiltro = useMemo(() => (
+    escalaFiltroId
+      ? equipeSelecionada?.escalas?.find((escala) => escala.id === escalaFiltroId) || null
+      : null
+  ), [equipeSelecionada, escalaFiltroId]);
+  const opcoesFiltroEscala = useMemo(() => {
+    const esporadicas = escalasEsporadicas.map((escala) => ({
+      value: `ESCALA:${escala.id}`,
+      label: formatarOpcaoEscala(escala),
+    }));
+    const escalaExataJaIncluida = escalaSelecionadaNoFiltro
+      && esporadicas.some((opcao) => opcao.value === `ESCALA:${escalaSelecionadaNoFiltro.id}`);
+
+    return [
+      { value: 'TODAS', label: 'Todas as escalas' },
+      { value: 'RECORRENTES', label: 'Todas as fixas' },
+      { value: 'ESPORADICAS', label: 'Todas as esporádicas' },
+      {
+        label: 'Fixa por semana',
+        options: filtrosRecorrentes.map((filtro) => ({
+          value: filtro.chave,
+          label: filtro.label,
+        })),
+      },
+      ...(escalaSelecionadaNoFiltro && !escalaExataJaIncluida
+        ? [{
+            label: 'Escala selecionada',
+            options: [{
+              value: `ESCALA:${escalaSelecionadaNoFiltro.id}`,
+              label: formatarOpcaoEscala(escalaSelecionadaNoFiltro),
+            }],
+          }]
+        : []),
+      ...(esporadicas.length > 0
+        ? [{ label: 'Esporádicas específicas', options: esporadicas }]
+        : []),
+    ];
+  }, [escalaSelecionadaNoFiltro, escalasEsporadicas]);
+  const totalPaginasEscalas = Math.max(1, Math.ceil(escalasFiltradas.length / itensPorPaginaEscalas));
+  const escalasPaginadas = useMemo(() => {
+    const inicio = (paginaEscalas - 1) * itensPorPaginaEscalas;
+    return escalasFiltradas.slice(inicio, inicio + itensPorPaginaEscalas);
+  }, [escalasFiltradas, itensPorPaginaEscalas, paginaEscalas]);
+  const inicioEscalas = escalasFiltradas.length === 0 ? 0 : ((paginaEscalas - 1) * itensPorPaginaEscalas) + 1;
+  const fimEscalas = Math.min(escalasFiltradas.length, paginaEscalas * itensPorPaginaEscalas);
+  const filtrosEscalasAtivos = Boolean(
+    buscaEscalas.trim()
+    || filtroEscala !== 'TODAS'
+    || tipoEscalas !== 'TODAS'
+    || statusEscalas !== 'TODOS'
+    || ordemEscalas !== 'proximas',
+  );
+
+  useEffect(() => {
+    setPaginaEscalas((pagina) => Math.min(pagina, totalPaginasEscalas));
+  }, [totalPaginasEscalas]);
+
+  useEffect(() => {
+    setPaginaEscalas(1);
+  }, [buscaEscalas, equipeId, filtroEscala, ordemEscalas, statusEscalas, tipoEscalas]);
+
+  const limparFiltrosEscalas = () => {
+    setBuscaEscalas('');
+    setFiltroEscala('TODAS');
+    setTipoEscalas('TODAS');
+    setStatusEscalas('TODOS');
+    setOrdemEscalas('proximas');
+    setPaginaEscalas(1);
+  };
 
   const atualizarEquipe = (equipeAtualizada) => {
     setEquipes((atuais) => atuais.map((equipe) => (
@@ -361,7 +462,7 @@ export default function MinhaEquipe() {
     setBuscaEscalas('');
     setTipoEscalas('TODAS');
     setStatusEscalas('TODOS');
-    setFiltroEscala(`ESPORADICA:${escala.id}`);
+    setFiltroEscala(`ESCALA:${escala.id}`);
     editarEscala(escala);
 
     window.setTimeout(() => {
@@ -762,62 +863,34 @@ export default function MinhaEquipe() {
                     />
                   </div>
 
-                  <div>
-                    <p className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-gray-400">Escalas fixas</p>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setFiltroEscala('TODAS')}
-                        className={`rounded-md border px-3 py-2 text-sm font-bold transition ${
-                          filtroEscala === 'TODAS'
-                            ? 'border-gray-950 bg-gray-950 text-white'
-                            : 'border-gray-200 bg-gray-50 text-gray-700 hover:border-gray-300'
-                        }`}
-                      >
-                        Todas
-                      </button>
-                      {filtrosRecorrentes.map((filtro) => (
-                        <button
-                          key={filtro.chave}
-                          type="button"
-                          onClick={() => setFiltroEscala(filtro.chave)}
-                          className={`rounded-md border px-3 py-2 text-sm font-bold transition ${
-                            filtroEscala === filtro.chave
-                              ? 'border-gray-950 bg-gray-950 text-white'
-                              : 'border-gray-200 bg-gray-50 text-gray-700 hover:border-gray-300'
-                          }`}
-                        >
-                          {filtro.label}
-                        </button>
-                      ))}
-                    </div>
+                  <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
+                    <SelectFiltro
+                      label="Ocorrência"
+                      value={filtroEscala}
+                      onChange={setFiltroEscala}
+                      options={opcoesFiltroEscala}
+                    />
+                    <button
+                      type="button"
+                      onClick={limparFiltrosEscalas}
+                      disabled={!filtrosEscalasAtivos}
+                      className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <X size={15} />
+                      Limpar filtros
+                    </button>
                   </div>
 
-                  {escalasEsporadicas.length > 0 && (
-                    <div>
-                      <p className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-amber-700">Escalas esporádicas</p>
-                      <div className="flex flex-wrap gap-2">
-                        {escalasEsporadicas.map((escala) => {
-                          const chave = `ESPORADICA:${escala.id}`;
-
-                          return (
-                            <button
-                              key={escala.id}
-                              type="button"
-                              onClick={() => setFiltroEscala(chave)}
-                              className={`rounded-md border px-3 py-2 text-sm font-bold transition ${
-                                filtroEscala === chave
-                                  ? 'border-amber-700 bg-amber-700 text-white'
-                                  : 'border-amber-200 bg-amber-50 text-amber-800 hover:border-amber-300'
-                              }`}
-                            >
-                              {escala.titulo || 'Escala esporádica'}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
+                  <div className="flex flex-col gap-1 rounded-md border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="font-semibold text-gray-800">
+                      {escalasFiltradas.length} de {equipeSelecionada.escalas.length} escala(s)
+                    </p>
+                    <p>
+                      {escalasFiltradas.length > 0
+                        ? `Mostrando ${inicioEscalas}-${fimEscalas} em ${itensPorPaginaEscalas} por página`
+                        : 'Ajuste os filtros para localizar escalas'}
+                    </p>
+                  </div>
 
                   <div className="space-y-3">
                     {equipeSelecionada.escalas.length === 0 ? (
@@ -826,7 +899,7 @@ export default function MinhaEquipe() {
                       <div className="rounded-md border border-dashed border-gray-200 bg-gray-50 px-4 py-8 text-center text-sm text-gray-500">
                         Nenhuma escala encontrada com os filtros selecionados.
                       </div>
-                    ) : escalasFiltradas.map((escala) => (
+                    ) : escalasPaginadas.map((escala) => (
                       <div id={`equipe-escala-${escala.id}`} key={escala.id} className="rounded-2xl border border-gray-200 bg-gradient-to-br from-white to-gray-50 p-5 shadow-sm">
                         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                           <div className="min-w-0">
@@ -1010,6 +1083,20 @@ export default function MinhaEquipe() {
                       </div>
                     ))}
                   </div>
+
+                  {escalasFiltradas.length > 0 && (
+                    <PaginacaoEscalasEquipe
+                      totalItens={escalasFiltradas.length}
+                      paginaAtual={paginaEscalas}
+                      totalPaginas={totalPaginasEscalas}
+                      itensPorPagina={itensPorPaginaEscalas}
+                      onPaginaChange={setPaginaEscalas}
+                      onItensPorPaginaChange={(valor) => {
+                        setItensPorPaginaEscalas(Number(valor));
+                        setPaginaEscalas(1);
+                      }}
+                    />
+                  )}
                 </div>
               </Painel>
             </section>
@@ -1056,10 +1143,73 @@ function SelectFiltro({ label, options, value, onChange }) {
         className="block w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm font-semibold text-gray-700 outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
       >
         {options.map((option) => (
-          <option key={option.value} value={option.value}>{option.label}</option>
+          option.options ? (
+            <optgroup key={option.label} label={option.label}>
+              {option.options.map((item) => (
+                <option key={item.value} value={item.value}>{item.label}</option>
+              ))}
+            </optgroup>
+          ) : (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          )
         ))}
       </select>
     </label>
+  );
+}
+
+function PaginacaoEscalasEquipe({
+  totalItens,
+  paginaAtual,
+  totalPaginas,
+  itensPorPagina,
+  onPaginaChange,
+  onItensPorPaginaChange,
+}) {
+  const inicio = totalItens === 0 ? 0 : ((paginaAtual - 1) * itensPorPagina) + 1;
+  const fim = Math.min(totalItens, paginaAtual * itensPorPagina);
+
+  return (
+    <div className="flex flex-col gap-3 rounded-md border border-gray-200 bg-white px-4 py-3 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        <p className="text-sm font-semibold text-gray-700">
+          Mostrando {inicio}-{fim} de {totalItens} escala(s)
+        </p>
+        <p className="mt-1 text-xs text-gray-500">Página {paginaAtual} de {totalPaginas}</p>
+      </div>
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+        <SelectFiltro
+          label="Itens por página"
+          value={String(itensPorPagina)}
+          onChange={onItensPorPaginaChange}
+          options={opcoesItensPorPaginaEscalas.map((quantidade) => ({
+            value: String(quantidade),
+            label: `${quantidade} escalas`,
+          }))}
+        />
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => onPaginaChange(Math.max(1, paginaAtual - 1))}
+            disabled={paginaAtual <= 1}
+            className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-md border border-gray-300 px-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <ChevronLeft size={16} />
+            Anterior
+          </button>
+          <button
+            type="button"
+            onClick={() => onPaginaChange(Math.min(totalPaginas, paginaAtual + 1))}
+            disabled={paginaAtual >= totalPaginas}
+            className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-md border border-gray-300 px-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Próxima
+            <ChevronRight size={16} />
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

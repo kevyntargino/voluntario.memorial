@@ -144,6 +144,18 @@ function criarFormEdicaoEscala(evento, area) {
   };
 }
 
+function criarFormExclusaoEscala(evento, area) {
+  const dataHora = area?.dataHora || evento?.dataHora || '';
+
+  return {
+    eventoId: area?.eventoId || evento?.id || '',
+    tipo: evento?.tipo || area?.tipo || 'ESPORADICA',
+    frequencia: evento?.frequencia || 'NAO_REPETE',
+    dataHoraAtual: dataHora,
+    titulo: evento?.titulo || area?.titulo || '',
+  };
+}
+
 function getUtcDateParts(dataHora) {
   const data = new Date(dataHora);
   if (Number.isNaN(data.getTime())) return null;
@@ -336,6 +348,8 @@ export default function AdminEscalas() {
   const [escalaEditandoId, setEscalaEditandoId] = useState(null);
   const [escalaEmEdicao, setEscalaEmEdicao] = useState(null);
   const [formEdicaoEscala, setFormEdicaoEscala] = useState(null);
+  const [escalaEmExclusao, setEscalaEmExclusao] = useState(null);
+  const [formExclusaoEscala, setFormExclusaoEscala] = useState(null);
   const [mostrarFormEscala, setMostrarFormEscala] = useState(false);
   const [mostrarFormManual, setMostrarFormManual] = useState(false);
   const [manualEditandoId, setManualEditandoId] = useState(null);
@@ -945,6 +959,34 @@ export default function AdminEscalas() {
     setFormEdicaoEscala(null);
   };
 
+  const abrirExclusaoEscala = (evento, area) => {
+    const ocorrencias = getOcorrenciasUnicas(evento);
+    const areaBase = area
+      || ocorrencias.find((item) => !(item.encerrada || escalaEstaEncerrada(item.dataHora)))
+      || null;
+
+    if (!areaBase) {
+      setErro('Não foi possível localizar uma escala futura para excluir.');
+      return;
+    }
+
+    setErro('');
+    setEscalaEmExclusao(evento);
+    setFormExclusaoEscala(criarFormExclusaoEscala(evento, areaBase));
+  };
+
+  const selecionarOcorrenciaExclusao = (dataHora) => {
+    setFormExclusaoEscala((atual) => ({
+      ...atual,
+      dataHoraAtual: dataHora,
+    }));
+  };
+
+  const fecharExclusaoEscala = () => {
+    setEscalaEmExclusao(null);
+    setFormExclusaoEscala(null);
+  };
+
   const salvarEdicaoEscala = async (event) => {
     event.preventDefault();
     if (!formEdicaoEscala) return;
@@ -988,6 +1030,32 @@ export default function AdminEscalas() {
       await carregarDados();
     } catch (error) {
       setErro(error.message || 'Não foi possível salvar a escala.');
+    } finally {
+      setSalvandoId(null);
+    }
+  };
+
+  const excluirEscalaAdmin = async () => {
+    if (!formExclusaoEscala) return;
+
+    setErro('');
+    setSucesso('');
+    setSalvandoId(`excluir-escala-${formExclusaoEscala.eventoId}`);
+
+    try {
+      const resposta = await fetchComTimeout(buildApiUrl(`/api/escalas/admin/eventos/${formExclusaoEscala.eventoId}/ocorrencias?dataHora=${encodeURIComponent(formExclusaoEscala.dataHoraAtual)}`), {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      }, 60000);
+      const dados = await resposta.json().catch(() => ({}));
+
+      if (!resposta.ok) throw new Error(dados.erro || 'Não foi possível excluir a escala.');
+
+      setSucesso(dados.mensagem || 'Escala excluída.');
+      fecharExclusaoEscala();
+      await carregarDados();
+    } catch (error) {
+      setErro(error.message || 'Não foi possível excluir a escala.');
     } finally {
       setSalvandoId(null);
     }
@@ -1307,9 +1375,11 @@ export default function AdminEscalas() {
                 ordemEscalas={ordemEscalas}
                 escalaEditandoId={escalaEditandoId}
                 escalaEmEdicao={escalaEmEdicao}
+                escalaEmExclusao={escalaEmExclusao}
                 formRecorrentes={formRecorrentes}
                 formEscala={formEscala}
                 formEdicaoEscala={formEdicaoEscala}
+                formExclusaoEscala={formExclusaoEscala}
                 salvandoId={salvandoId}
                 onAlterarRecorrente={alterarRecorrente}
                 onSalvarRecorrente={salvarRecorrente}
@@ -1323,6 +1393,10 @@ export default function AdminEscalas() {
                 onChangeEdicaoEscala={setFormEdicaoEscala}
                 onSelecionarOcorrenciaEdicao={selecionarOcorrenciaEdicao}
                 onSalvarEdicaoEscala={salvarEdicaoEscala}
+                onAbrirExclusaoEscala={abrirExclusaoEscala}
+                onFecharExclusaoEscala={fecharExclusaoEscala}
+                onSelecionarOcorrenciaExclusao={selecionarOcorrenciaExclusao}
+                onConfirmarExclusaoEscala={excluirEscalaAdmin}
                 onChangeEscala={setFormEscala}
                 onAlternarEquipe={(equipeId) => alternarEquipe('esporadica', equipeId)}
                 onCriarEsporadica={criarEsporadica}
@@ -2228,9 +2302,11 @@ function PainelEscalas({
   ordemEscalas,
   escalaEditandoId,
   escalaEmEdicao,
+  escalaEmExclusao,
   formRecorrentes,
   formEscala,
   formEdicaoEscala,
+  formExclusaoEscala,
   salvandoId,
   onAlterarRecorrente,
   onSalvarRecorrente,
@@ -2244,6 +2320,10 @@ function PainelEscalas({
   onChangeEdicaoEscala,
   onSelecionarOcorrenciaEdicao,
   onSalvarEdicaoEscala,
+  onAbrirExclusaoEscala,
+  onFecharExclusaoEscala,
+  onSelecionarOcorrenciaExclusao,
+  onConfirmarExclusaoEscala,
   onChangeEscala,
   onAlternarEquipe,
   onCriarEsporadica,
@@ -2688,16 +2768,28 @@ function PainelEscalas({
                         </div>
                       )}
                     </div>
-                    <button
-                      type="button"
-                      disabled={!areaEditavel}
-                      onClick={() => onAbrirEdicaoEscala(evento, areaEditavel)}
-                      className="inline-flex shrink-0 items-center justify-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-                      title={areaEditavel ? 'Editar escala' : 'Escalas passadas não podem ser editadas'}
-                    >
-                      <Pencil size={15} />
-                      Editar
-                    </button>
+                    <div className="flex shrink-0 flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={!areaEditavel}
+                        onClick={() => onAbrirEdicaoEscala(evento, areaEditavel)}
+                        className="inline-flex items-center justify-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        title={areaEditavel ? 'Editar escala' : 'Escalas passadas não podem ser editadas'}
+                      >
+                        <Pencil size={15} />
+                        Editar
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!areaEditavel}
+                        onClick={() => onAbrirExclusaoEscala(evento, areaEditavel)}
+                        className="inline-flex items-center justify-center gap-2 rounded-md border border-red-100 bg-white px-3 py-2 text-sm font-bold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        title={areaEditavel ? 'Excluir escala' : 'Escalas passadas não podem ser excluídas'}
+                      >
+                        <Trash2 size={15} />
+                        Excluir
+                      </button>
+                    </div>
                   </div>
 
                   <div className="mt-5 max-h-[560px] max-w-full overflow-auto rounded-xl border border-gray-200 bg-white">
@@ -2817,6 +2909,16 @@ function PainelEscalas({
           onAbrirOrdemCulto={onAbrirOrdemCulto}
         />
       )}
+      {escalaEmExclusao && formExclusaoEscala && (
+        <ModalExclusaoEscala
+          evento={escalaEmExclusao}
+          form={formExclusaoEscala}
+          salvandoId={salvandoId}
+          onSelecionarOcorrencia={onSelecionarOcorrenciaExclusao}
+          onConfirmar={onConfirmarExclusaoEscala}
+          onClose={onFecharExclusaoEscala}
+        />
+      )}
     </section>
   );
 }
@@ -2929,6 +3031,92 @@ function ModalEdicaoEscala({
           </button>
         </div>
       </form>
+    </div>
+  );
+}
+
+function ModalExclusaoEscala({
+  evento,
+  form,
+  salvandoId,
+  onSelecionarOcorrencia,
+  onConfirmar,
+  onClose,
+}) {
+  const excluindo = salvandoId === `excluir-escala-${form.eventoId}`;
+  const excluiSerie = form.frequencia !== 'NAO_REPETE';
+  const ocorrenciasExcluiveis = getOcorrenciasUnicas(evento)
+    .filter((area) => !(area.encerrada || escalaEstaEncerrada(area.dataHora)));
+  const areasDaOcorrencia = getAreasEvento(evento)
+    .filter((area) => area.dataHora === form.dataHoraAtual);
+
+  return (
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-gray-950/45 px-4 py-6 backdrop-blur-sm" onMouseDown={(event) => event.target === event.currentTarget && !excluindo && onClose()}>
+      <div role="dialog" aria-modal="true" aria-labelledby="titulo-modal-exclusao-escala" className="w-full max-w-lg rounded-2xl border border-gray-200 bg-white p-5 shadow-2xl">
+        <div className="flex items-start gap-3">
+          <div className="rounded-full bg-red-50 p-2 text-red-600">
+            <AlertCircle size={22} />
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-bold uppercase tracking-[0.16em] text-red-700">Confirmar exclusão</p>
+            <h2 id="titulo-modal-exclusao-escala" className="mt-2 break-words text-xl font-bold leading-7 text-gray-950">
+              Excluir {excluiSerie ? 'evento recorrente' : 'escala'} {form.titulo || 'selecionada'}?
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-gray-600">
+              {excluiSerie
+                ? 'Todas as escalas futuras deste evento serão removidas e novas ocorrências deixarão de ser geradas.'
+                : 'Esta ocorrência será removida com voluntários, status e ordem de culto vinculados a ela.'}
+            </p>
+          </div>
+        </div>
+
+        {!excluiSerie && ocorrenciasExcluiveis.length > 1 && (
+          <div className="mt-5">
+            <Select
+              label="Ocorrência"
+              value={form.dataHoraAtual}
+              options={ocorrenciasExcluiveis.map((area) => ({ value: area.dataHora, label: formatarData(area.dataHora) }))}
+              onChange={onSelecionarOcorrencia}
+            />
+          </div>
+        )}
+
+        <div className="mt-5 rounded-xl border border-red-100 bg-red-50 p-4">
+          <p className="text-xs font-bold uppercase tracking-[0.14em] text-red-700">
+            {excluiSerie ? 'A partir de' : 'Ocorrência'}
+          </p>
+          <p className="mt-1 text-sm font-bold text-gray-950">{formatarData(form.dataHoraAtual)}</p>
+          {areasDaOcorrencia.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {areasDaOcorrencia.map((area) => (
+                <span key={area.id} className="rounded border border-red-100 bg-white px-2.5 py-1 text-xs font-bold text-red-700">
+                  {area.equipe?.nome || 'Sem equipe'}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            disabled={excluindo}
+            onClick={onClose}
+            className="rounded-md border border-gray-200 bg-white px-4 py-2.5 text-sm font-bold text-gray-700 transition hover:bg-gray-50 disabled:opacity-60"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            disabled={excluindo}
+            onClick={onConfirmar}
+            className="inline-flex items-center justify-center gap-2 rounded-md bg-red-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-red-700 disabled:opacity-60"
+          >
+            {excluindo ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 size={16} />}
+            Excluir
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
