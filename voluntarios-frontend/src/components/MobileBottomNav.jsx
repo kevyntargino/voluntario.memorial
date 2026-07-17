@@ -9,8 +9,10 @@ import {
   Home,
   Loader2,
   MapPin,
+  MoreHorizontal,
   RefreshCcw,
   ShieldCheck,
+  UserRound,
   UsersRound,
   X,
 } from 'lucide-react';
@@ -90,24 +92,23 @@ export function MobileBottomNav() {
   const [substituicaoAberta, setSubstituicaoAberta] = useState(false);
   const [justificativaSubstituicao, setJustificativaSubstituicao] = useState('');
   const [erroAcaoEscala, setErroAcaoEscala] = useState('');
+  const [menuAberto, setMenuAberto] = useState(false);
   const fecharRef = useRef(null);
-  const podeVerEquipe = Boolean(usuario);
+  const navRef = useRef(null);
   const isAdmin = usuario?.permissoes?.includes('ADMINISTRADOR');
-  const itensEsquerda = [
+  const itensPrincipais = [
     { label: 'Início', path: '/', icon: Home },
     { label: 'Escalas', path: '/escalas', icon: CalendarDays },
+    { label: 'Equipe', path: '/minha-equipe', icon: UsersRound },
   ];
-  const itensDireita = [
-    ...(podeVerEquipe ? [{ label: 'Equipe', path: '/minha-equipe', icon: UsersRound }] : []),
+  const itensMenu = [
     { label: 'Manuais', path: '/manuais', icon: BookOpen },
+    { label: 'Perfil', path: '/perfil', icon: UserRound },
     ...(isAdmin ? [{ label: 'Admin', path: '/admin', icon: ShieldCheck }] : []),
-  ].slice(0, 3);
-  const posicoesEsquerda = ['col-start-1', 'col-start-2'];
-  const posicoesDireita = itensDireita.length === 1
-    ? ['col-start-6']
-    : itensDireita.length === 2
-      ? ['col-start-5', 'col-start-6']
-      : ['col-start-5', 'col-start-6', 'col-start-7'];
+  ];
+  const menuAtivo = itensMenu.some((item) => (
+    item.path === '/' ? pathname === '/' : pathname.startsWith(item.path)
+  ));
 
   const carregarProximaEscala = useCallback(async () => {
     if (!token) return;
@@ -238,7 +239,33 @@ export function MobileBottomNav() {
     };
   }, [modalAberto]);
 
-  const renderItem = (item, slotClassName) => {
+  useEffect(() => {
+    if (!menuAberto) return undefined;
+
+    const fecharComEscape = (event) => {
+      if (event.key === 'Escape') setMenuAberto(false);
+    };
+    const fecharAoTocarFora = (event) => {
+      if (!navRef.current?.contains(event.target)) {
+        setMenuAberto(false);
+      }
+    };
+
+    document.addEventListener('keydown', fecharComEscape);
+    document.addEventListener('pointerdown', fecharAoTocarFora);
+
+    return () => {
+      document.removeEventListener('keydown', fecharComEscape);
+      document.removeEventListener('pointerdown', fecharAoTocarFora);
+    };
+  }, [menuAberto]);
+
+  const navegarPara = (path) => {
+    setMenuAberto(false);
+    navigate(path);
+  };
+
+  const renderItem = (item) => {
     const Icon = item.icon;
     const ativo = item.path === '/' ? pathname === '/' : pathname.startsWith(item.path);
 
@@ -246,15 +273,15 @@ export function MobileBottomNav() {
       <button
         key={item.path}
         type="button"
-        onClick={() => navigate(item.path)}
+        onClick={() => navegarPara(item.path)}
         aria-current={ativo ? 'page' : undefined}
-        className={`${slotClassName} relative flex min-w-0 flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] font-semibold transition-colors ${
+        className={`relative flex min-w-0 flex-col items-center justify-center gap-1 rounded-md px-1 py-2 text-[11px] font-semibold transition-colors ${
           ativo
-            ? 'text-dourado-700 dark:text-dourado-300'
+            ? 'text-gray-950 dark:text-white'
             : 'text-gray-500 active:bg-gray-100 dark:text-gray-400 dark:active:bg-gray-900'
         }`}
       >
-        {ativo && <span className="absolute top-0 h-0.5 w-8 rounded-b bg-dourado-600" />}
+        {ativo && <span className="absolute top-1 h-1 w-1 rounded-full bg-dourado-600 dark:bg-dourado-300" />}
         <Icon size={21} strokeWidth={ativo ? 2.4 : 1.8} />
         <span className="truncate">{item.label}</span>
       </button>
@@ -263,22 +290,72 @@ export function MobileBottomNav() {
 
   return (
     <>
-      <div className="h-[calc(5.25rem+env(safe-area-inset-bottom))] md:hidden" aria-hidden="true" />
-      <nav aria-label="Navegação principal" className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-1px_12px_rgba(15,23,42,0.06)] backdrop-blur-xl dark:border-gray-800 dark:bg-gray-950/95 md:hidden">
-        <div className="relative mx-auto grid h-[4.75rem] max-w-md grid-cols-[1fr_1fr_1fr_5.5rem_1fr_1fr_1fr]">
-          {itensEsquerda.map((item, index) => renderItem(item, posicoesEsquerda[index]))}
-          <div className="col-start-4" aria-hidden="true" />
-          {itensDireita.map((item, index) => renderItem(item, posicoesDireita[index]))}
-          <button
-            type="button"
-            onClick={carregarProximaEscala}
-            className="absolute left-1/2 top-0 z-10 flex h-[4.35rem] w-[4.35rem] -translate-x-1/2 -translate-y-3 flex-col items-center justify-center gap-0.5 rounded-full border-[5px] border-white bg-gray-950 text-white shadow-xl shadow-gray-950/25 transition active:translate-y-[-0.65rem] dark:border-gray-950 dark:bg-dourado-500 dark:text-gray-950"
-            aria-label="Abrir próxima escala"
-            title="Próxima escala"
-          >
-            {carregandoEscala && modalAberto ? <Loader2 className="h-5 w-5 animate-spin" /> : <CalendarCheck2 size={23} />}
-            <span className="text-[10px] font-bold leading-none">Próxima</span>
-          </button>
+      <div className="h-[calc(5.75rem+env(safe-area-inset-bottom))] md:hidden" aria-hidden="true" />
+      <nav ref={navRef} aria-label="Navegação principal" className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-1px_14px_rgba(15,23,42,0.08)] backdrop-blur-xl dark:border-gray-800 dark:bg-gray-950/95 md:hidden">
+        <div className="relative mx-auto max-w-md px-3">
+          {menuAberto && (
+            <div role="menu" className="absolute bottom-[calc(100%+0.65rem)] right-3 w-56 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-2xl shadow-gray-950/10 dark:border-gray-800 dark:bg-gray-900">
+              <div className="grid gap-1 p-2">
+                {itensMenu.map((item) => {
+                  const Icon = item.icon;
+                  const ativo = item.path === '/' ? pathname === '/' : pathname.startsWith(item.path);
+
+                  return (
+                    <button
+                      key={item.path}
+                      type="button"
+                      role="menuitem"
+                      onClick={() => navegarPara(item.path)}
+                      className={`flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-semibold transition ${
+                        ativo
+                          ? 'bg-dourado-50 text-dourado-800 dark:bg-dourado-950/30 dark:text-dourado-200'
+                          : 'text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800'
+                      }`}
+                    >
+                      <Icon size={18} />
+                      <span>{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <div className="grid h-[5.05rem] grid-cols-5 items-center gap-1">
+            {renderItem(itensPrincipais[0])}
+            {renderItem(itensPrincipais[1])}
+            <div className="flex justify-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setMenuAberto(false);
+                  carregarProximaEscala();
+                }}
+                className="relative -mt-5 flex h-[4.45rem] w-[4.45rem] flex-col items-center justify-center gap-0.5 rounded-full border-[5px] border-white bg-gray-950 text-white shadow-xl shadow-gray-950/25 transition active:scale-95 dark:border-gray-950 dark:bg-dourado-500 dark:text-gray-950"
+                aria-label="Abrir próxima escala"
+                title="Próxima escala"
+              >
+                {carregandoEscala && modalAberto ? <Loader2 className="h-5 w-5 animate-spin" /> : <CalendarCheck2 size={24} />}
+                <span className="text-[10px] font-bold leading-none">Próxima</span>
+              </button>
+            </div>
+            {renderItem(itensPrincipais[2])}
+            <button
+              type="button"
+              onClick={() => setMenuAberto((aberto) => !aberto)}
+              aria-expanded={menuAberto}
+              aria-haspopup="menu"
+              className={`relative flex min-w-0 flex-col items-center justify-center gap-1 rounded-md px-1 py-2 text-[11px] font-semibold transition-colors ${
+                menuAtivo || menuAberto
+                  ? 'text-gray-950 dark:text-white'
+                  : 'text-gray-500 active:bg-gray-100 dark:text-gray-400 dark:active:bg-gray-900'
+              }`}
+            >
+              {(menuAtivo || menuAberto) && <span className="absolute top-1 h-1 w-1 rounded-full bg-dourado-600 dark:bg-dourado-300" />}
+              <MoreHorizontal size={22} strokeWidth={menuAtivo || menuAberto ? 2.4 : 1.8} />
+              <span className="truncate">Mais</span>
+            </button>
+          </div>
         </div>
       </nav>
 
