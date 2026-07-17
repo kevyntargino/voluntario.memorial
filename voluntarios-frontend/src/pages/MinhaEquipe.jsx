@@ -175,7 +175,7 @@ export default function MinhaEquipe() {
         },
       });
 
-      const dados = await resposta.json();
+      const dados = await resposta.json().catch(() => ({}));
 
       if (!resposta.ok) {
         if (resposta.status === 401) {
@@ -456,7 +456,7 @@ export default function MinhaEquipe() {
       },
     });
 
-    const dados = await resposta.json();
+    const dados = await resposta.json().catch(() => ({}));
 
     if (!resposta.ok) {
       throw new Error(dados.erro || 'Não foi possível concluir a operação.');
@@ -685,6 +685,7 @@ export default function MinhaEquipe() {
 
             <select
               value={equipeId}
+              aria-label="Selecionar equipe"
               onChange={(event) => {
                 setEquipeId(event.target.value);
                 setFormEscala(formEscalaInicial);
@@ -887,7 +888,7 @@ export default function MinhaEquipe() {
                           <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
                             <p className="truncate text-sm font-bold text-gray-950">{voluntario.nomeCompleto}</p>
                             {voluntario.telefone && (
-                              <span className="text-[11px] font-medium text-gray-400">{formatarTelefoneExibicao(voluntario.telefone)}</span>
+                              <span className="text-[11px] font-medium text-gray-500">{formatarTelefoneExibicao(voluntario.telefone)}</span>
                             )}
                           </div>
                           <p className="truncate text-xs text-gray-500">{voluntario.email}</p>
@@ -1087,7 +1088,7 @@ export default function MinhaEquipe() {
                                         <UsuarioInfoButton usuario={voluntario} onClick={setUsuarioModal} className="h-7 w-7" />
                                         <div className="min-w-0 flex-1">
                                           <p className="truncate text-sm font-bold text-gray-900">{voluntario.nomeCompleto}</p>
-                                          {voluntario.telefone && <p className="truncate text-[11px] font-medium text-gray-400">{formatarTelefoneExibicao(voluntario.telefone)}</p>}
+                                          {voluntario.telefone && <p className="truncate text-[11px] font-medium text-gray-500">{formatarTelefoneExibicao(voluntario.telefone)}</p>}
                                         </div>
                                       </div>
                                       <label className={`mt-3 flex items-center gap-2 border-t pt-2 text-xs font-semibold ${substituto ? 'border-violet-100 text-violet-700' : 'border-gray-100 text-gray-500'}`}>
@@ -1153,7 +1154,7 @@ export default function MinhaEquipe() {
                                       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                                         <p className="text-sm font-bold text-gray-900">{item.usuario.nomeCompleto}</p>
                                         {item.usuario.telefone && (
-                                          <span className="text-[11px] font-medium text-gray-400">{formatarTelefoneExibicao(item.usuario.telefone)}</span>
+                                          <span className="text-[11px] font-medium text-gray-500">{formatarTelefoneExibicao(item.usuario.telefone)}</span>
                                         )}
                                         {selecionado && (
                                           <span className="rounded-full bg-gray-950 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-white">
@@ -1546,7 +1547,7 @@ function ModalEscalaEquipe({
                             <UsuarioInfoButton usuario={voluntario} onClick={onAbrirUsuario} className="h-7 w-7" />
                             <div className="min-w-0 flex-1">
                               <p className="truncate text-sm font-bold text-gray-900">{voluntario.nomeCompleto}</p>
-                              {voluntario.telefone && <p className="truncate text-[11px] font-medium text-gray-400">{formatarTelefoneExibicao(voluntario.telefone)}</p>}
+                              {voluntario.telefone && <p className="truncate text-[11px] font-medium text-gray-500">{formatarTelefoneExibicao(voluntario.telefone)}</p>}
                             </div>
                           </div>
                           <label className={`mt-3 flex items-center gap-2 border-t pt-2 text-xs font-semibold ${substituto ? 'border-violet-100 text-violet-700' : 'border-gray-100 text-gray-500'}`}>
@@ -1593,7 +1594,7 @@ function ModalEscalaEquipe({
                             <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                               <p className="text-sm font-bold text-gray-900">{item.usuario.nomeCompleto}</p>
                               {item.usuario.telefone && (
-                                <span className="text-[11px] font-medium text-gray-400">{formatarTelefoneExibicao(item.usuario.telefone)}</span>
+                                <span className="text-[11px] font-medium text-gray-500">{formatarTelefoneExibicao(item.usuario.telefone)}</span>
                               )}
                             </div>
                           </div>
@@ -1715,9 +1716,13 @@ function Feedback({ tipo, mensagem }) {
   const isErro = tipo === 'erro';
 
   return (
-    <div className={`mt-5 flex items-center gap-2 rounded-md border px-4 py-3 text-sm font-medium ${
-      isErro ? 'border-red-100 bg-red-50 text-red-700' : 'border-emerald-100 bg-emerald-50 text-emerald-700'
-    }`}>
+    <div
+      role={isErro ? 'alert' : 'status'}
+      aria-live={isErro ? 'assertive' : 'polite'}
+      className={`mt-5 flex items-center gap-2 rounded-md border px-4 py-3 text-sm font-medium ${
+        isErro ? 'border-red-100 bg-red-50 text-red-700' : 'border-emerald-100 bg-emerald-50 text-emerald-700'
+      }`}
+    >
       {isErro && <AlertCircle size={16} />}
       {mensagem}
     </div>

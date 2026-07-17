@@ -1,20 +1,33 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { NavigationProvider, useNavigation } from './context/NavigationContext';
-import Login from './pages/Login';
-import Home from './pages/Home';
-import Perfil from './pages/Perfil';
-import Escalas from './pages/Escalas';
-import MinhaEquipe from './pages/MinhaEquipe';
-import AdminEscalas from './pages/AdminEscalas';
-import Avisos from './pages/Avisos';
-import Manuais from './pages/Manuais';
 import { Redirect } from './components/Redirect';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { PwaInstallPrompt } from './components/PwaInstallPrompt';
 import { PushNotificationManager } from './components/PushNotificationManager';
 import { AppSettings } from './components/AppSettings';
 import { ProfileCompletionNotification } from './components/ProfileCompletionNotification';
+
+// Cada página vira um chunk separado (code splitting) para acelerar o primeiro carregamento.
+const Login = lazy(() => import('./pages/Login'));
+const Home = lazy(() => import('./pages/Home'));
+const Perfil = lazy(() => import('./pages/Perfil'));
+const Escalas = lazy(() => import('./pages/Escalas'));
+const MinhaEquipe = lazy(() => import('./pages/MinhaEquipe'));
+const AdminEscalas = lazy(() => import('./pages/AdminEscalas'));
+const Avisos = lazy(() => import('./pages/Avisos'));
+const Manuais = lazy(() => import('./pages/Manuais'));
+
+function PageFallback() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-gray-100 px-6 text-gray-500 dark:bg-gray-950 dark:text-gray-400">
+      <div className="flex items-center gap-2 text-sm">
+        <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600 dark:border-gray-700 dark:border-t-gray-300" />
+        Carregando...
+      </div>
+    </div>
+  );
+}
 
 function App() {
   const getInitialLocation = () => {
@@ -109,7 +122,9 @@ function AppRouter() {
   }
 
   if (!isAuthenticated) {
-    return pathname === '/login' ? <Login /> : <Redirect to="/login" replace />;
+    return pathname === '/login'
+      ? <Suspense fallback={<PageFallback />}><Login /></Suspense>
+      : <Redirect to="/login" replace />;
   }
 
   if (pathname === '/login') {
@@ -134,7 +149,7 @@ function AppRouter() {
 
   return (
     <>
-      {page}
+      <Suspense fallback={<PageFallback />}>{page}</Suspense>
       <ProfileCompletionNotification />
       <MobileBottomNav />
       <PwaInstallPrompt />

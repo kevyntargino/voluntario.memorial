@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   Bell,
@@ -38,6 +38,7 @@ import { buildApiUrl } from '../lib/api';
 import { escalaEstaEncerrada, getAgoraEscalas } from '../lib/escalas';
 import { PhoneInput } from '../components/PhoneInput';
 import { formatarTelefoneExibicao } from '../lib/telefone';
+import { useModalDialog } from '../lib/useModalDialog';
 
 const dias = [
   { value: 0, label: 'Domingo' },
@@ -359,9 +360,16 @@ export default function AdminEscalas() {
   const [salvandoId, setSalvandoId] = useState(null);
   const isAdmin = usuario?.permissoes?.includes('ADMINISTRADOR');
 
+  const jaCarregouRef = useRef(false);
+
   const carregarDados = useCallback(async () => {
     setErro('');
-    setCarregando(true);
+    // Só mostramos o spinner de tela cheia no primeiro carregamento; as
+    // atualizações após cada mutação acontecem em segundo plano, sem "piscar"
+    // o painel inteiro (os dados atuais permanecem visíveis até chegarem os novos).
+    if (!jaCarregouRef.current) {
+      setCarregando(true);
+    }
 
     try {
       const [respostaDashboard, respostaEscalas, respostaManuais, respostaAvisos] = await Promise.all([
@@ -378,10 +386,10 @@ export default function AdminEscalas() {
           headers: { Authorization: `Bearer ${token}` },
         }),
       ]);
-      const dadosDashboard = await respostaDashboard.json();
-      const dadosEscalas = await respostaEscalas.json();
-      const dadosManuais = await respostaManuais.json();
-      const dadosAvisos = await respostaAvisos.json();
+      const dadosDashboard = await respostaDashboard.json().catch(() => ({}));
+      const dadosEscalas = await respostaEscalas.json().catch(() => ({}));
+      const dadosManuais = await respostaManuais.json().catch(() => ({}));
+      const dadosAvisos = await respostaAvisos.json().catch(() => ({}));
 
       if (!respostaDashboard.ok || !respostaEscalas.ok || !respostaManuais.ok || !respostaAvisos.ok) {
         if (respostaDashboard.status === 401 || respostaEscalas.status === 401 || respostaManuais.status === 401 || respostaAvisos.status === 401) {
@@ -409,6 +417,7 @@ export default function AdminEscalas() {
           horario: toTime(escala.dataHora),
         },
       ])));
+      jaCarregouRef.current = true;
     } catch (error) {
       setErro(error.message || 'Não foi possível carregar o painel administrativo.');
     } finally {
@@ -1188,6 +1197,8 @@ export default function AdminEscalas() {
   };
 
   const excluirManual = async (manualId) => {
+    if (!window.confirm('Deseja excluir este manual definitivamente?')) return;
+
     setErro('');
     setSucesso('');
     setSalvandoId(`manual-delete-${manualId}`);
@@ -1197,7 +1208,7 @@ export default function AdminEscalas() {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       });
-      const dados = await resposta.json();
+      const dados = await resposta.json().catch(() => ({}));
 
       if (!resposta.ok) throw new Error(dados.erro || 'Não foi possível excluir o manual.');
 
@@ -2353,8 +2364,9 @@ function PainelEscalas({
 }) {
   const [visualizacao, setVisualizacao] = useState('lista');
   const [periodo, setPeriodo] = useState('futuras');
-  const agora = getAgoraEscalas().getTime();
-  const eventosDoPeriodo = eventos.map((evento) => {
+  const eventosDoPeriodo = useMemo(() => {
+    const agora = getAgoraEscalas().getTime();
+    return eventos.map((evento) => {
     const escalas = (evento.escalas || evento.areas || [])
       .filter((escala) => {
         const data = new Date(escala.dataHora).getTime();
@@ -2376,11 +2388,12 @@ function PainelEscalas({
     const diferenca = new Date(a.dataHora).getTime() - new Date(b.dataHora).getTime();
     if (periodo === 'passadas') return ordemEscalas === 'proximas' ? -diferenca : diferenca;
     return ordemEscalas === 'proximas' ? diferenca : -diferenca;
-  });
-  const ocorrenciasCalendario = criarOcorrenciasDosEventos(eventosDoPeriodo);
+    });
+  }, [eventos, periodo, ordemEscalas]);
+  const ocorrenciasCalendario = useMemo(() => criarOcorrenciasDosEventos(eventosDoPeriodo), [eventosDoPeriodo]);
   const eventosFuturos = periodo === 'futuras' ? eventosDoPeriodo : [];
-  const eventosEsporadicos = eventosDoPeriodo.filter((evento) => evento.tipo === 'ESPORADICA');
-  const eventosRecorrentes = eventosDoPeriodo.filter((evento) => evento.tipo === 'RECORRENTE');
+  const eventosEsporadicos = useMemo(() => eventosDoPeriodo.filter((evento) => evento.tipo === 'ESPORADICA'), [eventosDoPeriodo]);
+  const eventosRecorrentes = useMemo(() => eventosDoPeriodo.filter((evento) => evento.tipo === 'RECORRENTE'), [eventosDoPeriodo]);
   const eventosListagem = [...eventosEsporadicos, ...eventosRecorrentes];
   const tituloListagem = tipoEscalas === 'ESPORADICA'
     ? 'Eventos esporádicos'
@@ -2514,7 +2527,7 @@ function PainelEscalas({
                       </div>
                       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                         {(formEscala.horarios || []).map((horario, index) => (
-                          <div key={`${index}-${horario}`} className="flex gap-2">
+                          <div key={index} className="flex gap-2">
                             <input
                               type="time"
                               value={horario}
@@ -2971,10 +2984,11 @@ function ModalEdicaoEscala({
   const areasDaOcorrencia = getAreasEvento(evento)
     .filter((area) => area.dataHora === form.dataHoraAtual);
   const podeEditarData = form.frequencia === 'NAO_REPETE';
+  const painelRef = useModalDialog(() => { if (!salvando) onClose(); });
 
   return (
     <div className="fixed inset-0 z-[90] flex items-center justify-center bg-gray-950/45 px-4 py-6 backdrop-blur-sm" onMouseDown={(event) => event.target === event.currentTarget && !salvando && onClose()}>
-      <form onSubmit={onSubmit} role="dialog" aria-modal="true" aria-labelledby="titulo-modal-edicao-escala" className="max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+      <form ref={painelRef} onSubmit={onSubmit} role="dialog" aria-modal="true" aria-labelledby="titulo-modal-edicao-escala" className="max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
         <div className="flex items-start justify-between gap-4 border-b border-gray-100 px-5 py-4">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-dourado-700">Editar escala</p>
@@ -3082,10 +3096,11 @@ function ModalExclusaoEscala({
     .filter((area) => !(area.encerrada || escalaEstaEncerrada(area.dataHora)));
   const areasDaOcorrencia = getAreasEvento(evento)
     .filter((area) => area.dataHora === form.dataHoraAtual);
+  const painelRef = useModalDialog(() => { if (!excluindo) onClose(); });
 
   return (
     <div className="fixed inset-0 z-[90] flex items-center justify-center bg-gray-950/45 px-4 py-6 backdrop-blur-sm" onMouseDown={(event) => event.target === event.currentTarget && !excluindo && onClose()}>
-      <div role="dialog" aria-modal="true" aria-labelledby="titulo-modal-exclusao-escala" className="w-full max-w-lg rounded-2xl border border-gray-200 bg-white p-5 shadow-2xl">
+      <div ref={painelRef} role="dialog" aria-modal="true" aria-labelledby="titulo-modal-exclusao-escala" className="w-full max-w-lg rounded-2xl border border-gray-200 bg-white p-5 shadow-2xl">
         <div className="flex items-start gap-3">
           <div className="rounded-full bg-red-50 p-2 text-red-600">
             <AlertCircle size={22} />

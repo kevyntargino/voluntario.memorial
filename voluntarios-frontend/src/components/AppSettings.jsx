@@ -3,6 +3,7 @@ import { BellRing, Loader2, Moon, Settings, Smartphone, Sun, X } from 'lucide-re
 import { useAuth } from '../context/AuthContext';
 import { buildApiUrl } from '../lib/api';
 import { urlBase64ParaUint8Array } from '../lib/pwa';
+import { useModalDialog } from '../lib/useModalDialog';
 
 const THEME_KEY = 'mcom_tema';
 const PUSH_DISMISSED_KEY = 'mcom_push_prompt_dismissed';
@@ -78,20 +79,7 @@ export function AppSettings() {
     return () => window.removeEventListener('mcom-theme-change', sincronizarTema);
   }, []);
 
-  useEffect(() => {
-    if (!aberto) {
-      return undefined;
-    }
-
-    const fecharComEsc = (event) => {
-      if (event.key === 'Escape') {
-        setAberto(false);
-      }
-    };
-
-    window.addEventListener('keydown', fecharComEsc);
-    return () => window.removeEventListener('keydown', fecharComEsc);
-  }, [aberto]);
+  const painelRef = useModalDialog(() => setAberto(false), aberto);
 
   const alterarTema = (proximoTema) => {
     setTema(proximoTema);
@@ -202,6 +190,7 @@ export function AppSettings() {
       onClick={() => setAberto(false)}
     >
       <div
+        ref={painelRef}
         role="dialog"
         aria-modal="true"
         aria-label="Configurações do app"

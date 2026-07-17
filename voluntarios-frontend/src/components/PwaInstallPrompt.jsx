@@ -87,7 +87,7 @@ export function PwaInstallPrompt() {
       <button
         type="button"
         onClick={() => setVisivel(true)}
-        className="fixed bottom-24 right-4 z-50 grid h-14 w-14 place-items-center rounded-2xl border border-gray-200 bg-gray-950 text-white shadow-2xl shadow-gray-950/25 transition hover:scale-105 md:hidden"
+        className="fixed right-4 top-20 z-50 grid h-14 w-14 place-items-center rounded-2xl border border-gray-200 bg-gray-950 text-white shadow-2xl shadow-gray-950/25 transition hover:scale-105 md:hidden"
         aria-label="Instalar MCom"
         title="Instalar MCom"
       >
@@ -97,7 +97,7 @@ export function PwaInstallPrompt() {
   }
 
   return (
-    <div className="fixed inset-x-3 bottom-24 z-50 rounded-3xl border border-gray-200 bg-white p-4 shadow-2xl shadow-gray-950/20 md:bottom-5 md:left-auto md:right-5 md:max-w-sm">
+    <div className="fixed inset-x-3 top-16 z-50 rounded-3xl border border-gray-200 bg-white p-4 shadow-2xl shadow-gray-950/20 md:inset-x-auto md:bottom-5 md:left-auto md:right-5 md:top-auto md:max-w-sm dark:border-gray-800 dark:bg-gray-900">
       <div className="flex items-start gap-3">
         <img src={logo} alt="MCom" className="h-12 w-12 shrink-0 rounded-2xl object-contain" />
         <div className="min-w-0 flex-1">

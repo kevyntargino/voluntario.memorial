@@ -11,16 +11,18 @@ Sistema web para gerenciamento de voluntarios, equipes, escalas, eventos, avisos
 
 ## Principais recursos
 
-- Login com JWT e controle por permissoes.
+- Login com JWT e controle por permissoes (um usuario pode acumular mais de uma).
 - Perfis: `ADMINISTRADOR`, `LIDER_EQUIPE` e `VOLUNTARIO`.
 - Cadastro e gerenciamento de usuarios e equipes.
-- Criacao de eventos recorrentes e esporadicos.
-- Escalas por equipe, com confirmacao, ausencia e pedido de substituicao.
-- Avisos globais, por equipe, por perfil ou por usuarios especificos.
-- Biblioteca de manuais por equipe.
-- Ordens de culto vinculadas a eventos.
-- Notificacoes internas, SSE e Web Push.
+- Criacao de eventos recorrentes (semanal/mensal) e esporadicos, com geracao e manutencao automatica de ocorrencias.
+- Modelos de voluntarios por semana do mes, aplicados automaticamente as escalas geradas.
+- Escalas por equipe, com confirmacao, ausencia, pedido e atribuicao de substituicao.
+- Avisos globais, por equipe, por perfil ou por usuarios especificos, com controle de leitura.
+- Biblioteca de manuais em PDF, gerais ou por equipe.
+- Ordens de culto em PDF vinculadas a uma ocorrencia de evento.
+- Notificacoes internas, stream em tempo real (SSE) e Web Push.
 - Upload de fotos, manuais e anexos via Cloudflare R2/S3 compativel.
+- Frontend responsivo com tema claro/escuro e instalacao como PWA.
 
 ## Como rodar localmente
 
@@ -52,6 +54,8 @@ O frontend usa `VITE_API_URL` ou `http://localhost:3000` por padrao.
 - Administrador: `admin@teste.com` / `Admin@123`
 - Lider: `lider@teste.com` / `Lider@123`
 - Voluntario: `voluntario@teste.com` / `Voluntario@123`
+
+O seed tambem cria equipes (Midia, Iluminacao, Filmagem, Fotografia, DTV, Direcao e Redes Sociais), voluntarios adicionais (senha `Mcom@123`) e escalas de exemplo.
 
 ## Documentacao
 

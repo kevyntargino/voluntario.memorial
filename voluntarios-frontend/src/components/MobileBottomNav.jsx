@@ -12,7 +12,8 @@ export function MobileBottomNav() {
     { label: 'Início', path: '/', icon: Home },
     { label: 'Escalas', path: '/escalas', icon: CalendarDays },
     ...(podeGerenciarEquipe ? [{ label: 'Equipe', path: '/minha-equipe', icon: UsersRound }] : []),
-    ...(isAdmin ? [{ label: 'Admin', path: '/admin', icon: ShieldCheck }] : [{ label: 'Manuais', path: '/manuais', icon: BookOpen }]),
+    { label: 'Manuais', path: '/manuais', icon: BookOpen },
+    ...(isAdmin ? [{ label: 'Admin', path: '/admin', icon: ShieldCheck }] : []),
   ];
   return (
     <>

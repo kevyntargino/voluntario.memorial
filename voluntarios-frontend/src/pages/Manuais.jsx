@@ -102,7 +102,7 @@ export default function Manuais() {
   return (
     <div className="flex min-h-screen flex-col bg-[#f7f4ed] text-gray-900">
       <Navbar />
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-24 pt-8 sm:px-6 md:pb-10 lg:px-8">
         <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
           <div className="border-b border-gray-100 bg-gradient-to-br from-white to-gray-50 p-6">
             <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
@@ -123,6 +123,7 @@ export default function Manuais() {
                 <input
                   value={busca}
                   onChange={(event) => setBusca(event.target.value)}
+                  aria-label="Pesquisar manuais"
                   className="block w-full rounded-md border border-gray-200 bg-white py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
                   placeholder="Pesquisar manuais"
                 />
@@ -131,7 +132,7 @@ export default function Manuais() {
           </div>
 
           {erro && (
-            <div className="mx-6 mt-5 rounded-md border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+            <div role="alert" aria-live="assertive" className="mx-6 mt-5 rounded-md border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
               {erro}
             </div>
           )}

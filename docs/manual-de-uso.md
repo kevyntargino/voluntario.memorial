@@ -12,6 +12,8 @@ Usuarios de teste do ambiente seed:
 - Lider: `lider@teste.com` / `Lider@123`
 - Voluntario: `voluntario@teste.com` / `Voluntario@123`
 
+Nao ha redefinicao automatica de senha. Ao clicar em "Esqueci minha senha", o sistema orienta o usuario a pedir uma senha temporaria a um lider da equipe ou a um administrador.
+
 ## Tela inicial
 
 A tela inicial apresenta um resumo da experiencia do usuario autenticado. A navegacao principal permite acessar:
@@ -55,20 +57,20 @@ Status possiveis:
 
 ## Minha equipe
 
-Esta area mostra as equipes vinculadas ao usuario.
-
-Voluntarios podem consultar membros e escalas da equipe.
+Esta area e visivel apenas para lideres de equipe e administradores. Ela mostra as equipes gerenciadas (as lideradas, para lideres; todas, para administradores) com seus voluntarios e as escalas futuras.
 
 Lideres de equipe podem, nas equipes que lideram:
 
-- Adicionar voluntarios.
-- Remover voluntarios.
-- Criar escalas.
-- Editar escalas.
-- Excluir escalas.
+- Adicionar voluntarios (novos voluntarios recebem uma senha temporaria).
+- Definir os voluntarios de cada escala e marcar quem entra como substituto.
 - Atribuir substitutos para pedidos de substituicao.
 
-Administradores tambem podem realizar essas acoes.
+Somente administradores podem:
+
+- Remover voluntarios da equipe.
+- Criar e excluir escalas e eventos.
+
+Escalas passadas ficam somente para consulta.
 
 ## Avisos
 
@@ -94,13 +96,17 @@ O sistema possui notificacoes internas e suporte a notificacoes push.
 
 O usuario pode receber avisos sobre:
 
-- Nova escala.
-- Confirmacao de escala.
-- Pedido de substituicao.
+- Nova escala aguardando confirmacao.
+- Pedido de substituicao (para lideres e administradores).
 - Atribuicao como substituto.
+- Nova ordem de culto disponivel.
 - Avisos importantes.
 
-Quando o navegador permitir, o app pode solicitar autorizacao para notificacoes push.
+As notificacoes tem contador de nao lidas, atualizacao em tempo real (SSE) e podem ser marcadas como lidas individualmente ou todas de uma vez. Quando o navegador permitir, o app pode solicitar autorizacao para notificacoes push.
+
+## Aparencia
+
+O sistema oferece tema claro e escuro. A preferencia pode ser ajustada nas configuracoes do app e e mantida entre as sessoes.
 
 ## Instalacao como aplicativo
 
@@ -116,9 +122,9 @@ O dashboard mostra informacoes gerais do sistema:
 
 - Total de voluntarios.
 - Total de equipes.
-- Lista de equipes.
+- Ausencias nas ultimas escalas, com detalhamento e indicacao de quem teve substituto.
+- Lista de equipes com seus voluntarios e lideres.
 - Usuarios cadastrados.
-- Ultimas escalas.
 - Proxima escala.
 
 ### Gerenciar usuarios
@@ -172,6 +178,10 @@ Ao criar ou editar eventos, confira:
 - Equipes participantes.
 - Voluntarios escalados.
 
+Para eventos recorrentes, e possivel definir um **modelo de voluntarios por semana do mes**: indique quem atende na 1a, 2a, 3a, 4a ou 5a ocorrencia. O sistema aplica esse modelo automaticamente as escalas geradas para cada semana correspondente, reduzindo o trabalho manual mes a mes.
+
+Escalas passadas ficam somente para consulta e nao podem ser alteradas.
+
 ### Substituicoes
 
 Quando um voluntario pede substituicao:
@@ -207,7 +217,7 @@ O administrador pode cadastrar, atualizar e remover manuais. Um manual pode ter:
 
 ### Ordens de culto
 
-O administrador pode cadastrar uma ordem de culto com texto e/ou anexo, vinculando a uma data ou evento.
+O administrador anexa o PDF da ordem de culto a uma ocorrencia especifica de um evento. Ao enviar, o sistema substitui o arquivo anterior daquela ocorrencia (se houver) e notifica os voluntarios escalados de que a ordem de culto esta disponivel. O arquivo fica acessivel a partir da escala correspondente.
 
 ## Recomendacoes operacionais
 

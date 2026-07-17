@@ -10,6 +10,7 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
   const [mostrarSenha, setMostrarSenha] = useState(false);
+  const [ajudaSenha, setAjudaSenha] = useState(false);
   
   // Estados para gerenciar feedback visual da API
   const [erro, setErro] = useState('');
@@ -152,10 +153,20 @@ export default function Login() {
             </div>
 
             {/* Link Esqueci a Senha */}
-            <div className="flex items-center justify-center">
-              <button type="button" className="text-sm font-medium text-gray-500 hover:text-black transition-colors">
+            <div className="flex flex-col items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setAjudaSenha((atual) => !atual)}
+                aria-expanded={ajudaSenha}
+                className="text-sm font-medium text-gray-500 transition-colors hover:text-black dark:text-gray-400 dark:hover:text-white"
+              >
                 Esqueci minha senha
               </button>
+              {ajudaSenha && (
+                <p role="status" className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-center text-xs leading-5 text-gray-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">
+                  Para redefinir sua senha, peça a um líder da sua equipe ou a um administrador do MCom. Eles geram uma senha temporária para o seu acesso.
+                </p>
+              )}
             </div>
 
             {/* Botão Entrar com estado de loading */}

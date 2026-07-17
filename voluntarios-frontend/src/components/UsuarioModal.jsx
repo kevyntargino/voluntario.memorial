@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { AlertTriangle, Loader2, Mail, Phone, ShieldCheck, Trash2, UserRound, X } from 'lucide-react';
 import { formatarTelefoneExibicao } from '../lib/telefone';
+import { useModalDialog } from '../lib/useModalDialog';
 
 function formatarData(valor, comHora = false) {
   if (!valor) return 'Não informado';
@@ -70,17 +71,7 @@ export function UsuarioInfoButton({ usuario, onClick, className = '' }) {
 
 export function UsuarioModal({ usuario, onClose, podeExcluir = false, onExcluir, excluindo = false }) {
   const [confirmandoExclusao, setConfirmandoExclusao] = useState(false);
-
-  useEffect(() => {
-    const fecharComEsc = (event) => {
-      if (event.key === 'Escape') {
-        onClose?.();
-      }
-    };
-
-    window.addEventListener('keydown', fecharComEsc);
-    return () => window.removeEventListener('keydown', fecharComEsc);
-  }, [onClose]);
+  const painelRef = useModalDialog(() => onClose?.(), Boolean(usuario));
 
   if (!usuario) return null;
 
@@ -95,6 +86,7 @@ export function UsuarioModal({ usuario, onClose, podeExcluir = false, onExcluir,
       onClick={() => onClose?.()}
     >
       <div
+        ref={painelRef}
         role="dialog"
         aria-modal="true"
         aria-label={`Dados de ${usuario.nomeCompleto || 'usuário'}`}

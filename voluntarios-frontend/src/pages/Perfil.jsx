@@ -232,7 +232,7 @@ export default function Perfil() {
     <div className="flex min-h-screen flex-col bg-[#f7f4ed] text-gray-900">
       <Navbar />
 
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-24 pt-8 sm:px-6 md:pb-10 lg:px-8">
         <button
           type="button"
           onClick={() => navigate('/')}
@@ -331,13 +331,13 @@ export default function Perfil() {
                   </div>
                 )}
                 {erro && (
-                  <div className="rounded-md border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+                  <div role="alert" aria-live="assertive" className="rounded-md border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
                     {erro}
                   </div>
                 )}
 
                 {sucesso && (
-                  <div className="rounded-md border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+                  <div role="status" aria-live="polite" className="rounded-md border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
                     {sucesso}
                   </div>
                 )}
