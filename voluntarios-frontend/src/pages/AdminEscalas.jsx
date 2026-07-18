@@ -124,6 +124,34 @@ function getEquipeIdsEvento(evento) {
   return Array.from(new Set(ids.filter(Boolean)));
 }
 
+function getOrdinalSemanaMensal(evento) {
+  if (evento?.frequencia !== 'MENSAL') return null;
+
+  const semanaMes = Number(evento.semanaMes);
+
+  if (!Number.isInteger(semanaMes) || semanaMes < 1 || semanaMes > 5) {
+    return null;
+  }
+
+  return `${semanaMes}º`;
+}
+
+function OrdinalSemanaEvento({ evento, className = '' }) {
+  const ordinal = getOrdinalSemanaMensal(evento);
+
+  if (!ordinal) return null;
+
+  return (
+    <span
+      className={`inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full border border-dourado-200 bg-dourado-50 px-1.5 align-middle text-xs font-black leading-none text-dourado-700 ${className}`}
+      title={`Recorrência mensal na ${ordinal.replace('º', 'ª')} semana`}
+      aria-label={`Recorrência mensal na ${ordinal.replace('º', 'ª')} semana`}
+    >
+      {ordinal}
+    </span>
+  );
+}
+
 function getOcorrenciasUnicas(evento) {
   const ocorrencias = new Map();
 
@@ -1011,7 +1039,7 @@ export default function AdminEscalas() {
       || null;
 
     if (!areaBase) {
-      setErro('Não foi possível localizar a escala para edição.');
+      setErro('Não foi possível localizar o evento para edição.');
       return;
     }
 
@@ -2800,7 +2828,10 @@ function PainelEscalas({
                   >
                     {evento.tipo === 'ESPORADICA' ? 'Esporádica' : 'Recorrente'}
                   </span>
-                  <p className="mt-3 line-clamp-2 text-sm font-bold text-gray-950">{evento.titulo}</p>
+                  <p className="mt-3 line-clamp-2 text-sm font-bold text-gray-950">
+                    {evento.titulo}
+                    <OrdinalSemanaEvento evento={evento} className="ml-1" />
+                  </p>
                   <p className="mt-2 text-xs font-semibold text-gray-500">{formatarData(evento.dataHora)}</p>
                   <p className="mt-1 text-xs text-gray-400">{evento.totalEscalasFuturas} escala(s) futura(s)</p>
                 </button>
@@ -2885,7 +2916,10 @@ function PainelEscalas({
                           </span>
                         )}
                       </div>
-                      <h3 className="mt-3 break-words text-xl font-bold text-gray-950">{evento.titulo}</h3>
+                      <h3 className="mt-3 break-words text-xl font-bold text-gray-950">
+                        {evento.titulo}
+                        <OrdinalSemanaEvento evento={evento} className="ml-2" />
+                      </h3>
                       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
                         <span>{formatarData(evento.dataHora)}</span>
                         {evento.local && <span>Local: {evento.local}</span>}
@@ -3263,7 +3297,10 @@ function ModalEdicaoEscala({
         <div className="flex items-start justify-between gap-4 border-b border-gray-100 px-5 py-4">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-dourado-700">Editar evento</p>
-            <h2 id="titulo-modal-edicao-escala" className="mt-1 text-xl font-bold text-gray-950">{form.titulo || 'Evento sem título'}</h2>
+            <h2 id="titulo-modal-edicao-escala" className="mt-1 break-words text-xl font-bold text-gray-950">
+              {form.titulo || 'Evento sem título'}
+              <OrdinalSemanaEvento evento={form} className="ml-2" />
+            </h2>
           </div>
           <button type="button" disabled={bloqueado} onClick={onClose} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-gray-200 text-gray-500 transition hover:bg-gray-50 hover:text-gray-900 disabled:opacity-50" title="Fechar" aria-label="Fechar">
             <X size={18} />
@@ -3721,7 +3758,10 @@ function CalendarioEscalas({ eventos }) {
                     <span className={`h-2 w-2 rounded-full ${evento.tipo === 'ESPORADICA' ? 'bg-amber-500' : 'bg-sky-600'}`} />
                     <span className="text-xs font-bold uppercase text-gray-500">{evento.tipo === 'ESPORADICA' ? 'Esporádica' : 'Recorrente'}</span>
                   </div>
-                  <h3 className="mt-2 text-base font-bold text-gray-950">{evento.titulo}</h3>
+                  <h3 className="mt-2 break-words text-base font-bold text-gray-950">
+                    {evento.titulo}
+                    <OrdinalSemanaEvento evento={evento} className="ml-2" />
+                  </h3>
                   <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-600">
                     <span>{formatarData(dataEvento(evento))}</span>
                     {evento.local && <span>Local: {evento.local}</span>}
