@@ -193,15 +193,17 @@ export function MobileBottomNav() {
   const fecharRef = useRef(null);
   const navRef = useRef(null);
   const isAdmin = usuario?.permissoes?.includes('ADMINISTRADOR');
-  const itensPrincipais = [
+  const itensNavegacao = [
     { label: 'Início', path: '/', icon: Home },
     { label: 'Escalas', path: '/escalas', icon: CalendarDays },
+    { key: 'proxima', label: 'Próxima', tipo: 'proxima' },
     { label: 'Equipe', path: '/minha-equipe', icon: UsersRound },
-  ];
-  const itensMenu = [
     { label: 'Manuais', path: '/manuais', icon: BookOpen },
     ...(isAdmin ? [{ label: 'Admin', path: '/admin', icon: ShieldCheck }] : []),
   ];
+  const temMenuMais = itensNavegacao.length > 5;
+  const itensVisiveis = temMenuMais ? itensNavegacao.slice(0, 4) : itensNavegacao;
+  const itensMenu = temMenuMais ? itensNavegacao.slice(4) : [];
   const menuAtivo = itensMenu.some((item) => (
     item.path === '/' ? pathname === '/' : pathname.startsWith(item.path)
   ));
@@ -407,6 +409,12 @@ export function MobileBottomNav() {
     };
   }, [menuAberto]);
 
+  useEffect(() => {
+    if (!temMenuMais && menuAberto) {
+      setMenuAberto(false);
+    }
+  }, [menuAberto, temMenuMais]);
+
   const navegarPara = (path) => {
     setMenuAberto(false);
     navigate(path);
@@ -435,12 +443,34 @@ export function MobileBottomNav() {
     );
   };
 
+  const renderProximaItem = () => (
+    <div key="proxima" className="flex justify-center">
+      <button
+        type="button"
+        onClick={() => {
+          setMenuAberto(false);
+          carregarProximaEscala();
+        }}
+        className="relative -mt-5 flex h-[4.45rem] w-[4.45rem] flex-col items-center justify-center gap-0.5 rounded-full border-[5px] border-white bg-gray-950 text-white shadow-xl shadow-gray-950/25 transition active:scale-95 dark:border-gray-950 dark:bg-dourado-500 dark:text-gray-950"
+        aria-label="Abrir próxima escala"
+        title="Próxima escala"
+      >
+        {carregandoEscala && modalAberto ? <Loader2 className="h-5 w-5 animate-spin" /> : <CalendarCheck2 size={24} />}
+        <span className="text-[10px] font-bold leading-none">Próxima</span>
+      </button>
+    </div>
+  );
+
+  const renderNavItem = (item) => (
+    item.tipo === 'proxima' ? renderProximaItem() : renderItem(item)
+  );
+
   return (
     <>
       <div className="h-[calc(5.75rem+env(safe-area-inset-bottom))] md:hidden" aria-hidden="true" />
       <nav ref={navRef} aria-label="Navegação principal" className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-1px_14px_rgba(15,23,42,0.08)] backdrop-blur-xl dark:border-gray-800 dark:bg-gray-950/95 md:hidden">
         <div className="relative mx-auto max-w-md px-3">
-          {menuAberto && (
+          {temMenuMais && menuAberto && (
             <div role="menu" className="absolute bottom-[calc(100%+0.65rem)] right-3 w-56 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-2xl shadow-gray-950/10 dark:border-gray-800 dark:bg-gray-900">
               <div className="grid gap-1 p-2">
                 {itensMenu.map((item) => {
@@ -468,40 +498,28 @@ export function MobileBottomNav() {
             </div>
           )}
 
-          <div className="grid h-[5.05rem] grid-cols-5 items-center gap-1">
-            {renderItem(itensPrincipais[0])}
-            {renderItem(itensPrincipais[1])}
-            <div className="flex justify-center">
+          <div
+            className="grid h-[5.05rem] items-center gap-1"
+            style={{ gridTemplateColumns: `repeat(${itensVisiveis.length + (temMenuMais ? 1 : 0)}, minmax(0, 1fr))` }}
+          >
+            {itensVisiveis.map(renderNavItem)}
+            {temMenuMais && (
               <button
                 type="button"
-                onClick={() => {
-                  setMenuAberto(false);
-                  carregarProximaEscala();
-                }}
-                className="relative -mt-5 flex h-[4.45rem] w-[4.45rem] flex-col items-center justify-center gap-0.5 rounded-full border-[5px] border-white bg-gray-950 text-white shadow-xl shadow-gray-950/25 transition active:scale-95 dark:border-gray-950 dark:bg-dourado-500 dark:text-gray-950"
-                aria-label="Abrir próxima escala"
-                title="Próxima escala"
+                onClick={() => setMenuAberto((aberto) => !aberto)}
+                aria-expanded={menuAberto}
+                aria-haspopup="menu"
+                className={`relative flex min-w-0 flex-col items-center justify-center gap-1 rounded-md px-1 py-2 text-[11px] font-semibold transition-colors ${
+                  menuAtivo || menuAberto
+                    ? 'text-gray-950 dark:text-white'
+                    : 'text-gray-500 active:bg-gray-100 dark:text-gray-400 dark:active:bg-gray-900'
+                }`}
               >
-                {carregandoEscala && modalAberto ? <Loader2 className="h-5 w-5 animate-spin" /> : <CalendarCheck2 size={24} />}
-                <span className="text-[10px] font-bold leading-none">Próxima</span>
+                {(menuAtivo || menuAberto) && <span className="absolute top-1 h-1 w-1 rounded-full bg-dourado-600 dark:bg-dourado-300" />}
+                <MoreHorizontal size={22} strokeWidth={menuAtivo || menuAberto ? 2.4 : 1.8} />
+                <span className="truncate">Mais</span>
               </button>
-            </div>
-            {renderItem(itensPrincipais[2])}
-            <button
-              type="button"
-              onClick={() => setMenuAberto((aberto) => !aberto)}
-              aria-expanded={menuAberto}
-              aria-haspopup="menu"
-              className={`relative flex min-w-0 flex-col items-center justify-center gap-1 rounded-md px-1 py-2 text-[11px] font-semibold transition-colors ${
-                menuAtivo || menuAberto
-                  ? 'text-gray-950 dark:text-white'
-                  : 'text-gray-500 active:bg-gray-100 dark:text-gray-400 dark:active:bg-gray-900'
-              }`}
-            >
-              {(menuAtivo || menuAberto) && <span className="absolute top-1 h-1 w-1 rounded-full bg-dourado-600 dark:bg-dourado-300" />}
-              <MoreHorizontal size={22} strokeWidth={menuAtivo || menuAberto ? 2.4 : 1.8} />
-              <span className="truncate">Mais</span>
-            </button>
+            )}
           </div>
         </div>
       </nav>
