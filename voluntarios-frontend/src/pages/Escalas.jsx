@@ -11,6 +11,7 @@ import {
   List,
   Loader2,
   MapPin,
+  Radio,
   RefreshCcw,
   Repeat2,
   Search,
@@ -53,6 +54,7 @@ const filtrosTipo = [
 ];
 const diasCalendario = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const MODO_VISUALIZACAO_KEY = 'mcom_escalas_visualizacao';
+const JANELA_EVENTO_AO_VIVO_MS = 2 * 60 * 60 * 1000;
 
 const statusConfig = {
   PENDENTE: {
@@ -211,6 +213,35 @@ function getEventoDomId(eventoId, dataHora) {
   return `evento-${eventoId}-${new Date(dataHora).getTime()}`;
 }
 
+function eventoEstaAoVivo(dataHora, agora = getAgoraEscalas()) {
+  const inicio = new Date(dataHora).getTime();
+  const atual = agora.getTime();
+
+  return !Number.isNaN(inicio)
+    && atual >= inicio - JANELA_EVENTO_AO_VIVO_MS
+    && atual <= inicio + JANELA_EVENTO_AO_VIVO_MS;
+}
+
+function prepararEventoListaModal(evento) {
+  return {
+    ...evento,
+    areas: [...(evento.escalas || [])]
+      .map((area) => ({ ...area, ordemCulto: area.ordemCulto || evento.ordemCulto }))
+      .sort((a, b) => (
+        (a.equipe?.nome || '').localeCompare(b.equipe?.nome || '', 'pt-BR')
+      )),
+  };
+}
+
+function getChaveEventoLista(escala) {
+  const data = getData(escala);
+  const dataIso = data?.toISOString() || 'sem-data';
+
+  if (escala.eventoId) return `evento:${escala.eventoId}:${dataIso}`;
+  if (escala.grupoEsporadicoId) return `grupo:${escala.grupoEsporadicoId}:${dataIso}`;
+  return `${normalizar(escala.titulo)}:${dataIso}:${normalizar(escala.local)}`;
+}
+
 export default function Escalas() {
   const { token, logout } = useAuth();
   const { navigate, search } = useNavigation();
@@ -242,6 +273,7 @@ export default function Escalas() {
   const [filtrosAbertos, setFiltrosAbertos] = useState(false);
   const [paginaAtual, setPaginaAtual] = useState(1);
   const [itensPorPagina, setItensPorPagina] = useState(10);
+  const [agoraEscalas, setAgoraEscalas] = useState(() => getAgoraEscalas());
 
   const carregarEscalas = useCallback(async () => {
     setErro('');
@@ -281,6 +313,14 @@ export default function Escalas() {
   useEffect(() => {
     window.localStorage.setItem(MODO_VISUALIZACAO_KEY, modoVisualizacao);
   }, [modoVisualizacao]);
+
+  useEffect(() => {
+    const intervalo = window.setInterval(() => {
+      setAgoraEscalas(getAgoraEscalas());
+    }, 60000);
+
+    return () => window.clearInterval(intervalo);
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(search || '');
@@ -326,7 +366,13 @@ export default function Escalas() {
     }
 
     window.setTimeout(() => {
-      document.getElementById(`participacao-${participacaoSelecionadaId}`)?.scrollIntoView({
+      const idBase = `participacao-${participacaoSelecionadaId}`;
+      const alvoMobile = typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 767px)').matches;
+      const alvo = document.getElementById(`${idBase}-${alvoMobile ? 'mobile' : 'desktop'}`)
+        || document.getElementById(`${idBase}-desktop`)
+        || document.getElementById(`${idBase}-mobile`);
+
+      alvo?.scrollIntoView({
         behavior: 'smooth',
         block: 'center',
       });
@@ -432,7 +478,7 @@ export default function Escalas() {
 
   const escalasVisiveis = useMemo(() => {
     const termo = normalizar(busca);
-    const agora = getAgoraEscalas().getTime();
+    const agora = agoraEscalas.getTime();
 
     return escalas.filter((escala) => {
       const isEsporadicaMinha = visao === 'minhas' && escala.tipo === 'ESPORADICA';
@@ -441,15 +487,16 @@ export default function Escalas() {
       const correspondeParticipacao = !participacaoSelecionadaId || escala.minhaParticipacao?.id === participacaoSelecionadaId;
       const correspondeEvento = !eventoSelecionadoId
         || (escala.eventoId === eventoSelecionadoId && mesmaDataHora(escala.dataHora, dataEventoSelecionada));
-      const futura = !escala.encerrada && (getData(escala)?.getTime() || 0) >= agora;
-      const correspondeConfirmacao = !filtroConfirmacoes || (futura && escala.minhaParticipacao?.status === 'PENDENTE');
+      const aoVivo = eventoEstaAoVivo(escala.dataHora, agoraEscalas);
+      const ativaOuFutura = aoVivo || (!escala.encerrada && (getData(escala)?.getTime() || 0) >= agora);
+      const correspondeConfirmacao = !filtroConfirmacoes || (ativaOuFutura && escala.minhaParticipacao?.status === 'PENDENTE');
       const correspondeTipo = tipoFiltro === 'TODAS' || escala.tipo === tipoFiltro;
       const correspondeArea = areaFiltro === 'TODAS' || escala.equipe?.nome === areaFiltro;
       const statusBase = visao === 'minhas'
         ? [escala.minhaParticipacao?.status]
         : (escala.voluntarios || []).map((item) => item.status);
       const correspondeStatus = statusFiltro === 'TODOS'
-        || (statusBase.includes(statusFiltro) && (statusFiltro !== 'PENDENTE' || futura));
+        || (statusBase.includes(statusFiltro) && (statusFiltro !== 'PENDENTE' || ativaOuFutura));
       const usaFiltroPeriodo = modoVisualizacao === 'lista'
         && escala.tipo === 'RECORRENTE'
         && tipoFiltro !== 'ESPORADICA';
@@ -466,7 +513,7 @@ export default function Escalas() {
       ].join(' '));
       const correspondeTexto = !termo || texto.includes(termo);
 
-      if (!futura) return false;
+      if (!ativaOuFutura) return false;
 
       if (filtroConfirmacoes) {
         return correspondeParticipacao && correspondeConfirmacao && correspondeTipo && correspondeArea && correspondeTexto;
@@ -483,23 +530,36 @@ export default function Escalas() {
         && correspondeTexto;
     }).sort((a, b) => {
       if (ordem === 'distantes') {
+        const aAoVivo = eventoEstaAoVivo(a.dataHora, agoraEscalas);
+        const bAoVivo = eventoEstaAoVivo(b.dataHora, agoraEscalas);
+        if (aAoVivo !== bAoVivo) return aAoVivo ? -1 : 1;
         return (getData(b)?.getTime() || 0) - (getData(a)?.getTime() || 0);
       }
 
       if (ordem === 'area') {
+        const aAoVivo = eventoEstaAoVivo(a.dataHora, agoraEscalas);
+        const bAoVivo = eventoEstaAoVivo(b.dataHora, agoraEscalas);
+        if (aAoVivo !== bAoVivo) return aAoVivo ? -1 : 1;
         return (a.equipe?.nome || '').localeCompare(b.equipe?.nome || '', 'pt-BR')
           || (getData(a)?.getTime() || 0) - (getData(b)?.getTime() || 0);
       }
 
       if (ordem === 'pendentes') {
+        const aAoVivo = eventoEstaAoVivo(a.dataHora, agoraEscalas);
+        const bAoVivo = eventoEstaAoVivo(b.dataHora, agoraEscalas);
+        if (aAoVivo !== bAoVivo) return aAoVivo ? -1 : 1;
         const aPendente = a.minhaParticipacao?.status === 'PENDENTE' ? 0 : 1;
         const bPendente = b.minhaParticipacao?.status === 'PENDENTE' ? 0 : 1;
         return aPendente - bPendente || (getData(a)?.getTime() || 0) - (getData(b)?.getTime() || 0);
       }
 
+      const aAoVivo = eventoEstaAoVivo(a.dataHora, agoraEscalas);
+      const bAoVivo = eventoEstaAoVivo(b.dataHora, agoraEscalas);
+      if (aAoVivo !== bAoVivo) return aAoVivo ? -1 : 1;
+
       return (getData(a)?.getTime() || 0) - (getData(b)?.getTime() || 0);
     });
-  }, [areaFiltro, busca, dataEventoSelecionada, diaSelecionado, escalas, eventoSelecionadoId, filtroConfirmacoes, modoVisualizacao, ordem, participacaoSelecionadaId, semanaSelecionada, statusFiltro, tipoFiltro, visao]);
+  }, [agoraEscalas, areaFiltro, busca, dataEventoSelecionada, diaSelecionado, escalas, eventoSelecionadoId, filtroConfirmacoes, modoVisualizacao, ordem, participacaoSelecionadaId, semanaSelecionada, statusFiltro, tipoFiltro, visao]);
 
   const totalPaginas = Math.max(1, Math.ceil(escalasVisiveis.length / itensPorPagina));
   const escalasPaginadas = useMemo(() => {
@@ -517,19 +577,24 @@ export default function Escalas() {
 
   const eventosLista = useMemo(() => {
     const eventos = new Map();
+    const escalasAoVivo = escalasVisiveis.filter((escala) => eventoEstaAoVivo(escala.dataHora, agoraEscalas));
+    const chavesAoVivo = new Set(escalasAoVivo.map(getChaveEventoLista));
+    const escalasDaPagina = escalasPaginadas.filter((escala) => !chavesAoVivo.has(getChaveEventoLista(escala)));
 
-    for (const escala of escalasPaginadas) {
-      const data = getData(escala);
-      const dataIso = data?.toISOString() || 'sem-data';
-      const chave = escala.eventoId
-        ? `evento:${escala.eventoId}:${dataIso}`
-        : escala.grupoEsporadicoId
-          ? `grupo:${escala.grupoEsporadicoId}:${dataIso}`
-          : `${normalizar(escala.titulo)}:${dataIso}:${normalizar(escala.local)}`;
+    for (const escala of [...escalasAoVivo, ...escalasDaPagina]) {
+      const aoVivo = eventoEstaAoVivo(escala.dataHora, agoraEscalas);
+      const escalaLista = {
+        ...escala,
+        encerrada: aoVivo ? false : (escala.encerrada || escalaEstaEncerrada(escala.dataHora, agoraEscalas)),
+      };
+      const chave = getChaveEventoLista(escala);
       const existente = eventos.get(chave);
 
       if (existente) {
-        existente.escalas.push(escala);
+        existente.escalas.push(escalaLista);
+        existente.aoVivo = existente.aoVivo || aoVivo;
+        existente.encerrada = existente.escalas.every((item) => item.encerrada);
+        if (!existente.ordemCulto && escala.ordemCulto) existente.ordemCulto = escala.ordemCulto;
       } else {
         eventos.set(chave, {
           id: chave,
@@ -539,15 +604,19 @@ export default function Escalas() {
           local: escala.local,
           descricao: escala.descricao,
           tipo: escala.tipo,
-          encerrada: escala.encerrada || escalaEstaEncerrada(escala.dataHora),
+          encerrada: escalaLista.encerrada,
+          aoVivo,
           ordemCulto: escala.ordemCulto,
-          escalas: [escala],
+          escalas: [escalaLista],
         });
       }
     }
 
-    return Array.from(eventos.values());
-  }, [escalasPaginadas]);
+    return Array.from(eventos.values()).sort((a, b) => {
+      if (a.aoVivo !== b.aoVivo) return a.aoVivo ? -1 : 1;
+      return 0;
+    });
+  }, [agoraEscalas, escalasPaginadas, escalasVisiveis]);
 
   const totalVoluntarios = useMemo(() => contarVoluntariosUnicos(escalasVisiveis), [escalasVisiveis]);
   const ocorrenciasCalendario = useMemo(() => {
@@ -883,6 +952,7 @@ export default function Escalas() {
             onChangeJustificativa={setJustificativa}
             onAtualizarStatus={atualizarStatus}
             onAbrirOrdemCulto={abrirOrdemCulto}
+            onAbrirEvento={setEventoModal}
           />
         )}
       </main>
@@ -1282,6 +1352,7 @@ function TabelaEscalas({
   onChangeJustificativa,
   onAtualizarStatus,
   onAbrirOrdemCulto,
+  onAbrirEvento,
 }) {
   if (!temResultados) {
     return (
@@ -1308,6 +1379,7 @@ function TabelaEscalas({
           onChangeJustificativa={onChangeJustificativa}
           onAtualizarStatus={onAtualizarStatus}
           onAbrirOrdemCulto={onAbrirOrdemCulto}
+          onAbrirEvento={onAbrirEvento}
         />
       ))}
       <PaginacaoEscalas
@@ -1375,19 +1447,65 @@ function PaginacaoEscalas({
   );
 }
 
-function EventoEscalaCard({ evento, participacaoSelecionadaId, destaqueEvento, atualizandoId, substituicaoAbertaId, justificativa, onAbrirSubstituicao, onCancelarSubstituicao, onChangeJustificativa, onAtualizarStatus, onAbrirOrdemCulto }) {
+function LiveBadge() {
+  return (
+    <span className="inline-flex h-8 items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-3 text-xs font-bold text-red-700 shadow-sm dark:border-red-800 dark:bg-red-950 dark:text-red-200">
+      <span className="relative flex h-2.5 w-2.5">
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
+        <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-600" />
+      </span>
+      <Radio size={14} className="animate-pulse" />
+      Ao vivo
+    </span>
+  );
+}
+
+function EventoEscalaCard({ evento, participacaoSelecionadaId, destaqueEvento, atualizandoId, substituicaoAbertaId, justificativa, onAbrirSubstituicao, onCancelarSubstituicao, onChangeJustificativa, onAtualizarStatus, onAbrirOrdemCulto, onAbrirEvento }) {
   const participacoes = evento.escalas.filter((escala) => escala.minhaParticipacao && !escala.encerrada);
+  const eventoAoVivo = evento.aoVivo || eventoEstaAoVivo(evento.dataHora);
+  const classeDestaque = eventoAoVivo
+    ? 'border-red-400 ring-2 ring-red-200 dark:border-red-500 dark:ring-red-900/60'
+    : destaqueEvento
+      ? 'border-amber-400 ring-2 ring-amber-300 dark:border-amber-400 dark:ring-amber-600'
+      : 'border-gray-200 dark:border-gray-700';
+
+  const abrirModalEvento = () => {
+    if (!eventoAoVivo) return;
+    onAbrirEvento?.(prepararEventoListaModal(evento));
+  };
+
+  const handleClickCard = (event) => {
+    if (!eventoAoVivo) return;
+    if (event.target.closest?.('button,a,input,textarea,select,label')) return;
+    abrirModalEvento();
+  };
+
+  const handleKeyDownCard = (event) => {
+    if (!eventoAoVivo || !['Enter', ' '].includes(event.key)) return;
+    if (event.target.closest?.('button,a,input,textarea,select,label')) return;
+    event.preventDefault();
+    abrirModalEvento();
+  };
 
   return (
     <article
       id={evento.eventoId ? getEventoDomId(evento.eventoId, evento.dataHora) : undefined}
-      className={`overflow-hidden rounded-lg border bg-white shadow-sm dark:bg-gray-900 dark:shadow-black/20 ${
-        destaqueEvento
-          ? 'border-amber-400 ring-2 ring-amber-300 dark:border-amber-400 dark:ring-amber-600'
-          : 'border-gray-200 dark:border-gray-700'
+      role={eventoAoVivo ? 'button' : undefined}
+      tabIndex={eventoAoVivo ? 0 : undefined}
+      aria-label={eventoAoVivo ? `Abrir detalhes de ${evento.titulo}` : undefined}
+      onClick={handleClickCard}
+      onKeyDown={handleKeyDownCard}
+      className={`relative overflow-hidden rounded-lg border bg-white shadow-sm outline-none transition dark:bg-gray-900 dark:shadow-black/20 ${classeDestaque} ${
+        eventoAoVivo ? 'cursor-pointer hover:-translate-y-0.5 hover:shadow-md focus-visible:ring-2 focus-visible:ring-red-500/70' : ''
       }`}
     >
-      <header className="border-b border-gray-200 px-4 py-4 dark:border-gray-700 sm:px-5">
+      {eventoAoVivo && (
+        <div className="pointer-events-none absolute right-3 top-3 z-10">
+          <LiveBadge />
+        </div>
+      )}
+
+      <header className={`border-b border-gray-200 px-4 pb-4 dark:border-gray-700 sm:px-5 ${eventoAoVivo ? 'pt-14' : 'pt-4'}`}>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
@@ -1408,7 +1526,44 @@ function EventoEscalaCard({ evento, participacaoSelecionadaId, destaqueEvento, a
         </div>
       </header>
 
-      <div className="overflow-x-auto">
+      <div className="divide-y divide-gray-100 px-4 md:hidden dark:divide-gray-800">
+        {evento.escalas.map((escala) => {
+          const voluntarios = escala.voluntarios?.length ? escala.voluntarios : [null];
+          const totalVoluntarios = escala.voluntarios?.length || 0;
+
+          return (
+            <section key={escala.id} className="py-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 className="break-words text-sm font-bold text-gray-950 dark:text-white">{escala.equipe?.nome || 'Sem função'}</h3>
+                  <p className="mt-0.5 text-xs font-semibold text-gray-500 dark:text-gray-400">{totalVoluntarios === 1 ? '1 voluntário' : `${totalVoluntarios} voluntários`}</p>
+                </div>
+                {escala.encerrada && <span className="shrink-0 rounded border border-gray-300 px-2 py-1 text-[10px] font-bold uppercase text-gray-500 dark:border-white/60 dark:text-gray-200">Encerrada</span>}
+              </div>
+
+              <div className="mt-3 space-y-2">
+                {voluntarios.map((item) => (
+                  <ParticipacaoMobileItem
+                    key={`${escala.id}-${item?.id || 'vazio'}`}
+                    participacao={item}
+                    escala={escala}
+                    participacaoSelecionadaId={participacaoSelecionadaId}
+                    atualizandoId={atualizandoId}
+                    substituicaoAbertaId={substituicaoAbertaId}
+                    justificativa={justificativa}
+                    onAbrirSubstituicao={onAbrirSubstituicao}
+                    onCancelarSubstituicao={onCancelarSubstituicao}
+                    onChangeJustificativa={onChangeJustificativa}
+                    onAtualizarStatus={onAtualizarStatus}
+                  />
+                ))}
+              </div>
+            </section>
+          );
+        })}
+      </div>
+
+      <div className="hidden overflow-x-auto md:block">
         <table className="w-full min-w-[680px] text-left text-sm">
           <thead className="border-b border-gray-200 bg-gray-50 text-[11px] font-bold uppercase text-gray-500 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-300">
             <tr><th className="px-4 py-2.5">Voluntário</th><th className="px-4 py-2.5">Função</th><th className="px-4 py-2.5">Status</th><th className="px-4 py-2.5 text-right">Ações</th></tr>
@@ -1417,17 +1572,15 @@ function EventoEscalaCard({ evento, participacaoSelecionadaId, destaqueEvento, a
             {evento.escalas.flatMap((escala) => {
               const voluntarios = escala.voluntarios?.length ? escala.voluntarios : [null];
               return voluntarios.map((item) => {
-                const config = statusConfig[item?.status] || statusConfig.PENDENTE;
-                const Icon = config.icon;
                 const minhaParticipacao = item?.id === escala.minhaParticipacao?.id ? escala.minhaParticipacao : null;
                 const destaque = participacaoSelecionadaId && minhaParticipacao?.id === participacaoSelecionadaId;
 
                 return (
-                  <tr id={minhaParticipacao ? `participacao-${minhaParticipacao.id}` : undefined} key={`${escala.id}-${item?.id || 'vazio'}`} className={destaque ? 'bg-amber-50 dark:bg-amber-950/40' : ''}>
+                  <tr id={minhaParticipacao ? `participacao-${minhaParticipacao.id}-desktop` : undefined} key={`${escala.id}-${item?.id || 'vazio'}`} className={destaque ? 'bg-amber-50 dark:bg-amber-950/40' : ''}>
                     <td className="px-4 py-3"><AvatarVoluntario usuario={item?.usuario} /></td>
                     <td className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-100">{escala.equipe?.nome || 'Sem função'}</td>
                     <td className="px-4 py-3">
-                      {item ? <div className="flex flex-wrap gap-1.5"><span className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] font-semibold ${config.className}`}><Icon size={11} />{config.label}</span>{item.substituto && <span className="rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[11px] font-semibold text-violet-700 dark:border-violet-700 dark:bg-violet-950 dark:text-violet-200">Substituto</span>}</div> : <span className="text-xs text-gray-400 dark:text-gray-300">Não atribuído</span>}
+                      <StatusParticipacao participacao={item} />
                     </td>
                     <td className="px-4 py-3 text-right">
                       {minhaParticipacao && !escala.encerrada && <AcoesEscala participacao={minhaParticipacao} escala={escala} atualizandoId={atualizandoId} onAbrirSubstituicao={onAbrirSubstituicao} onAtualizarStatus={onAtualizarStatus} />}
@@ -1441,17 +1594,123 @@ function EventoEscalaCard({ evento, participacaoSelecionadaId, destaqueEvento, a
       </div>
 
       {participacoes.map((escala) => escala.minhaParticipacao && substituicaoAbertaId === escala.minhaParticipacao.id ? (
-        <div key={`justificativa-${escala.id}`} className="border-t border-sky-200 bg-sky-50 p-4 dark:border-sky-800 dark:bg-sky-950/40">
-          <label className="block text-sm font-semibold text-sky-800 dark:text-sky-100">Justificativa da substituição
-            <textarea value={justificativa} onChange={(event) => onChangeJustificativa(event.target.value)} rows={3} className="mt-2 block w-full rounded-md border border-sky-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none dark:border-white/60 dark:bg-gray-950 dark:text-white" placeholder="Explique rapidamente por que precisa de substituição." />
-          </label>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <button type="button" disabled={atualizandoId === escala.minhaParticipacao.id} onClick={() => onAtualizarStatus(escala.minhaParticipacao.id, 'PEDIU_SUBSTITUICAO', justificativa, escala.dataHora)} className="inline-flex h-9 items-center gap-2 rounded-md bg-sky-700 px-3 text-sm font-semibold text-white disabled:opacity-60"><RefreshCcw size={15} />Enviar solicitação</button>
-            <button type="button" onClick={onCancelarSubstituicao} className="h-9 rounded-md border border-sky-300 bg-white px-3 text-sm font-semibold text-sky-700 dark:border-white/60 dark:bg-gray-950 dark:text-sky-100">Cancelar</button>
-          </div>
-        </div>
+        <FormularioSubstituicao
+          key={`justificativa-${escala.id}`}
+          participacao={escala.minhaParticipacao}
+          escala={escala}
+          atualizandoId={atualizandoId}
+          justificativa={justificativa}
+          onAtualizarStatus={onAtualizarStatus}
+          onCancelarSubstituicao={onCancelarSubstituicao}
+          onChangeJustificativa={onChangeJustificativa}
+          className="hidden border-t border-sky-200 bg-sky-50 p-4 dark:border-sky-800 dark:bg-sky-950/40 md:block"
+        />
       ) : null)}
     </article>
+  );
+}
+
+function ParticipacaoMobileItem({
+  participacao,
+  escala,
+  participacaoSelecionadaId,
+  atualizandoId,
+  substituicaoAbertaId,
+  justificativa,
+  onAbrirSubstituicao,
+  onCancelarSubstituicao,
+  onChangeJustificativa,
+  onAtualizarStatus,
+}) {
+  if (!participacao) {
+    return (
+      <div className="rounded-md border border-dashed border-gray-300 px-3 py-3 text-sm font-semibold text-gray-500 dark:border-gray-700 dark:text-gray-300">
+        Nenhum voluntário atribuído.
+      </div>
+    );
+  }
+
+  const minhaParticipacao = participacao.id === escala.minhaParticipacao?.id ? escala.minhaParticipacao : null;
+  const destaque = participacaoSelecionadaId && minhaParticipacao?.id === participacaoSelecionadaId;
+  const substituicaoAberta = minhaParticipacao && substituicaoAbertaId === minhaParticipacao.id;
+
+  return (
+    <div
+      id={minhaParticipacao ? `participacao-${minhaParticipacao.id}-mobile` : undefined}
+      className={`rounded-md border px-3 py-3 ${
+        destaque
+          ? 'border-amber-300 bg-amber-50 dark:border-amber-600 dark:bg-amber-950/40'
+          : 'border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-950'
+      }`}
+    >
+      <div className="min-w-0">
+        <AvatarVoluntario usuario={participacao.usuario} />
+      </div>
+      <div className="mt-3">
+        <StatusParticipacao participacao={participacao} />
+      </div>
+
+      {minhaParticipacao && !escala.encerrada && (
+        <div className="mt-3">
+          <AcoesEscala
+            participacao={minhaParticipacao}
+            escala={escala}
+            atualizandoId={atualizandoId}
+            onAbrirSubstituicao={onAbrirSubstituicao}
+            onAtualizarStatus={onAtualizarStatus}
+            variant="mobile"
+          />
+        </div>
+      )}
+
+      {substituicaoAberta && (
+        <FormularioSubstituicao
+          participacao={minhaParticipacao}
+          escala={escala}
+          atualizandoId={atualizandoId}
+          justificativa={justificativa}
+          onAtualizarStatus={onAtualizarStatus}
+          onCancelarSubstituicao={onCancelarSubstituicao}
+          onChangeJustificativa={onChangeJustificativa}
+          className="mt-3 border-t border-sky-200 pt-3 dark:border-sky-800"
+        />
+      )}
+    </div>
+  );
+}
+
+function StatusParticipacao({ participacao }) {
+  if (!participacao) return <span className="text-xs text-gray-400 dark:text-gray-300">Não atribuído</span>;
+
+  const config = statusConfig[participacao.status] || statusConfig.PENDENTE;
+  const Icon = config.icon;
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      <span className={`inline-flex min-h-7 items-center gap-1 rounded border px-2 py-1 text-xs font-semibold ${config.className}`}>
+        <Icon size={12} />
+        {config.label}
+      </span>
+      {participacao.substituto && (
+        <span className="inline-flex min-h-7 items-center rounded border border-violet-200 bg-violet-50 px-2 py-1 text-xs font-semibold text-violet-700 dark:border-violet-700 dark:bg-violet-950 dark:text-violet-200">
+          Substituto
+        </span>
+      )}
+    </div>
+  );
+}
+
+function FormularioSubstituicao({ participacao, escala, atualizandoId, justificativa, onAtualizarStatus, onCancelarSubstituicao, onChangeJustificativa, className }) {
+  return (
+    <div className={className}>
+      <label className="block text-sm font-semibold text-sky-800 dark:text-sky-100">Justificativa da substituição
+        <textarea value={justificativa} onChange={(event) => onChangeJustificativa(event.target.value)} rows={3} className="mt-2 block w-full rounded-md border border-sky-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none dark:border-white/60 dark:bg-gray-950 dark:text-white" placeholder="Explique rapidamente por que precisa de substituição." />
+      </label>
+      <div className="mt-3 grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
+        <button type="button" disabled={atualizandoId === participacao.id} onClick={() => onAtualizarStatus(participacao.id, 'PEDIU_SUBSTITUICAO', justificativa, escala.dataHora)} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-sky-700 px-3 text-sm font-semibold text-white disabled:opacity-60"><RefreshCcw size={15} />Enviar solicitação</button>
+        <button type="button" onClick={onCancelarSubstituicao} className="min-h-10 rounded-md border border-sky-300 bg-white px-3 text-sm font-semibold text-sky-700 dark:border-white/60 dark:bg-gray-950 dark:text-sky-100">Cancelar</button>
+      </div>
+    </div>
   );
 }
 
@@ -1468,7 +1727,22 @@ function AvatarVoluntario({ usuario }) {
   );
 }
 
-function AcoesEscala({ participacao, escala, atualizandoId, onAbrirSubstituicao, onAtualizarStatus }) {
+function AcoesEscala({ participacao, escala, atualizandoId, onAbrirSubstituicao, onAtualizarStatus, variant = 'icon' }) {
+  if (variant === 'mobile') {
+    return (
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <button type="button" disabled={atualizandoId === participacao.id || ['CONFIRMADA', 'AUSENTE'].includes(participacao.status)} onClick={() => onAtualizarStatus(participacao.id, 'CONFIRMADA', '', escala.dataHora)} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-gray-950 px-3 text-xs font-bold text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-gray-950">
+          {atualizandoId === participacao.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 size={15} />}
+          Confirmar
+        </button>
+        <button type="button" disabled={atualizandoId === participacao.id || ['PEDIU_SUBSTITUICAO', 'AUSENTE'].includes(participacao.status)} onClick={() => onAbrirSubstituicao(participacao.id)} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-gray-300 bg-white px-3 text-xs font-bold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/60 dark:bg-gray-950 dark:text-white">
+          <RefreshCcw size={15} />
+          Substituição
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="inline-flex gap-1.5">
       <button type="button" title="Confirmar escala" aria-label="Confirmar escala" disabled={atualizandoId === participacao.id || ['CONFIRMADA', 'AUSENTE'].includes(participacao.status)} onClick={() => onAtualizarStatus(participacao.id, 'CONFIRMADA', '', escala.dataHora)} className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-gray-950 text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-gray-950">

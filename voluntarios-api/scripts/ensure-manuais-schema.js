@@ -22,9 +22,12 @@ try {
     DO $$
     BEGIN
       IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'TipoNotificacao') THEN
-        CREATE TYPE "TipoNotificacao" AS ENUM ('CONFIRMACAO_ESCALA', 'AVISO', 'SUBSTITUTO', 'ALERTA_LIDER');
+        CREATE TYPE "TipoNotificacao" AS ENUM ('CONFIRMACAO_ESCALA', 'LEMBRETE_ESCALA', 'AVISO', 'SUBSTITUTO', 'ALERTA_LIDER', 'ORDEM_CULTO');
       END IF;
     END $$;
+
+    ALTER TYPE "TipoNotificacao" ADD VALUE IF NOT EXISTS 'ORDEM_CULTO';
+    ALTER TYPE "TipoNotificacao" ADD VALUE IF NOT EXISTS 'LEMBRETE_ESCALA';
 
     CREATE TABLE IF NOT EXISTS "notificacoes" (
       "id" UUID NOT NULL,

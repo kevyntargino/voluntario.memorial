@@ -32,7 +32,7 @@ Consulta suas escalas, confirma presenca, solicita substituicao, acessa avisos, 
 - **Escalas**: atribuicoes de voluntarios por equipe e data.
 - **Modelos de voluntarios**: definicao de quem atende cada semana do mes em um evento recorrente, aplicada automaticamente as escalas geradas.
 - **Avisos**: comunicados globais, por equipe ou direcionados, com registro de leitura.
-- **Manuais**: documentos PDF de apoio, gerais ou vinculados a equipes.
+- **Manuais**: documentos PDF, PNG ou JPEG de apoio, gerais ou vinculados a equipes.
 - **Ordens de culto**: PDF vinculado a uma ocorrencia especifica de evento.
 - **Notificacoes**: alertas internos, stream em tempo real (SSE) e Web Push.
 

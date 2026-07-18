@@ -93,18 +93,24 @@ export default function Navbar() {
   )).length;
   const totalNaoVisualizados = naoVisualizadas + Math.max(0, avisosNaoVisualizados - avisosDuplicadosNaoVisualizados);
   const itensCentralNotificacoes = useMemo(() => {
-    const itensNotificacoes = notificacoes.map((notificacao) => ({
-      ...notificacao,
-      origem: 'notificacao',
-      chave: `notificacao-${notificacao.id}`,
-      visualizada: Boolean(notificacao.visualizada),
-      dataOrdenacao: notificacao.criadoEm,
-    }));
+    const itensNotificacoes = notificacoes
+      .filter((notificacao) => !notificacao.visualizada)
+      .map((notificacao) => ({
+        ...notificacao,
+        origem: 'notificacao',
+        chave: `notificacao-${notificacao.id}`,
+        visualizada: false,
+        dataOrdenacao: notificacao.criadoEm,
+      }));
     const itensAvisos = avisos
       .filter((aviso) => {
+        if (aviso.visualizado) {
+          return false;
+        }
+
         const temNotificacao = avisosRepresentadosPorNotificacao.has(aviso.id);
         const temNotificacaoPendente = avisosRepresentadosPorNotificacaoPendente.has(aviso.id);
-        return !(temNotificacao && (aviso.visualizado || temNotificacaoPendente));
+        return !(temNotificacao && temNotificacaoPendente);
       })
       .map((aviso) => ({
         id: aviso.id,
@@ -113,7 +119,7 @@ export default function Navbar() {
         titulo: aviso.titulo,
         mensagem: aviso.mensagem,
         link: `/avisos?aviso=${aviso.id}`,
-        visualizada: Boolean(aviso.visualizado),
+        visualizada: false,
         lidaEm: aviso.visualizadoEm,
         criadoEm: aviso.dataAviso || aviso.criadoEm,
         dataOrdenacao: aviso.dataAviso || aviso.criadoEm,
@@ -171,7 +177,7 @@ export default function Navbar() {
     if (!token) return;
 
     try {
-      const resposta = await fetch(buildApiUrl('/api/avisos?visualizados=todos'), {
+      const resposta = await fetch(buildApiUrl('/api/avisos'), {
         headers: { Authorization: `Bearer ${token}` },
       });
       const dados = await resposta.json();
@@ -637,7 +643,7 @@ export default function Navbar() {
               </div>
             ) : itensCentralNotificacoes.length === 0 ? (
               <div className="px-5 py-8 text-sm text-gray-500 dark:text-gray-400">
-                Nenhum aviso ou notificação por enquanto.
+                Nenhum aviso ou notificação não visualizado.
               </div>
             ) : (
               <div className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -646,12 +652,10 @@ export default function Navbar() {
                     key={itemCentral.chave}
                     type="button"
                     onClick={() => visualizarItemCentral(itemCentral)}
-                    className={`block w-full px-5 py-4 text-left transition hover:bg-gray-50 dark:hover:bg-gray-900 ${
-                      itemCentral.visualizada ? 'bg-white dark:bg-gray-950' : 'bg-gray-50 dark:bg-gray-900/80'
-                    }`}
+                    className="block w-full bg-gray-50 px-5 py-4 text-left transition hover:bg-gray-100 dark:bg-gray-900/80 dark:hover:bg-gray-900"
                   >
                     <div className="flex items-start gap-3">
-                      <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${itemCentral.visualizada ? 'bg-gray-300 dark:bg-gray-600' : 'bg-gray-950 dark:bg-white'}`} />
+                      <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-gray-950 dark:bg-white" />
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="text-sm font-bold text-gray-950 dark:text-white">{itemCentral.titulo}</p>

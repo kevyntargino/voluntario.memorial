@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertCircle, Bell, CheckCheck, Eye, Loader2 } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import { Footer } from '../components/Footer';
@@ -26,7 +26,6 @@ export default function Avisos() {
   const [carregando, setCarregando] = useState(true);
   const [mostrarAntigos, setMostrarAntigos] = useState(false);
   const [salvandoId, setSalvandoId] = useState(null);
-  const [totalNaoVisualizados, setTotalNaoVisualizados] = useState(0);
 
   const carregarAvisos = useCallback(async () => {
     setErro('');
@@ -52,7 +51,6 @@ export default function Avisos() {
       }
 
       setAvisos(dados.avisos || []);
-      setTotalNaoVisualizados(dados.totalNaoVisualizados ?? 0);
     } catch (error) {
       setErro(error.message || 'Não foi possível carregar os avisos.');
     } finally {
@@ -77,6 +75,12 @@ export default function Avisos() {
     }, 120);
   }, [avisoSelecionadoId, carregando]);
 
+  const avisosExibidos = useMemo(() => (
+    mostrarAntigos
+      ? avisos.filter((aviso) => aviso.visualizado)
+      : avisos.filter((aviso) => !aviso.visualizado || aviso.id === avisoSelecionadoId)
+  ), [avisoSelecionadoId, avisos, mostrarAntigos]);
+
   const marcarComoVisualizado = async (avisoId) => {
     setErro('');
     setSalvandoId(avisoId);
@@ -100,7 +104,6 @@ export default function Avisos() {
         throw new Error(dados.erro || 'Não foi possível marcar o aviso como visualizado.');
       }
 
-      setTotalNaoVisualizados((atual) => Math.max(0, atual - 1));
       setAvisos((atuais) => (
         mostrarAntigos
           ? atuais.map((aviso) => (
@@ -142,7 +145,7 @@ export default function Avisos() {
               className="inline-flex w-fit items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-bold text-gray-700 transition hover:bg-gray-100"
             >
               <Eye size={16} />
-              {mostrarAntigos ? 'Ver somente não visualizados' : `Ver avisos antigos (${totalNaoVisualizados} pendente${totalNaoVisualizados === 1 ? '' : 's'})`}
+              {mostrarAntigos ? 'Ver não visualizados' : 'Ver anteriores'}
             </button>
           </div>
         </section>
@@ -159,15 +162,15 @@ export default function Avisos() {
             <Loader2 className="h-5 w-5 animate-spin" />
             Carregando avisos...
           </div>
-        ) : avisos.length === 0 ? (
+        ) : avisosExibidos.length === 0 ? (
           <div className="mt-5 rounded-lg border border-gray-200 bg-white px-6 py-12 text-gray-500 shadow-sm">
             {mostrarAntigos
-              ? 'Nenhum aviso disponível para você no momento.'
+              ? 'Nenhum aviso anterior disponível.'
               : 'Você não tem avisos não visualizados no momento.'}
           </div>
         ) : (
           <section className="mt-5 space-y-3">
-            {avisos.map((aviso) => {
+            {avisosExibidos.map((aviso) => {
               const selecionado = aviso.id === avisoSelecionadoId;
 
               return (

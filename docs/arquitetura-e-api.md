@@ -67,7 +67,7 @@ Modelo de voluntarios de um evento por semana do mes (`semanaMes` de 1 a 5) e eq
 - `avisos`: comunicados globais, por equipe ou individuais.
 - `avisos_destinatarios`: usuarios direcionados por aviso.
 - `avisos_visualizacoes`: leitura de avisos.
-- `manuais`: arquivos PDF e descricoes de treinamento.
+- `manuais`: arquivos PDF, PNG ou JPEG e descricoes de treinamento.
 - `ordens_culto`: PDF de uma ordem de culto vinculado a uma ocorrencia de evento.
 
 ### Notificacoes

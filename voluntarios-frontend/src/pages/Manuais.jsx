@@ -176,7 +176,7 @@ export default function Manuais() {
                     className="mt-5 inline-flex items-center justify-center gap-2 rounded-md bg-gray-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-gray-800 disabled:opacity-60"
                   >
                     {abrindoId === manual.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download size={16} />}
-                    Abrir PDF
+                    Abrir arquivo
                   </button>
                 </article>
               ))}

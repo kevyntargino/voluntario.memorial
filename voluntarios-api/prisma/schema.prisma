@@ -62,6 +62,7 @@ enum TipoAviso {
 
 enum TipoNotificacao {
   CONFIRMACAO_ESCALA
+  LEMBRETE_ESCALA
   AVISO
   SUBSTITUTO
   ALERTA_LIDER

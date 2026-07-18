@@ -375,13 +375,23 @@ export async function gerarNotificacoesAutomaticas(prisma, agora = getAgoraNotif
 
     const dias = diasAte(new Date(dataOcorrencia), agora);
     const status = getStatusParticipacaoNaOcorrencia(participacao, dataOcorrencia);
+    const equipeNome = participacao.escala.equipe?.nome || 'sua equipe';
+    const dataTexto = formatarData(new Date(dataOcorrencia));
+
+    if (dias === 1 && ['PENDENTE', 'CONFIRMADA'].includes(status)) {
+      notificacoes.push({
+        usuarioId: participacao.usuarioId,
+        tipo: 'LEMBRETE_ESCALA',
+        titulo: 'Sua escala é amanhã',
+        mensagem: `Sua escala em ${equipeNome} está marcada para ${dataTexto}.`,
+        link: `/escalas?filtro=confirmacoes&participacao=${participacao.id}`,
+        chave: `lembrete-escala:1d:${participacao.id}:${new Date(dataOcorrencia).toISOString()}`,
+      });
+    }
 
     if (status !== 'PENDENTE') {
       continue;
     }
-
-    const equipeNome = participacao.escala.equipe?.nome || 'sua equipe';
-    const dataTexto = formatarData(new Date(dataOcorrencia));
 
     if ([5, 3].includes(dias)) {
       notificacoes.push({

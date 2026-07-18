@@ -17,7 +17,13 @@ const router = Router();
 
 const R2_DEFAULT_ENDPOINT = 'https://a66b8eca7a1e0672558565df261c389a.r2.cloudflarestorage.com';
 const R2_DEFAULT_BUCKET = 'voluntarios';
-const MAX_PDF_SIZE = 15 * 1024 * 1024;
+const MAX_MANUAL_ATTACHMENT_SIZE = 15 * 1024 * 1024;
+const MANUAL_ATTACHMENT_TYPES = {
+  'application/pdf': { extension: 'pdf', label: 'PDF' },
+  'image/png': { extension: 'png', label: 'PNG' },
+  'image/jpeg': { extension: 'jpg', label: 'JPEG' },
+};
+const MANUAL_ATTACHMENT_TYPE_LABEL = 'PDF, PNG ou JPEG';
 let manuaisSchemaPromise = null;
 
 function getJwtSecret() {
@@ -199,55 +205,82 @@ function garantirSchemaManuais() {
   return manuaisSchemaPromise;
 }
 
-function validarPdf(arquivo) {
-  if (!arquivo || typeof arquivo !== 'object') {
-    return { erro: 'Envie um arquivo PDF.' };
+function getManualAttachmentTypeFromKey(key) {
+  const extension = String(key || '').split('?')[0].split('.').pop()?.toLowerCase();
+  const normalizedExtension = extension === 'jpeg' ? 'jpg' : extension;
+
+  return Object.entries(MANUAL_ATTACHMENT_TYPES).find(([, config]) => config.extension === normalizedExtension)?.[0] || 'application/pdf';
+}
+
+function getManualAttachmentTypeFromPayload(arquivo) {
+  const contentType = typeof arquivo?.contentType === 'string' ? arquivo.contentType.toLowerCase().split(';')[0].trim() : '';
+
+  if (MANUAL_ATTACHMENT_TYPES[contentType]) {
+    return contentType;
   }
 
-  if (arquivo.contentType !== 'application/pdf') {
-    return { erro: 'O arquivo precisa ser um PDF.' };
+  const dataUrlMatch = typeof arquivo?.base64 === 'string' ? arquivo.base64.match(/^data:([^;,]+)[;,]/) : null;
+  const dataUrlContentType = dataUrlMatch?.[1]?.toLowerCase();
+
+  if (MANUAL_ATTACHMENT_TYPES[dataUrlContentType]) {
+    return dataUrlContentType;
+  }
+
+  return contentType;
+}
+
+function validarArquivoManual(arquivo) {
+  if (!arquivo || typeof arquivo !== 'object') {
+    return { erro: `Envie um arquivo em ${MANUAL_ATTACHMENT_TYPE_LABEL}.` };
+  }
+
+  const contentType = getManualAttachmentTypeFromPayload(arquivo);
+  const tipoPermitido = MANUAL_ATTACHMENT_TYPES[contentType];
+
+  if (!tipoPermitido) {
+    return { erro: `O arquivo precisa ser ${MANUAL_ATTACHMENT_TYPE_LABEL}.` };
   }
 
   if (typeof arquivo.base64 !== 'string' || !arquivo.base64.trim()) {
-    return { erro: 'Arquivo PDF não foi enviado.' };
+    return { erro: 'Arquivo do manual não foi enviado.' };
   }
 
   const base64Limpo = arquivo.base64.includes(',') ? arquivo.base64.split(',').pop() : arquivo.base64;
   const buffer = Buffer.from(base64Limpo, 'base64');
 
   if (buffer.length === 0) {
-    return { erro: 'O PDF enviado está vazio.' };
+    return { erro: 'O arquivo enviado está vazio.' };
   }
 
-  if (buffer.length > MAX_PDF_SIZE) {
-    return { erro: 'O PDF deve ter no máximo 15MB.' };
+  if (buffer.length > MAX_MANUAL_ATTACHMENT_SIZE) {
+    return { erro: 'O arquivo deve ter no máximo 15MB.' };
   }
 
-  return { buffer };
+  return { buffer, contentType, extension: tipoPermitido.extension };
 }
 
-async function uploadPdfManual({ manualId, arquivo }) {
-  const validacao = validarPdf(arquivo);
+async function uploadArquivoManual({ manualId, arquivo }) {
+  const validacao = validarArquivoManual(arquivo);
 
   if (validacao.erro) {
     return validacao;
   }
 
   const random = crypto.randomBytes(8).toString('hex');
-  const key = `manuais/${manualId}/${Date.now()}-${random}.pdf`;
+  const key = `manuais/${manualId}/${Date.now()}-${random}.${validacao.extension}`;
   const uploadUrl = criarPresignedUrl({ key, method: 'PUT' });
   const resposta = await fetchComTimeout(uploadUrl, {
     method: 'PUT',
     headers: {
-      'Content-Type': 'application/pdf',
+      'Content-Type': validacao.contentType,
     },
     body: validacao.buffer,
   }, 60000);
 
   if (!resposta.ok) {
     const detalhe = await resposta.text().catch(() => '');
-    console.error('[ERRO LOG] Upload PDF R2 falhou:', resposta.status, detalhe);
-    return { erro: 'Não foi possível enviar o PDF para o storage.' };
+    console.error('[ERRO LOG] Upload arquivo manual R2 falhou:', resposta.status, detalhe);
+    return { erro: 'Não foi possível enviar o arquivo para o storage.' };
   }
 
   return { key };
@@ -256,7 +289,7 @@ async function uploadPdfManual({ manualId, arquivo }) {
 async function apagarArquivoStorage(key) {
   return apagarObjetoStorage(key, {
     prefixosPermitidos: ['manuais/'],
-    label: 'PDF do manual',
+    label: 'arquivo do manual',
   });
 }
 
@@ -319,14 +352,16 @@ router.get('/:id/arquivo', autenticar, async (req, res) => {
 
     if (!resposta.ok) {
       const detalhe = await resposta.text().catch(() => '');
-      console.error('[ERRO LOG] Leitura PDF R2 falhou:', resposta.status, detalhe);
+      console.error('[ERRO LOG] Leitura arquivo manual R2 falhou:', resposta.status, detalhe);
       return res.status(resposta.status === 404 ? 404 : 502).json({ erro: 'Arquivo do manual não encontrado.' });
     }
 
     const buffer = Buffer.from(await resposta.arrayBuffer());
-    const nomeArquivo = `${manual.titulo || 'manual'}.pdf`.replace(/[^\w.-]+/g, '-');
+    const contentType = getManualAttachmentTypeFromKey(manual.arquivoKey);
+    const extension = MANUAL_ATTACHMENT_TYPES[contentType].extension;
+    const nomeArquivo = `${manual.titulo || 'manual'}.${extension}`.replace(/[^\w.-]+/g, '-');
 
-    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Type', contentType);
     res.setHeader('Content-Disposition', `inline; filename="${nomeArquivo}"`);
     res.setHeader('Cache-Control', 'private, max-age=300');
     return res.status(200).send(buffer);
@@ -357,7 +392,7 @@ router.post('/admin', autenticar, exigirAdmin, async (req, res) => {
     }
 
     const id = crypto.randomUUID();
-    const upload = await uploadPdfManual({ manualId: id, arquivo });
+    const upload = await uploadArquivoManual({ manualId: id, arquivo });
 
     if (upload.erro) {
       return res.status(400).json({ erro: upload.erro });
@@ -381,7 +416,7 @@ router.post('/admin', autenticar, exigirAdmin, async (req, res) => {
     });
   } catch (erro) {
     if (erro.message === 'TIMEOUT_STORAGE') {
-      return res.status(504).json({ erro: 'O envio para o storage demorou demais. Tente novamente ou use um PDF menor.' });
+      return res.status(504).json({ erro: 'O envio para o storage demorou demais. Tente novamente ou use um arquivo menor.' });
     }
 
     if (erro.message === 'Credenciais R2 não configuradas.') {
@@ -416,7 +451,7 @@ router.patch('/admin/:id', autenticar, exigirAdmin, async (req, res) => {
     let apagarKey = null;
 
     if (arquivo) {
-      const upload = await uploadPdfManual({ manualId: manualAtual.id, arquivo });
+      const upload = await uploadArquivoManual({ manualId: manualAtual.id, arquivo });
 
       if (upload.erro) {
         return res.status(400).json({ erro: upload.erro });
@@ -440,7 +475,7 @@ router.patch('/admin/:id', autenticar, exigirAdmin, async (req, res) => {
 
     if (apagarKey && apagarKey !== arquivoKey) {
       apagarArquivoStorage(apagarKey).catch((deleteError) => {
-        console.warn('[WARN] Falha ao remover PDF antigo do storage:', deleteError.message);
+        console.warn('[WARN] Falha ao remover arquivo antigo do storage:', deleteError.message);
       });
     }
 
@@ -450,7 +485,7 @@ router.patch('/admin/:id', autenticar, exigirAdmin, async (req, res) => {
     });
   } catch (erro) {
     if (erro.message === 'TIMEOUT_STORAGE') {
-      return res.status(504).json({ erro: 'O envio para o storage demorou demais. Tente novamente ou use um PDF menor.' });
+      return res.status(504).json({ erro: 'O envio para o storage demorou demais. Tente novamente ou use um arquivo menor.' });
     }
 
     if (erro.message === 'Credenciais R2 não configuradas.') {
@@ -481,7 +516,7 @@ router.delete('/admin/:id', autenticar, exigirAdmin, async (req, res) => {
 
     if (manual.arquivoKey) {
       apagarArquivoStorage(manual.arquivoKey).catch((deleteError) => {
-        console.warn('[WARN] Falha ao remover PDF do storage:', deleteError.message);
+        console.warn('[WARN] Falha ao remover arquivo do storage:', deleteError.message);
       });
     }
 

@@ -71,10 +71,13 @@ const formEscalaInicial = {
   descricao: '',
   equipeIds: [],
 };
-const formAvisoInicial = { titulo: '', mensagem: '', dataAviso: '', publico: 'TODOS', equipeIds: [], usuarioIds: [] };
+const formAvisoInicial = { titulo: '', mensagem: '', publico: 'TODOS', equipeIds: [], usuarioIds: [] };
 const formEquipeInicial = { nome: '' };
 const formNovoVoluntarioInicial = { nomeCompleto: '', email: '', telefone: '', equipeIds: [] };
 const formManualInicial = { titulo: '', descricao: '', versao: '1.0', oculto: false, arquivo: null };
+const tiposManualPermitidos = ['application/pdf', 'image/png', 'image/jpeg'];
+const acceptManual = 'application/pdf,image/png,image/jpeg,.pdf,.png,.jpg,.jpeg';
+const formatosManual = 'PDF, PNG ou JPEG';
 const filtrosTipoEscala = [
   { value: 'TODAS', label: 'Todas' },
   { value: 'RECORRENTE', label: 'Recorrentes' },
@@ -245,7 +248,7 @@ function readAsDataUrl(file) {
     const reader = new FileReader();
     const timeout = window.setTimeout(() => {
       reader.abort();
-      reject(new Error('A leitura do PDF demorou demais. Tente um arquivo menor.'));
+      reject(new Error('A leitura do arquivo demorou demais. Tente um arquivo menor.'));
     }, 20000);
 
     reader.onload = () => resolve(reader.result);
@@ -269,7 +272,7 @@ async function fetchComTimeout(url, options = {}, timeoutMs = 60000) {
     });
   } catch (error) {
     if (error.name === 'AbortError') {
-      throw new Error('O envio demorou demais. Verifique sua conexão ou tente um PDF menor.');
+      throw new Error('O envio demorou demais. Verifique sua conexão ou tente um arquivo menor.');
     }
 
     throw error;
@@ -278,15 +281,20 @@ async function fetchComTimeout(url, options = {}, timeoutMs = 60000) {
   }
 }
 
-async function prepararArquivoPdf(file, tamanhoMaximoMb = 15) {
+async function prepararArquivo(file, {
+  tamanhoMaximoMb = 15,
+  tiposPermitidos = ['application/pdf'],
+  formatos = 'PDF',
+  mensagemTipo = 'Selecione um arquivo PDF.',
+} = {}) {
   if (!file) return null;
 
-  if (file.type !== 'application/pdf') {
-    throw new Error('Selecione um arquivo PDF.');
+  if (!tiposPermitidos.includes(file.type)) {
+    throw new Error(mensagemTipo);
   }
 
   if (file.size > tamanhoMaximoMb * 1024 * 1024) {
-    throw new Error(`O PDF deve ter no máximo ${tamanhoMaximoMb}MB.`);
+    throw new Error(`O arquivo ${formatos} deve ter no máximo ${tamanhoMaximoMb}MB.`);
   }
 
   const base64 = await readAsDataUrl(file);
@@ -295,6 +303,22 @@ async function prepararArquivoPdf(file, tamanhoMaximoMb = 15) {
     contentType: file.type,
     base64,
   };
+}
+
+async function prepararArquivoPdf(file, tamanhoMaximoMb = 15) {
+  return prepararArquivo(file, {
+    tamanhoMaximoMb,
+    formatos: 'PDF',
+    mensagemTipo: 'Selecione um arquivo PDF.',
+  });
+}
+
+async function prepararArquivoManual(file) {
+  return prepararArquivo(file, {
+    tiposPermitidos: tiposManualPermitidos,
+    formatos: formatosManual,
+    mensagemTipo: `Selecione um arquivo ${formatosManual}.`,
+  });
 }
 
 export default function AdminEscalas() {
@@ -791,7 +815,10 @@ export default function AdminEscalas() {
       const resposta = await fetch(buildApiUrl('/api/avisos/admin'), {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(formAviso),
+        body: JSON.stringify({
+          ...formAviso,
+          dataAviso: new Date().toISOString(),
+        }),
       });
       const dados = await resposta.json();
       if (!resposta.ok) throw new Error(dados.erro || 'Não foi possível enviar a notificação.');
@@ -1118,11 +1145,11 @@ export default function AdminEscalas() {
       }
 
       if (!manualEditandoId && !formManual.arquivo) {
-        throw new Error('Selecione um arquivo PDF para cadastrar o manual.');
+        throw new Error(`Selecione um arquivo ${formatosManual} para cadastrar o manual.`);
       }
 
       setSalvandoId(manualEditandoId || 'novo-manual');
-      const arquivo = await prepararArquivoPdf(formManual.arquivo);
+      const arquivo = await prepararArquivoManual(formManual.arquivo);
       const resposta = await fetchComTimeout(buildApiUrl(manualEditandoId ? `/api/manuais/admin/${manualEditandoId}` : '/api/manuais/admin'), {
         method: manualEditandoId ? 'PATCH' : 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -2211,7 +2238,6 @@ function PainelNotificacao({
       </div>
       <form onSubmit={onSubmit} className="grid gap-4 p-5 lg:grid-cols-2">
         <Campo label="Título" value={formAviso.titulo} onChange={(value) => onChange((atual) => ({ ...atual, titulo: value }))} />
-        <Campo label="Data" type="datetime-local" value={formAviso.dataAviso} onChange={(value) => onChange((atual) => ({ ...atual, dataAviso: value }))} />
         <div className="lg:col-span-2">
           <CampoTexto label="Descrição" value={formAviso.mensagem} onChange={(value) => onChange((atual) => ({ ...atual, mensagem: value }))} />
         </div>
@@ -2857,7 +2883,61 @@ function PainelEscalas({
                       </div>
                     )}
 
-                  <div className="mt-5 max-h-[560px] max-w-full overflow-auto rounded-xl border border-gray-200 bg-white">
+                  <div className="mt-5 space-y-3 md:hidden">
+                    {evento.areas.map((area) => {
+                      const voluntarios = area.voluntarios || [];
+                      const encerrada = area.encerrada || escalaEstaEncerrada(area.dataHora);
+                      const podeEditarRecorrente = area.tipo === 'RECORRENTE' && !area.eventoId && !encerrada;
+
+                      return (
+                        <section key={area.id} className="rounded-lg border border-gray-200 bg-white p-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <h4 className="break-words text-sm font-bold text-gray-950">{area.equipe?.nome || 'Sem equipe'}</h4>
+                              <p className="mt-1 text-xs font-semibold text-gray-500">{formatarData(area.dataHora)}</p>
+                            </div>
+                            {podeEditarRecorrente && (
+                              <button
+                                type="button"
+                                onClick={() => onEditarEscala(escalaEditandoId === area.id ? null : area.id)}
+                                className="inline-flex min-h-9 shrink-0 items-center justify-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 text-xs font-bold text-gray-700 transition hover:bg-gray-50"
+                              >
+                                <Pencil size={14} />
+                                {escalaEditandoId === area.id ? 'Fechar' : 'Editar'}
+                              </button>
+                            )}
+                          </div>
+
+                          {voluntarios.length === 0 ? (
+                            <p className="mt-3 rounded-md border border-dashed border-gray-200 px-3 py-3 text-sm font-semibold text-gray-400">
+                              Nenhum voluntário atribuído.
+                            </p>
+                          ) : (
+                            <div className="mt-3 divide-y divide-gray-100">
+                              {voluntarios.map((item) => (
+                                <div key={`${area.id}-${item.id}`} className="py-3 first:pt-0 last:pb-0">
+                                  <div className="flex min-w-0 items-start gap-2">
+                                    <UsuarioInfoButton usuario={item.usuario} onClick={onAbrirUsuario} />
+                                    <div className="min-w-0 flex-1">
+                                      <p className="break-words text-sm font-semibold text-gray-800">{item.usuario?.nomeCompleto || 'Voluntário'}</p>
+                                      {item.usuario?.telefone && (
+                                        <p className="mt-1 text-xs font-medium text-gray-400">{formatarTelefoneExibicao(item.usuario.telefone)}</p>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="mt-2">
+                                    <StatusEscalaAdmin item={item} />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </section>
+                      );
+                    })}
+                  </div>
+
+                  <div className="mt-5 hidden max-h-[560px] max-w-full overflow-auto rounded-xl border border-gray-200 bg-white md:block">
                     <table className="min-w-[780px] text-left text-sm">
                       <thead className="bg-gray-50 text-xs font-bold uppercase tracking-[0.14em] text-gray-400">
                         <tr>
@@ -2876,9 +2956,6 @@ function PainelEscalas({
                           const encerrada = area.encerrada || escalaEstaEncerrada(area.dataHora);
 
                           return voluntarios.map((item) => {
-                            const config = statusConfig[item.status] || statusConfig.PENDENTE;
-                            const Icon = config.icon;
-
                             return (
                               <tr key={`${area.id}-${item.id}`} className="align-top">
                                 <td className="px-3 py-3 font-bold text-gray-900">{area.equipe?.nome || 'Sem equipe'}</td>
@@ -2899,21 +2976,7 @@ function PainelEscalas({
                                   )}
                                 </td>
                                 <td className="px-3 py-3">
-                                  {item.usuario ? (
-                                    <div className="flex flex-wrap gap-1.5">
-                                      <span className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] font-semibold ${config.className}`}>
-                                        <Icon size={11} />
-                                        {config.label}
-                                      </span>
-                                      {item.substituto && (
-                                        <span className="inline-flex rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[11px] font-semibold text-violet-700">
-                                          Substituto
-                                        </span>
-                                      )}
-                                    </div>
-                                  ) : (
-                                    <span className="text-xs text-gray-400">-</span>
-                                  )}
+                                  <StatusEscalaAdmin item={item} />
                                 </td>
                                 <td className="px-3 py-3 text-right">
                                   {area.tipo === 'RECORRENTE' && !area.eventoId && !encerrada && (
@@ -2995,6 +3058,27 @@ function ResumoEscalaCompacto({ label, valor }) {
     <div className="rounded-lg border border-gray-200 bg-white px-3 py-2">
       <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-400">{label}</p>
       <p className="mt-1 text-sm font-bold text-gray-900">{valor}</p>
+    </div>
+  );
+}
+
+function StatusEscalaAdmin({ item }) {
+  if (!item?.usuario) return <span className="text-xs text-gray-400">-</span>;
+
+  const config = statusConfig[item.status] || statusConfig.PENDENTE;
+  const Icon = config.icon;
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      <span className={`inline-flex min-h-7 items-center gap-1 rounded border px-2 py-1 text-xs font-semibold ${config.className}`}>
+        <Icon size={12} />
+        {config.label}
+      </span>
+      {item.substituto && (
+        <span className="inline-flex min-h-7 items-center rounded border border-violet-200 bg-violet-50 px-2 py-1 text-xs font-semibold text-violet-700">
+          Substituto
+        </span>
+      )}
     </div>
   );
 }
@@ -3381,7 +3465,7 @@ function PainelManuais({
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-dourado-700">Biblioteca MCom</p>
             <h2 className="mt-1 text-2xl font-bold text-gray-950">Gerenciar Manuais</h2>
             <p className="mt-1 max-w-2xl text-sm text-gray-500">
-              Cadastre arquivos únicos em PDF, edite metadados e controle se o manual aparece para os usuários.
+              Cadastre arquivos únicos em PDF, PNG ou JPEG, edite metadados e controle se o manual aparece para os usuários.
             </p>
           </div>
           <button
@@ -3403,7 +3487,7 @@ function PainelManuais({
           <div className="flex flex-col gap-1 border-b border-gray-100 pb-4">
             <h3 className="text-lg font-bold text-gray-950">{manualEditandoId ? 'Editar manual' : 'Cadastrar manual'}</h3>
             <p className="text-sm text-gray-500">
-              A data é preenchida automaticamente pelo sistema. Ao substituir o PDF, o arquivo anterior é removido do storage.
+              A data é preenchida automaticamente pelo sistema. Ao substituir o arquivo, o anterior é removido do storage.
             </p>
           </div>
 
@@ -3414,15 +3498,15 @@ function PainelManuais({
               <CampoTexto label="Descrição" value={formManual.descricao} onChange={(value) => onChangeManual((atual) => ({ ...atual, descricao: value }))} />
             </div>
             <label className="block lg:col-span-2">
-              <span className="text-sm font-semibold text-gray-700">Arquivo PDF</span>
+              <span className="text-sm font-semibold text-gray-700">Arquivo do manual</span>
               <input
                 type="file"
-                accept="application/pdf"
+                accept={acceptManual}
                 onChange={(event) => onChangeManual((atual) => ({ ...atual, arquivo: event.target.files?.[0] || null }))}
                 className="mt-2 block w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none transition file:mr-3 file:rounded-md file:border-0 file:bg-gray-950 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
               />
               <p className="mt-1 text-xs text-gray-500">
-                {manualEditandoId ? 'Envie um novo PDF somente se quiser substituir o arquivo atual.' : 'Obrigatório para cadastrar. Tamanho máximo: 15MB.'}
+                {manualEditandoId ? 'Envie um novo arquivo somente se quiser substituir o atual.' : 'Obrigatório para cadastrar. Formatos: PDF, PNG ou JPEG. Tamanho máximo: 15MB.'}
               </p>
             </label>
             <label className="inline-flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-700">
@@ -3526,7 +3610,7 @@ function PainelManuais({
                     className="inline-flex items-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
                   >
                     <Download size={15} />
-                    Abrir PDF
+                    Abrir arquivo
                   </button>
                   <button
                     type="button"

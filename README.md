@@ -18,7 +18,7 @@ Sistema web para gerenciamento de voluntarios, equipes, escalas, eventos, avisos
 - Modelos de voluntarios por semana do mes, aplicados automaticamente as escalas geradas.
 - Escalas por equipe, com confirmacao, ausencia, pedido e atribuicao de substituicao.
 - Avisos globais, por equipe, por perfil ou por usuarios especificos, com controle de leitura.
-- Biblioteca de manuais em PDF, gerais ou por equipe.
+- Biblioteca de manuais em PDF, PNG ou JPEG, gerais ou por equipe.
 - Ordens de culto em PDF vinculadas a uma ocorrencia de evento.
 - Notificacoes internas, stream em tempo real (SSE) e Web Push.
 - Upload de fotos, manuais e anexos via Cloudflare R2/S3 compativel.

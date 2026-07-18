@@ -13,6 +13,7 @@ const prisma = new PrismaClient({
   adapter: new PrismaPg(pool),
 });
 const router = Router();
+const DIAS_VISIBILIDADE_VOLUNTARIO = 30;
 
 let ultimaGeracao = 0;
 
@@ -90,6 +91,12 @@ function formatarNotificacao(notificacao) {
   };
 }
 
+function getDataLimiteVisibilidadeVoluntario(agora = new Date()) {
+  const limite = new Date(agora);
+  limite.setUTCDate(limite.getUTCDate() - DIAS_VISIBILIDADE_VOLUNTARIO);
+  return limite;
+}
+
 function extrairChavesSubscription(subscription) {
   const endpoint = typeof subscription?.endpoint === 'string' ? subscription.endpoint : '';
   const p256dh = typeof subscription?.keys?.p256dh === 'string' ? subscription.keys.p256dh : '';
@@ -100,10 +107,17 @@ function extrairChavesSubscription(subscription) {
 
 async function carregarResumoNotificacoes(usuarioId) {
   await gerarComThrottle();
+  const dataLimiteVisibilidade = getDataLimiteVisibilidadeVoluntario();
 
   const [notificacoes, naoVisualizadas] = await Promise.all([
     prisma.notificacao.findMany({
-      where: { usuarioId },
+      where: {
+        usuarioId,
+        visualizada: false,
+        criadoEm: {
+          gte: dataLimiteVisibilidade,
+        },
+      },
       take: 30,
       orderBy: { criadoEm: 'desc' },
     }),
@@ -111,6 +125,9 @@ async function carregarResumoNotificacoes(usuarioId) {
       where: {
         usuarioId,
         visualizada: false,
+        criadoEm: {
+          gte: dataLimiteVisibilidade,
+        },
       },
     }),
   ]);

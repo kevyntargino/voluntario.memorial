@@ -78,7 +78,7 @@ test('o enum TipoNotificacao cobre todos os tipos emitidos pelo serviço', () =>
 
   // Todos os `tipo` usados em services/notificacoes.service.js precisam existir no enum,
   // senão o prisma.notificacao.create falha em produção (ex.: ORDEM_CULTO).
-  const tiposEmitidos = ['CONFIRMACAO_ESCALA', 'AVISO', 'SUBSTITUTO', 'ALERTA_LIDER', 'ORDEM_CULTO'];
+  const tiposEmitidos = ['CONFIRMACAO_ESCALA', 'LEMBRETE_ESCALA', 'AVISO', 'SUBSTITUTO', 'ALERTA_LIDER', 'ORDEM_CULTO'];
 
   for (const tipo of tiposEmitidos) {
     assert.ok(valoresEnum.has(tipo), `TipoNotificacao não contém "${tipo}"`);
@@ -107,6 +107,56 @@ test('repete o pedido individual de confirmação 3 dias antes', async () => {
   assert.equal(prisma.criadas.length, 1);
   assert.equal(prisma.criadas[0].usuarioId, 'voluntario-1');
   assert.match(prisma.criadas[0].chave, /^confirmacao:3d:/);
+});
+
+test('lembra o voluntário 1 dia antes da escala', async () => {
+  const prisma = criarPrisma([criarParticipacao({ dataHora: '2026-07-17T18:00:00.000Z' })]);
+
+  const resultado = await gerarNotificacoesAutomaticas(
+    prisma,
+    new Date('2026-07-16T10:00:00.000Z'),
+  );
+
+  assert.equal(resultado.count, 1);
+  assert.equal(prisma.criadas[0].usuarioId, 'voluntario-1');
+  assert.equal(prisma.criadas[0].tipo, 'LEMBRETE_ESCALA');
+  assert.equal(prisma.criadas[0].titulo, 'Sua escala é amanhã');
+  assert.match(prisma.criadas[0].chave, /^lembrete-escala:1d:/);
+});
+
+test('lembra o voluntário confirmado 1 dia antes da escala', async () => {
+  const dataHora = '2026-07-17T18:00:00.000Z';
+  const prisma = criarPrisma([criarParticipacao({
+    status: 'CONFIRMADA',
+    dataHora,
+    dataOcorrenciaStatus: new Date(dataHora),
+  })]);
+
+  const resultado = await gerarNotificacoesAutomaticas(
+    prisma,
+    new Date('2026-07-16T10:00:00.000Z'),
+  );
+
+  assert.equal(resultado.count, 1);
+  assert.equal(prisma.criadas[0].tipo, 'LEMBRETE_ESCALA');
+  assert.match(prisma.criadas[0].mensagem, /Filmagem/);
+});
+
+test('não lembra quem pediu substituição 1 dia antes da escala', async () => {
+  const dataHora = '2026-07-17T18:00:00.000Z';
+  const prisma = criarPrisma([criarParticipacao({
+    status: 'PEDIU_SUBSTITUICAO',
+    dataHora,
+    dataOcorrenciaStatus: new Date(dataHora),
+  })]);
+
+  const resultado = await gerarNotificacoesAutomaticas(
+    prisma,
+    new Date('2026-07-16T10:00:00.000Z'),
+  );
+
+  assert.equal(resultado.count, 0);
+  assert.equal(prisma.criadas.length, 0);
 });
 
 test('agrupa pendências da mesma escala para o líder 4 dias antes', async () => {

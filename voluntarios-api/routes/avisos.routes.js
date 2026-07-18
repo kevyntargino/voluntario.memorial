@@ -14,6 +14,7 @@ const prisma = new PrismaClient({
 });
 
 const router = Router();
+const DIAS_VISIBILIDADE_VOLUNTARIO = 30;
 
 function getJwtSecret() {
   if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
@@ -74,6 +75,12 @@ function formatarAviso(aviso) {
     destinatarios: aviso.destinatarios?.map((item) => item.usuario) || [],
     criadoEm: aviso.criadoEm,
   };
+}
+
+function getDataLimiteVisibilidadeVoluntario(agora = new Date()) {
+  const limite = new Date(agora);
+  limite.setUTCDate(limite.getUTCDate() - DIAS_VISIBILIDADE_VOLUNTARIO);
+  return limite;
 }
 
 async function carregarDestinatarios({ publico, equipeIds = [], usuarioIds = [] }) {
@@ -144,6 +151,7 @@ async function carregarDestinatarios({ publico, equipeIds = [], usuarioIds = [] 
 router.get('/', autenticar, async (req, res) => {
   try {
     const incluirVisualizados = ['todos', 'true', '1'].includes(String(req.query.visualizados || '').toLowerCase());
+    const dataLimiteVisibilidade = getDataLimiteVisibilidadeVoluntario();
     const usuario = await prisma.usuario.findUnique({
       where: {
         id: req.usuarioAutenticado.id,
@@ -186,6 +194,9 @@ router.get('/', autenticar, async (req, res) => {
     };
     const whereBase = {
       oculto: false,
+      dataAviso: {
+        gte: dataLimiteVisibilidade,
+      },
       ...filtroDestinatario,
     };
     const [avisos, totalNaoVisualizados] = await Promise.all([
@@ -257,6 +268,9 @@ router.patch('/:id/visualizar', autenticar, async (req, res) => {
       where: {
         id: req.params.id,
         oculto: false,
+        dataAviso: {
+          gte: getDataLimiteVisibilidadeVoluntario(),
+        },
         OR: [
           { tipo: 'GLOBAL' },
           {
