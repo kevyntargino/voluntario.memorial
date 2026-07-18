@@ -1,13 +1,24 @@
 import React, { useEffect, useState } from 'react';
-import { Mail, Lock, Eye, EyeOff, ArrowRight, Loader2 } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, ArrowRight, Loader2, Smartphone } from 'lucide-react';
 import { Footer } from '../components/Footer';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
 import { buildApiUrl } from '../lib/api';
+import { formatarTelefoneBrasilLogin, normalizarTelefoneBrasilParaLogin } from '../lib/telefone';
 import logo from '../assets/ico.png';
 
+function detectarModoLogin(valor) {
+  const texto = String(valor || '');
+
+  if (!texto.trim()) {
+    return 'email';
+  }
+
+  return /[a-zA-Z@]/.test(texto) ? 'email' : 'telefone';
+}
+
 export default function Login() {
-  const [email, setEmail] = useState('');
+  const [identificador, setIdentificador] = useState('');
   const [senha, setSenha] = useState('');
   const [mostrarSenha, setMostrarSenha] = useState(false);
   const [ajudaSenha, setAjudaSenha] = useState(false);
@@ -24,13 +35,25 @@ export default function Login() {
     }
   }, [isAuthenticated, navigate]);
 
+  const modoLogin = detectarModoLogin(identificador);
+  const IconeIdentificador = modoLogin === 'telefone' ? Smartphone : Mail;
+
+  const alterarIdentificador = (valor) => {
+    const proximoModo = detectarModoLogin(valor);
+    setIdentificador(proximoModo === 'telefone' ? formatarTelefoneBrasilLogin(valor) : valor);
+  };
+
   const handleLogin = async (e) => {
     e.preventDefault();
     setErro(''); // Limpa erros anteriores
-    
+
+    const identificadorNormalizado = modoLogin === 'telefone'
+      ? normalizarTelefoneBrasilParaLogin(identificador)
+      : identificador.trim().toLowerCase();
+
     // Validação inicial no frontend (evita chamadas desnecessárias à API)
-    if (!email || !senha) {
-      setErro('Por favor, preencha e-mail e senha.');
+    if (!identificadorNormalizado || !senha) {
+      setErro('Por favor, preencha e-mail/celular e senha.');
       return;
     }
     
@@ -44,7 +67,7 @@ export default function Login() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ email, senha }), // Envia os dados exigidos pelo backend
+        body: JSON.stringify({ identificador: identificadorNormalizado, senha }),
       });
 
       const dados = await resposta.json();
@@ -95,26 +118,26 @@ export default function Login() {
               </div>
             )}
 
-            {/* Campo E-mail */}
+            {/* Campo E-mail/Celular */}
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-                E-mail
+              <label htmlFor="identificador" className="block text-sm font-medium text-gray-700 mb-1">
+                E-mail ou celular
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Mail className="h-5 w-5 text-gray-400" />
+                  <IconeIdentificador className="h-5 w-5 text-gray-400" />
                 </div>
                 <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  inputMode="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  id="identificador"
+                  name="identificador"
+                  type="text"
+                  autoComplete={modoLogin === 'telefone' ? 'tel-national' : 'email'}
+                  inputMode={modoLogin === 'telefone' ? 'tel' : 'email'}
+                  value={identificador}
+                  onChange={(e) => alterarIdentificador(e.target.value)}
                   disabled={carregando}
                   className="block w-full rounded-md border border-gray-300 bg-white py-2.5 pl-10 pr-3 placeholder-gray-400 transition disabled:opacity-50 dark:border-gray-700 dark:bg-gray-950 sm:text-sm"
-                  placeholder="seu@email.com"
+                  placeholder={modoLogin === 'telefone' ? '(67) 99999-0000' : 'seu@email.com'}
                 />
               </div>
             </div>

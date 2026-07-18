@@ -18,6 +18,7 @@ const sexoOptions = [
 function createFormState(usuario) {
   return {
     nomeCompleto: usuario?.nomeCompleto || '',
+    email: usuario?.email || '',
     telefone: usuario?.telefone || '',
     dataNascimento: usuario?.dataNascimento || '',
     sexo: usuario?.sexo || '',
@@ -114,6 +115,11 @@ export default function Perfil() {
 
     if (form.nomeCompleto.trim().length < 3) {
       setErro('Informe seu nome completo.');
+      return;
+    }
+
+    if (!form.email.trim() || !form.email.includes('@')) {
+      setErro('Informe um e-mail válido.');
       return;
     }
 
@@ -357,9 +363,12 @@ export default function Perfil() {
                   <label className="block">
                     <span className="text-sm font-semibold text-gray-700">E-mail</span>
                     <input
-                      value={usuario?.email || ''}
-                      disabled
-                      className="mt-2 block w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-500 outline-none"
+                      type="email"
+                      name="email"
+                      value={form.email}
+                      onChange={handleChange}
+                      className="mt-2 block w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
+                      placeholder="seu@email.com"
                     />
                   </label>
 

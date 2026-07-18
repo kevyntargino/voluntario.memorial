@@ -96,6 +96,14 @@ function gerarSenhaTemporaria(nomeCompleto) {
   return `${primeiroNome.toLowerCase()}123`;
 }
 
+function normalizarEmail(valor) {
+  return typeof valor === 'string' ? valor.trim().toLowerCase() : '';
+}
+
+function emailValido(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
 function getHorarioBase(dataHora) {
   const data = dataHora ? new Date(dataHora) : null;
 
@@ -390,11 +398,15 @@ router.post('/:equipeId/voluntarios', autenticar, async (req, res) => {
     }
 
     const { nomeCompleto, email, telefone } = req.body ?? {};
-    const emailNormalizado = typeof email === 'string' ? email.trim().toLowerCase() : '';
+    const emailNormalizado = normalizarEmail(email);
     const nomeLimpo = typeof nomeCompleto === 'string' ? nomeCompleto.trim() : '';
 
     if (nomeLimpo.length < 3 || !emailNormalizado) {
       return res.status(400).json({ erro: 'Nome completo e e-mail são obrigatórios.' });
+    }
+
+    if (!emailValido(emailNormalizado)) {
+      return res.status(400).json({ erro: 'Informe um e-mail válido.' });
     }
 
     const senhaTemporaria = gerarSenhaTemporaria(nomeLimpo);

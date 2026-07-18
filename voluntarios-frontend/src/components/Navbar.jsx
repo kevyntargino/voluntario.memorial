@@ -17,6 +17,7 @@ const sexoOptions = [
 function criarFormUsuario(usuario) {
   return {
     nomeCompleto: usuario?.nomeCompleto || '',
+    email: usuario?.email || '',
     telefone: usuario?.telefone || '',
     dataNascimento: usuario?.dataNascimento || '',
     sexo: usuario?.sexo || '',
@@ -342,6 +343,11 @@ export default function Navbar() {
 
     if (formPerfil.nomeCompleto.trim().length < 3) {
       setErroPerfil('Informe seu nome completo.');
+      return;
+    }
+
+    if (!formPerfil.email.trim() || !formPerfil.email.includes('@')) {
+      setErroPerfil('Informe um e-mail válido.');
       return;
     }
 
@@ -826,7 +832,7 @@ export default function Navbar() {
 
                   <div className="grid gap-3 sm:grid-cols-2">
                     <CampoPerfil label="Nome completo" value={formPerfil.nomeCompleto} onChange={(value) => setFormPerfil((atual) => ({ ...atual, nomeCompleto: value }))} />
-                    <CampoPerfil label="E-mail" disabled value={usuario?.email || ''} onChange={() => {}} />
+                    <CampoPerfil label="E-mail" type="email" value={formPerfil.email} onChange={(value) => setFormPerfil((atual) => ({ ...atual, email: value }))} />
                     <PhoneInput value={formPerfil.telefone} onChange={(telefone) => setFormPerfil((atual) => ({ ...atual, telefone }))} />
                     <CampoPerfil label="Data de nascimento" type="date" value={formPerfil.dataNascimento} onChange={(value) => setFormPerfil((atual) => ({ ...atual, dataNascimento: value }))} />
                     <label className="block">

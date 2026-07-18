@@ -65,6 +65,14 @@ function gerarSenhaTemporaria(nomeCompleto) {
   return `${primeiroNome.toLowerCase()}123`;
 }
 
+function normalizarEmail(valor) {
+  return typeof valor === 'string' ? valor.trim().toLowerCase() : '';
+}
+
+function emailValido(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
 function formatarUsuario(usuario) {
   return {
     id: usuario.id,
@@ -419,12 +427,25 @@ router.delete('/equipes/:id', autenticar, exigirAdmin, async (req, res) => {
 router.post('/usuarios', autenticar, exigirAdmin, async (req, res) => {
   try {
     const { nomeCompleto, email, telefone, equipeIds = [] } = req.body ?? {};
-    const emailNormalizado = typeof email === 'string' ? email.trim().toLowerCase() : '';
+    const emailNormalizado = normalizarEmail(email);
     const equipeIdsValidos = Array.isArray(equipeIds) ? Array.from(new Set(equipeIds)) : [];
     const nomeLimpo = typeof nomeCompleto === 'string' ? nomeCompleto.trim() : '';
 
     if (nomeLimpo.length < 3 || !emailNormalizado) {
       return res.status(400).json({ erro: 'Nome completo e e-mail são obrigatórios.' });
+    }
+
+    if (!emailValido(emailNormalizado)) {
+      return res.status(400).json({ erro: 'Informe um e-mail válido.' });
+    }
+
+    const emailEmUso = await prisma.usuario.findUnique({
+      where: { email: emailNormalizado },
+      select: { id: true },
+    });
+
+    if (emailEmUso) {
+      return res.status(409).json({ erro: 'Já existe um usuário com esse e-mail.' });
     }
 
     if (equipeIdsValidos.length > 0) {
@@ -487,7 +508,9 @@ router.post('/usuarios', autenticar, exigirAdmin, async (req, res) => {
 
 router.patch('/usuarios/:id', autenticar, exigirAdmin, async (req, res) => {
   try {
-    const { nomeCompleto, telefone, permissoes = [], equipeIds = [], liderEquipeIds = [] } = req.body ?? {};
+    const { nomeCompleto, email, telefone, permissoes = [], equipeIds = [], liderEquipeIds = [] } = req.body ?? {};
+    const emailFoiEnviado = Object.prototype.hasOwnProperty.call(req.body ?? {}, 'email');
+    const emailNormalizado = emailFoiEnviado ? normalizarEmail(email) : '';
     const permissoesPermitidas = ['ADMINISTRADOR', 'LIDER_EQUIPE', 'VOLUNTARIO'];
     const liderEquipeIdsValidos = Array.isArray(liderEquipeIds) ? Array.from(new Set(liderEquipeIds)) : [];
     const permissoesValidas = Array.from(new Set([
@@ -499,8 +522,26 @@ router.patch('/usuarios/:id', autenticar, exigirAdmin, async (req, res) => {
       return res.status(400).json({ erro: 'Nome completo é obrigatório.' });
     }
 
+    if (emailFoiEnviado && (!emailNormalizado || !emailValido(emailNormalizado))) {
+      return res.status(400).json({ erro: 'Informe um e-mail válido.' });
+    }
+
     if (permissoesValidas.length === 0) {
       return res.status(400).json({ erro: 'Selecione pelo menos uma permissão.' });
+    }
+
+    if (emailFoiEnviado) {
+      const emailEmUso = await prisma.usuario.findFirst({
+        where: {
+          email: emailNormalizado,
+          NOT: { id: req.params.id },
+        },
+        select: { id: true },
+      });
+
+      if (emailEmUso) {
+        return res.status(409).json({ erro: 'Já existe um usuário com esse e-mail.' });
+      }
     }
 
     const usuario = await prisma.usuario.update({
@@ -509,6 +550,7 @@ router.patch('/usuarios/:id', autenticar, exigirAdmin, async (req, res) => {
       },
       data: {
         nomeCompleto: nomeCompleto.trim(),
+        ...(emailFoiEnviado ? { email: emailNormalizado } : {}),
         telefone: normalizarTelefone(telefone),
         permissoes: permissoesValidas,
         equipes: {
@@ -541,6 +583,10 @@ router.patch('/usuarios/:id', autenticar, exigirAdmin, async (req, res) => {
   } catch (erro) {
     if (erro.code === 'P2025') {
       return res.status(404).json({ erro: 'Usuário não encontrado.' });
+    }
+
+    if (erro.code === 'P2002') {
+      return res.status(409).json({ erro: 'Já existe um usuário com esse e-mail.' });
     }
 
     console.error('[ERRO LOG] PATCH /api/admin/usuarios/:id:', erro);

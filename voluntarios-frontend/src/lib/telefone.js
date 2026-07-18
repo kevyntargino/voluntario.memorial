@@ -88,3 +88,28 @@ export function formatarTelefoneExibicao(valor) {
   const { ddi, numero } = separarTelefone(valor);
   return `+${ddi} ${formatarNumeroTelefone(numero, ddi)}`.trim();
 }
+
+export function normalizarTelefoneBrasilParaLogin(valor) {
+  const digitos = somenteDigitos(valor).slice(0, 13);
+
+  if (!digitos) return '';
+
+  if ((digitos.length === 12 || digitos.length === 13) && digitos.startsWith('55')) {
+    return digitos;
+  }
+
+  if (digitos.length === 10 || digitos.length === 11) {
+    return `55${digitos}`;
+  }
+
+  return '';
+}
+
+export function formatarTelefoneBrasilLogin(valor) {
+  const digitos = somenteDigitos(valor).slice(0, 13);
+  const numeroNacional = digitos.startsWith('55') && digitos.length > 11
+    ? digitos.slice(2)
+    : digitos;
+
+  return formatarNumeroTelefone(numeroNacional.slice(0, 11), '55');
+}

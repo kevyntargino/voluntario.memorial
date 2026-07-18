@@ -235,6 +235,7 @@ function agoraComoDataHoraInput() {
 function criarFormUsuario(usuario) {
   return {
     nomeCompleto: usuario.nomeCompleto || '',
+    email: usuario.email || '',
     telefone: usuario.telefone || '',
     permissoes: usuario.permissoes || ['VOLUNTARIO'],
     equipeIds: usuario.equipes?.map((equipe) => equipe.id) || [],
@@ -683,6 +684,7 @@ export default function AdminEscalas() {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           nomeCompleto: usuarioAtual.nomeCompleto,
+          email: usuarioAtual.email || '',
           telefone: usuarioAtual.telefone || '',
           permissoes: Array.from(permissoesBase),
           equipeIds: proximosEquipeIds,
@@ -1788,6 +1790,7 @@ function PainelUsuarios({
                 <div className="mt-4 grid gap-4 rounded-xl border border-gray-200 bg-gray-50 p-4 xl:grid-cols-[1fr_1fr_auto]">
                   <div className="grid gap-3 sm:grid-cols-2">
                     <Campo label="Nome" value={form.nomeCompleto} onChange={(value) => onAlterar(usuario.id, 'nomeCompleto', value)} />
+                    <Campo label="E-mail" type="email" value={form.email} onChange={(value) => onAlterar(usuario.id, 'email', value)} />
                     <PhoneInput value={form.telefone} onChange={(telefone) => onAlterar(usuario.id, 'telefone', telefone)} />
                   </div>
                   <div className="grid gap-3">

@@ -5,7 +5,7 @@ import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
-import { normalizarTelefone } from '../utils/telefone.js';
+import { normalizarTelefone, normalizarTelefoneBrasilParaLogin } from '../utils/telefone.js';
 import { apagarObjetoStorage } from '../utils/storage.js';
 
 const pool = new Pool({
@@ -80,6 +80,42 @@ function sanitizeUsuario(usuario, req = null) {
     sexo: usuario.sexo,
     permissoes: usuario.permissoes,
   };
+}
+
+function normalizarEmail(valor) {
+  return typeof valor === 'string' ? valor.trim().toLowerCase() : '';
+}
+
+function emailValido(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function isLoginPorEmail(valor) {
+  return /[a-zA-Z@]/.test(String(valor || ''));
+}
+
+const selectUsuarioLogin = {
+  id: true,
+  nomeCompleto: true,
+  email: true,
+  telefone: true,
+  dataNascimento: true,
+  sexo: true,
+  senhaHash: true,
+  permissoes: true,
+  urlFoto: true,
+};
+
+async function encontrarUsuarioComSenhaValida(candidatos, senha) {
+  for (const candidato of candidatos) {
+    const senhaValida = await bcrypt.compare(String(senha), candidato.senhaHash);
+
+    if (senhaValida) {
+      return candidato;
+    }
+  }
+
+  return null;
 }
 
 function getR2Config() {
@@ -208,40 +244,31 @@ async function autenticar(req, res, next) {
 
 router.post('/login', async (req, res) => {
   try {
-    const { email, senha } = req.body ?? {};
-    const emailNormalizado = typeof email === 'string' ? email.trim().toLowerCase() : '';
+    const { identificador, email, senha } = req.body ?? {};
+    const identificadorInformado = typeof identificador === 'string' ? identificador : email;
+    const loginInformado = typeof identificadorInformado === 'string' ? identificadorInformado.trim() : '';
 
     // 1. Validação de dados de entrada
-    if (!emailNormalizado || !senha) {
-      return res.status(400).json({ erro: 'E-mail e senha são obrigatórios.' });
+    if (!loginInformado || !senha) {
+      return res.status(400).json({ erro: 'E-mail/celular e senha são obrigatórios.' });
     }
 
-    // 2. Busca do usuário pelo e-mail (garantindo normalização)
-    const usuario = await prisma.usuario.findUnique({
-      where: { email: emailNormalizado },
-      select: {
-        id: true,
-        nomeCompleto: true,
-        email: true,
-        telefone: true,
-        dataNascimento: true,
-        sexo: true,
-        senhaHash: true,
-        permissoes: true,
-        urlFoto: true,
-      }
-    });
+    const loginPorEmail = isLoginPorEmail(loginInformado);
+    const candidatos = loginPorEmail
+      ? await prisma.usuario.findUnique({
+        where: { email: normalizarEmail(loginInformado) },
+        select: selectUsuarioLogin,
+      }).then((usuario) => (usuario ? [usuario] : []))
+      : await prisma.usuario.findMany({
+        where: { telefone: normalizarTelefoneBrasilParaLogin(loginInformado) || '__telefone_invalido__' },
+        select: selectUsuarioLogin,
+      });
 
     // 3. Segurança contra enumeração de usuários
+    const usuario = await encontrarUsuarioComSenhaValida(candidatos, senha);
+
     if (!usuario) {
-      return res.status(401).json({ erro: 'E-mail ou senha incorretos.' });
-    }
-
-    // 4. Verificação criptográfica da senha
-    const senhaValida = await bcrypt.compare(String(senha), usuario.senhaHash);
-
-    if (!senhaValida) {
-      return res.status(401).json({ erro: 'E-mail ou senha incorretos.' });
+      return res.status(401).json({ erro: 'E-mail/celular ou senha incorretos.' });
     }
 
     // 5. Geração do Token JWT (Sessão)
@@ -257,7 +284,7 @@ router.post('/login', async (req, res) => {
     await prisma.logAuditoria.create({
       data: {
         acao: 'LOGIN',
-        descricao: 'Usuário autenticado via e-mail e senha.',
+        descricao: `Usuário autenticado via ${loginPorEmail ? 'e-mail' : 'celular'} e senha.`,
         usuarioId: usuario.id,
         ipOrigem: req.headers['x-forwarded-for']?.toString().split(',')[0]?.trim() || req.socket.remoteAddress || null,
       }
@@ -449,20 +476,41 @@ router.patch('/me', autenticar, async (req, res) => {
   try {
     const {
       nomeCompleto,
+      email,
       telefone,
       urlFoto,
       dataNascimento,
       sexo,
     } = req.body ?? {};
+    const emailFoiEnviado = Object.prototype.hasOwnProperty.call(req.body ?? {}, 'email');
+    const emailNormalizado = emailFoiEnviado ? normalizarEmail(email) : '';
 
     if (typeof nomeCompleto !== 'string' || nomeCompleto.trim().length < 3) {
       return res.status(400).json({ erro: 'Nome completo deve ter pelo menos 3 caracteres.' });
+    }
+
+    if (emailFoiEnviado && (!emailNormalizado || !emailValido(emailNormalizado))) {
+      return res.status(400).json({ erro: 'Informe um e-mail válido.' });
     }
 
     const sexosPermitidos = ['MASCULINO', 'FEMININO'];
 
     if (sexo && !sexosPermitidos.includes(sexo)) {
       return res.status(400).json({ erro: 'Sexo informado é inválido.' });
+    }
+
+    if (emailFoiEnviado) {
+      const emailEmUso = await prisma.usuario.findFirst({
+        where: {
+          email: emailNormalizado,
+          NOT: { id: req.usuarioAutenticado.id },
+        },
+        select: { id: true },
+      });
+
+      if (emailEmUso) {
+        return res.status(409).json({ erro: 'Já existe um usuário com esse e-mail.' });
+      }
     }
 
     const usuarioAtual = await prisma.usuario.findUnique({
@@ -477,6 +525,7 @@ router.patch('/me', autenticar, async (req, res) => {
       where: { id: req.usuarioAutenticado.id },
       data: {
         nomeCompleto: nomeCompleto.trim(),
+        ...(emailFoiEnviado ? { email: emailNormalizado } : {}),
         telefone: normalizarTelefone(telefone),
         urlFoto: proximaUrlFoto,
         dataNascimento: dataNascimento ? new Date(`${dataNascimento}T00:00:00.000Z`) : null,
@@ -508,6 +557,10 @@ router.patch('/me', autenticar, async (req, res) => {
       usuario: sanitizeUsuario(usuario, req),
     });
   } catch (erro) {
+    if (erro.code === 'P2002') {
+      return res.status(409).json({ erro: 'Já existe um usuário com esse e-mail.' });
+    }
+
     console.error('[ERRO LOG] PATCH /me:', erro);
     return res.status(500).json({ erro: 'Erro interno no servidor. Tente novamente mais tarde.' });
   }
