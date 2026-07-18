@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BadgeCheck, Bell, BookOpen, CalendarDays, Camera, CheckCheck, Home, Image as ImageIcon, Loader2, LogOut, Pencil, Save, Settings, ShieldCheck, Trash2, User, Users, X } from 'lucide-react';
+import { BadgeCheck, Bell, BookOpen, CalendarDays, Camera, CheckCheck, Home, Image as ImageIcon, LayoutDashboard, Loader2, LogOut, Megaphone, Pencil, Save, Settings, ShieldCheck, Trash2, User, Users, UsersRound, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
 import { buildApiUrl } from '../lib/api';
 import { uploadFotoUsuario } from '../lib/uploadFoto';
 import { formatarTelefoneExibicao } from '../lib/telefone';
 import { PhoneInput } from './PhoneInput';
+import { DesktopNavigationGroup } from './navigation/DesktopNavigationGroup';
 import logo from '../assets/ico.png';
 
 const sexoOptions = [
@@ -77,12 +78,43 @@ export default function Navbar() {
   const usuarioAvatarUrl = usuario?.urlFoto || formPerfil.urlFoto || '';
   const podeVerEquipe = Boolean(usuario);
   const isAdmin = usuario?.permissoes?.includes('ADMINISTRADOR');
+  const isLiderEquipe = usuario?.permissoes?.includes('LIDER_EQUIPE');
+  const [gruposAbertos, setGruposAbertos] = useState(() => ({
+    equipe: pathname.startsWith('/minha-equipe'),
+    admin: pathname.startsWith('/admin'),
+  }));
   const itensNavegacao = [
     { label: 'Início', path: '/', icon: Home },
     { label: 'Escalas', path: '/escalas', icon: CalendarDays },
     { label: 'Manuais', path: '/manuais', icon: BookOpen },
-    ...(podeVerEquipe ? [{ label: 'Equipe', path: '/minha-equipe', icon: Users }] : []),
-    ...(isAdmin ? [{ label: 'Admin', path: '/admin', icon: ShieldCheck }] : []),
+    ...(podeVerEquipe && !isLiderEquipe ? [{ label: 'Equipe', path: '/minha-equipe', icon: Users }] : []),
+  ];
+  const gruposNavegacao = [
+    ...(isLiderEquipe ? [{
+      id: 'equipe',
+      label: 'Equipe',
+      path: '/minha-equipe',
+      icon: Users,
+      itens: [
+        { label: 'Dashboard da equipe', path: '/minha-equipe', icon: LayoutDashboard },
+        { label: 'Voluntários', path: '/minha-equipe/voluntarios', icon: UsersRound },
+        { label: 'Escalas da equipe', path: '/minha-equipe/escalas', icon: CalendarDays },
+      ],
+    }] : []),
+    ...(isAdmin ? [{
+      id: 'admin',
+      label: 'Admin',
+      path: '/admin',
+      icon: ShieldCheck,
+      itens: [
+        { label: 'Dashboard', path: '/admin', icon: LayoutDashboard },
+        { label: 'Ver voluntários', path: '/admin/voluntarios', icon: UsersRound },
+        { label: 'Ver equipes', path: '/admin/equipes', icon: Users },
+        { label: 'Enviar notificação', path: '/admin/notificacoes', icon: Megaphone },
+        { label: 'Gerenciar escalas', path: '/admin/escalas', icon: CalendarDays },
+        { label: 'Gerenciar manuais', path: '/admin/manuais', icon: BookOpen },
+      ],
+    }] : []),
   ];
   const avisosRepresentadosPorNotificacao = useMemo(() => new Set(
     notificacoes
@@ -141,6 +173,15 @@ export default function Navbar() {
   useEffect(() => {
     setFormPerfil(criarFormUsuario(usuario));
   }, [usuario]);
+
+  useEffect(() => {
+    if (pathname.startsWith('/admin')) {
+      setGruposAbertos((atual) => ({ ...atual, admin: true }));
+    }
+    if (pathname.startsWith('/minha-equipe')) {
+      setGruposAbertos((atual) => ({ ...atual, equipe: true }));
+    }
+  }, [pathname]);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', tema === 'escuro');
@@ -587,6 +628,16 @@ export default function Navbar() {
               </button>
             );
           })}
+          {gruposNavegacao.map((grupo) => (
+            <DesktopNavigationGroup
+              key={grupo.id}
+              grupo={grupo}
+              pathname={pathname}
+              aberto={Boolean(gruposAbertos[grupo.id])}
+              onToggle={() => setGruposAbertos((atual) => ({ ...atual, [grupo.id]: !atual[grupo.id] }))}
+              onNavigate={irPara}
+            />
+          ))}
         </nav>
 
         <div className="space-y-2 border-t border-gray-200 pt-4 dark:border-gray-800">

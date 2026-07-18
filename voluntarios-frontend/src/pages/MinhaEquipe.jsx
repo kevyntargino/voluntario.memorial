@@ -134,7 +134,7 @@ function formatarOpcaoEscala(escala) {
   return `${titulo} - ${formatarData(escala.dataHora)}`;
 }
 
-export default function MinhaEquipe() {
+export default function MinhaEquipe({ pagina = 'dashboard' }) {
   const { token, logout } = useAuth();
   const { navigate, search } = useNavigation();
   const parametros = new URLSearchParams(search || '');
@@ -663,6 +663,17 @@ export default function MinhaEquipe() {
       && escala.voluntarios.length === 0
     ));
   }, [equipeSelecionada]);
+  const proximaEscalaEquipe = useMemo(() => (
+    (equipeSelecionada?.escalas || [])
+      .filter((escala) => new Date(escala.dataHora).getTime() >= Date.now())
+      .sort((a, b) => new Date(a.dataHora).getTime() - new Date(b.dataHora).getTime())[0] || null
+  ), [equipeSelecionada]);
+  const titulosPagina = {
+    dashboard: ['Dashboard da equipe', 'Acompanhe as informações da equipe, solicitações pendentes e a próxima escala.'],
+    voluntarios: ['Voluntários da equipe', 'Consulte e gerencie os voluntários vinculados à equipe selecionada.'],
+    escalas: ['Escalas da equipe', 'Consulte as escalas e atribua os voluntários responsáveis por cada participação.'],
+  };
+  const [tituloPagina, descricaoPagina] = titulosPagina[pagina] || titulosPagina.dashboard;
 
   return (
     <div className="flex min-h-screen flex-col bg-[#f7f4ed] text-gray-900">
@@ -675,11 +686,9 @@ export default function MinhaEquipe() {
               <p className="text-sm font-semibold uppercase tracking-[0.2em] text-dourado-700">
                 {podeGerenciarEquipeSelecionada ? 'Liderança' : 'Equipe'}
               </p>
-              <h1 className="mt-2 text-3xl font-bold text-gray-950">Minha equipe</h1>
+              <h1 className="mt-2 text-3xl font-bold text-gray-950">{tituloPagina}</h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-600">
-                {podeGerenciarEquipeSelecionada
-                  ? 'Gerencie voluntários e escalas das equipes em que você atua como líder.'
-                  : 'Consulte os membros vinculados às equipes das quais você participa.'}
+                {descricaoPagina}
               </p>
             </div>
 
@@ -712,9 +721,31 @@ export default function MinhaEquipe() {
             Carregando equipe...
           </div>
         ) : equipeSelecionada ? (
-          <div className={`mt-5 grid gap-5 ${podeGerenciarEquipeSelecionada ? 'xl:grid-cols-[0.85fr_1.15fr]' : 'max-w-4xl'}`}>
+          <div className={`mt-5 grid gap-5 ${pagina === 'escalas' ? '' : 'max-w-5xl'}`}>
             <section className="space-y-5">
-              {podeGerenciarEquipeSelecionada && (
+              {pagina === 'dashboard' && (
+                <Painel titulo="Informações da equipe" icone={UsersRound}>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <ResumoEquipe label="Equipe" valor={equipeSelecionada.nome} />
+                    <ResumoEquipe label="Voluntários" valor={equipeSelecionada.voluntarios.length} />
+                    <ResumoEquipe label="Escalas cadastradas" valor={equipeSelecionada.escalas.length} />
+                  </div>
+                  <div className="mt-4 rounded-xl border border-dourado-200 bg-dourado-50 p-4">
+                    <p className="text-xs font-bold uppercase tracking-[0.14em] text-dourado-700">Próxima escala</p>
+                    {proximaEscalaEquipe ? (
+                      <div className="mt-2">
+                        <p className="text-lg font-bold text-gray-950">{proximaEscalaEquipe.titulo || 'Escala sem título'}</p>
+                        <p className="mt-1 text-sm text-gray-600">{formatarData(proximaEscalaEquipe.dataHora)}</p>
+                        {proximaEscalaEquipe.local && <p className="mt-1 text-sm text-gray-600">Local: {proximaEscalaEquipe.local}</p>}
+                      </div>
+                    ) : (
+                      <p className="mt-2 text-sm text-gray-600">Nenhuma próxima escala cadastrada.</p>
+                    )}
+                  </div>
+                </Painel>
+              )}
+
+              {pagina === 'dashboard' && podeGerenciarEquipeSelecionada && (
                 <>
                   <Painel
                     titulo="Solicitações de substituição"
@@ -830,6 +861,7 @@ export default function MinhaEquipe() {
                 </>
               )}
 
+              {pagina === 'voluntarios' && (
               <Painel titulo="Voluntários" icone={UsersRound}>
                 <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
@@ -908,10 +940,11 @@ export default function MinhaEquipe() {
                   ))}
                 </div>
               </Painel>
+              )}
 
             </section>
 
-            {podeGerenciarEquipeSelecionada && (
+            {pagina === 'escalas' && podeGerenciarEquipeSelecionada && (
             <section className="space-y-5">
               <Painel titulo="Escalas da equipe" icone={CalendarPlus}>
                 <div className="space-y-4">
@@ -1218,6 +1251,11 @@ export default function MinhaEquipe() {
               </Painel>
             </section>
             )}
+            {pagina === 'escalas' && !podeGerenciarEquipeSelecionada && (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm font-semibold text-amber-800">
+                A gestão das escalas da equipe é restrita aos líderes responsáveis.
+              </div>
+            )}
           </div>
         ) : (
           <div className="mt-5 rounded-2xl border border-gray-200 bg-white px-6 py-10 text-gray-500">
@@ -1266,6 +1304,15 @@ function Painel({ titulo, icone: Icon, badge, children }) {
       </div>
       <div className="p-5">{children}</div>
     </section>
+  );
+}
+
+function ResumoEquipe({ label, valor }) {
+  return (
+    <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+      <p className="text-xs font-bold uppercase tracking-[0.14em] text-gray-400">{label}</p>
+      <p className="mt-2 break-words text-xl font-bold text-gray-950">{valor}</p>
+    </div>
   );
 }
 

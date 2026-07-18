@@ -345,7 +345,7 @@ async function prepararArquivoManual(file) {
   });
 }
 
-export default function AdminEscalas() {
+export default function AdminEscalas({ painel: painelDaPagina }) {
   const { token, usuario, logout } = useAuth();
   const { navigate, pathname } = useNavigation();
   const [dashboard, setDashboard] = useState(null);
@@ -361,6 +361,7 @@ export default function AdminEscalas() {
   const [manuais, setManuais] = useState([]);
   const [formManual, setFormManual] = useState(formManualInicial);
   const getPainelPelaRota = useCallback(() => {
+    if (painelDaPagina) return painelDaPagina;
     if (pathname === '/admin/voluntarios') return 'voluntarios';
     if (pathname === '/admin/lideres') return 'lideres';
     if (pathname === '/admin/equipes') return 'equipes';
@@ -369,7 +370,7 @@ export default function AdminEscalas() {
     if (pathname === '/admin/manuais') return 'manuais';
     if (pathname === '/admin/ausencias') return 'ausencias';
     return 'visao';
-  }, [pathname]);
+  }, [painelDaPagina, pathname]);
   const [painelAberto, setPainelAberto] = useState(() => getPainelPelaRota());
   const [erro, setErro] = useState('');
   const [sucesso, setSucesso] = useState('');
@@ -393,6 +394,17 @@ export default function AdminEscalas() {
   const [carregando, setCarregando] = useState(true);
   const [salvandoId, setSalvandoId] = useState(null);
   const isAdmin = usuario?.permissoes?.includes('ADMINISTRADOR');
+  const titulosPainel = {
+    visao: ['Dashboard administrativo', 'Acompanhe equipes, voluntários, ausências e as próximas escalas.'],
+    voluntarios: ['Voluntários', 'Cadastre voluntários, revise seus dados e gerencie os vínculos com equipes.'],
+    lideres: ['Líderes de equipe', 'Consulte e gerencie as lideranças responsáveis pelas equipes.'],
+    equipes: ['Equipes', 'Crie equipes e gerencie seus líderes e voluntários.'],
+    notificacao: ['Enviar notificação', 'Envie comunicados para todos, equipes específicas ou voluntários selecionados.'],
+    escalas: ['Gerenciar escalas', 'Crie, edite e acompanhe as escalas de todas as equipes.'],
+    manuais: ['Gerenciar manuais', 'Publique, atualize e organize os manuais dos voluntários.'],
+    ausencias: ['Ausências recentes', 'Acompanhe as ausências registradas nas últimas escalas.'],
+  };
+  const [tituloPainel, descricaoPainel] = titulosPainel[painelAberto] || titulosPainel.visao;
 
   const jaCarregouRef = useRef(false);
 
@@ -1370,9 +1382,9 @@ export default function AdminEscalas() {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="text-sm font-semibold uppercase tracking-[0.2em] text-dourado-700">Administração MCom</p>
-              <h1 className="mt-2 text-3xl font-bold text-gray-950">Dashboard administrativo</h1>
+              <h1 className="mt-2 text-3xl font-bold text-gray-950">{tituloPainel}</h1>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-600">
-                Acompanhe equipes, voluntários, ausências e gerencie acessos, escalas e notificações.
+                {descricaoPainel}
               </p>
             </div>
             <button onClick={() => abrirPainel('notificacao', '/admin/notificacoes')} className="inline-flex items-center gap-2 rounded-md bg-gray-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-gray-800">
@@ -1392,6 +1404,8 @@ export default function AdminEscalas() {
           </div>
         ) : (
           <>
+            {painelAberto === 'visao' && (
+            <>
             <section className="mt-5 grid gap-4 md:grid-cols-3">
               <Metrica
                 titulo="Total de voluntários"
@@ -1432,6 +1446,8 @@ export default function AdminEscalas() {
                 </div>
               </div>
             </section>
+            </>
+            )}
 
             {['voluntarios', 'lideres'].includes(painelAberto) && (
               <PainelUsuarios

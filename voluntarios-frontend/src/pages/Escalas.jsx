@@ -200,6 +200,10 @@ function contarVoluntariosUnicos(escalas) {
   return voluntarioIds.size;
 }
 
+function contarEventosUnicos(escalas) {
+  return new Set(escalas.map(getChaveEventoLista)).size;
+}
+
 function mesmaDataHora(dataA, dataB) {
   if (!dataA || !dataB) return false;
   const primeira = new Date(dataA);
@@ -621,6 +625,7 @@ export default function Escalas() {
     });
   }, [agoraEscalas, escalasPaginadas, escalasVisiveis]);
 
+  const totalEventos = useMemo(() => contarEventosUnicos(escalasVisiveis), [escalasVisiveis]);
   const totalVoluntarios = useMemo(() => contarVoluntariosUnicos(escalasVisiveis), [escalasVisiveis]);
   const ocorrenciasCalendario = useMemo(() => {
     const eventos = new Map();
@@ -750,7 +755,7 @@ export default function Escalas() {
 
             <div className="flex flex-col gap-4 sm:flex-row sm:items-end lg:justify-end">
               <div className="flex items-center divide-x divide-gray-200 dark:divide-gray-700">
-                <Resumo label="Escalas" value={escalasVisiveis.length} icon={CalendarDays} />
+                <Resumo label="Eventos" value={totalEventos} icon={CalendarDays} />
                 <Resumo label="Voluntários" value={totalVoluntarios} icon={UsersRound} />
               </div>
               <SeletorVisualizacao value={modoVisualizacao} onChange={setModoVisualizacao} />

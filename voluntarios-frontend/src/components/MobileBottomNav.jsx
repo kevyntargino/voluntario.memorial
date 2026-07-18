@@ -8,11 +8,14 @@ import {
   Clock3,
   Eye,
   Home,
+  LayoutDashboard,
   Loader2,
   MapPin,
+  Megaphone,
   MoreHorizontal,
   RefreshCcw,
   ShieldCheck,
+  Users,
   UsersRound,
   X,
 } from 'lucide-react';
@@ -260,6 +263,12 @@ function getDestinoEscala(escala) {
   return '/escalas';
 }
 
+function itemNavegacaoEstaAtivo(item, pathname) {
+  if (typeof item.ativo === 'boolean') return item.ativo;
+  if (item.exato || item.path === '/') return pathname === item.path;
+  return pathname.startsWith(item.path);
+}
+
 export function MobileBottomNav() {
   const { token, usuario, logout } = useAuth();
   const { pathname, search, navigate } = useNavigation();
@@ -278,7 +287,14 @@ export function MobileBottomNav() {
   const navRef = useRef(null);
   const deepLinkTratadoRef = useRef('');
   const isAdmin = usuario?.permissoes?.includes('ADMINISTRADOR');
-  const itensNavegacao = [
+  const isLiderEquipe = usuario?.permissoes?.includes('LIDER_EQUIPE');
+  const contextoAdmin = isAdmin && pathname.startsWith('/admin');
+  const contextoEquipe = isLiderEquipe && pathname.startsWith('/minha-equipe');
+  const parametrosEquipe = new URLSearchParams(search || '');
+  const escalaEquipeViaLink = pathname === '/minha-equipe'
+    && parametrosEquipe.has('escala')
+    && !parametrosEquipe.has('pedido');
+  const itensNavegacaoPrincipal = [
     { label: 'Início', path: '/', icon: Home },
     { label: 'Escalas', path: '/escalas', icon: CalendarDays },
     { key: 'proxima', label: 'Próxima', tipo: 'proxima' },
@@ -286,12 +302,41 @@ export function MobileBottomNav() {
     { label: 'Manuais', path: '/manuais', icon: BookOpen },
     ...(isAdmin ? [{ label: 'Admin', path: '/admin', icon: ShieldCheck }] : []),
   ];
+  const itensNavegacaoEquipe = [
+    { label: 'Principal', path: '/', icon: Home, exato: true },
+    {
+      label: 'Dashboard',
+      path: '/minha-equipe',
+      icon: LayoutDashboard,
+      ativo: pathname === '/minha-equipe' && !escalaEquipeViaLink,
+    },
+    { label: 'Voluntários', path: '/minha-equipe/voluntarios', icon: UsersRound, exato: true },
+    {
+      label: 'Escalas',
+      path: '/minha-equipe/escalas',
+      icon: CalendarDays,
+      ativo: pathname === '/minha-equipe/escalas' || escalaEquipeViaLink,
+    },
+  ];
+  const itensNavegacaoAdmin = [
+    { label: 'Principal', path: '/', icon: Home, exato: true },
+    { label: 'Dashboard', path: '/admin', icon: LayoutDashboard, exato: true },
+    { label: 'Voluntários', path: '/admin/voluntarios', icon: UsersRound, exato: true },
+    { label: 'Equipes', path: '/admin/equipes', icon: Users, exato: true },
+    { label: 'Notificar', path: '/admin/notificacoes', icon: Megaphone, exato: true },
+    { label: 'Escalas', path: '/admin/escalas', icon: CalendarDays, exato: true },
+    { label: 'Manuais', path: '/admin/manuais', icon: BookOpen, exato: true },
+  ];
+  const contextoAtivo = contextoAdmin ? 'admin' : contextoEquipe ? 'equipe' : 'principal';
+  const itensNavegacao = contextoAdmin
+    ? itensNavegacaoAdmin
+    : contextoEquipe
+      ? itensNavegacaoEquipe
+      : itensNavegacaoPrincipal;
   const temMenuMais = itensNavegacao.length > 5;
   const itensVisiveis = temMenuMais ? itensNavegacao.slice(0, 4) : itensNavegacao;
   const itensMenu = temMenuMais ? itensNavegacao.slice(4) : [];
-  const menuAtivo = itensMenu.some((item) => (
-    item.path === '/' ? pathname === '/' : pathname.startsWith(item.path)
-  ));
+  const menuAtivo = itensMenu.some((item) => itemNavegacaoEstaAtivo(item, pathname));
 
   const carregarProximaEscala = useCallback(async ({ abrirModal = true, participacaoId = '', dataOcorrencia = '' } = {}) => {
     if (!token) {
@@ -550,7 +595,18 @@ export function MobileBottomNav() {
 
   const renderItem = (item) => {
     const Icon = item.icon;
-    const ativo = item.path === '/' ? pathname === '/' : pathname.startsWith(item.path);
+    const ativo = itemNavegacaoEstaAtivo(item, pathname);
+    const classesContexto = contextoAtivo === 'admin'
+      ? ativo
+        ? 'text-white'
+        : 'text-gray-400 active:bg-white/10'
+      : contextoAtivo === 'equipe'
+        ? ativo
+          ? 'text-dourado-900 dark:text-dourado-100'
+          : 'text-dourado-700/70 active:bg-dourado-100 dark:text-dourado-300/70 dark:active:bg-dourado-900'
+        : ativo
+          ? 'text-gray-950 dark:text-white'
+          : 'text-gray-500 active:bg-gray-100 dark:text-gray-400 dark:active:bg-gray-900';
 
     return (
       <button
@@ -558,13 +614,9 @@ export function MobileBottomNav() {
         type="button"
         onClick={() => navegarPara(item.path)}
         aria-current={ativo ? 'page' : undefined}
-        className={`relative flex min-w-0 flex-col items-center justify-center gap-1 rounded-md px-1 py-2 text-[11px] font-semibold transition-colors ${
-          ativo
-            ? 'text-gray-950 dark:text-white'
-            : 'text-gray-500 active:bg-gray-100 dark:text-gray-400 dark:active:bg-gray-900'
-        }`}
+        className={`relative flex min-w-0 flex-col items-center justify-center gap-1 rounded-md px-1 py-2 text-[11px] font-semibold transition-colors ${classesContexto}`}
       >
-        {ativo && <span className="absolute top-1 h-1 w-1 rounded-full bg-dourado-600 dark:bg-dourado-300" />}
+        {ativo && <span className={`absolute top-1 h-1 w-1 rounded-full ${contextoAtivo === 'admin' ? 'bg-dourado-400' : 'bg-dourado-600 dark:bg-dourado-300'}`} />}
         <Icon size={21} strokeWidth={ativo ? 2.4 : 1.8} />
         <span className="truncate">{item.label}</span>
       </button>
@@ -610,14 +662,25 @@ export function MobileBottomNav() {
   return (
     <>
       <div className="h-[calc(5.75rem+env(safe-area-inset-bottom))] lg:hidden" aria-hidden="true" />
-      <nav ref={navRef} aria-label="Navegação principal" className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-1px_14px_rgba(15,23,42,0.08)] backdrop-blur-xl dark:border-gray-800 dark:bg-gray-950/95 lg:hidden">
+      <nav
+        ref={navRef}
+        aria-label={contextoAtivo === 'admin' ? 'Navegação administrativa' : contextoAtivo === 'equipe' ? 'Navegação da equipe' : 'Navegação principal'}
+        data-navigation-context={contextoAtivo}
+        className={`fixed inset-x-0 bottom-0 z-40 border-t pb-[env(safe-area-inset-bottom)] shadow-[0_-1px_14px_rgba(15,23,42,0.08)] backdrop-blur-xl lg:hidden ${
+          contextoAtivo === 'admin'
+            ? 'border-gray-800 bg-gray-950/95'
+            : contextoAtivo === 'equipe'
+              ? 'border-dourado-300 bg-dourado-50/95 dark:border-dourado-800 dark:bg-gray-950/95'
+              : 'border-gray-200 bg-white/95 dark:border-gray-800 dark:bg-gray-950/95'
+        }`}
+      >
         <div className="relative mx-auto max-w-md px-3">
           {temMenuMais && menuAberto && (
             <div role="menu" className="absolute bottom-[calc(100%+0.65rem)] right-3 w-56 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-2xl shadow-gray-950/10 dark:border-gray-800 dark:bg-gray-900">
               <div className="grid gap-1 p-2">
                 {itensMenu.map((item) => {
                   const Icon = item.icon;
-                  const ativo = item.path === '/' ? pathname === '/' : pathname.startsWith(item.path);
+                  const ativo = itemNavegacaoEstaAtivo(item, pathname);
 
                   return (
                     <button
@@ -652,9 +715,11 @@ export function MobileBottomNav() {
                 aria-expanded={menuAberto}
                 aria-haspopup="menu"
                 className={`relative flex min-w-0 flex-col items-center justify-center gap-1 rounded-md px-1 py-2 text-[11px] font-semibold transition-colors ${
-                  menuAtivo || menuAberto
-                    ? 'text-gray-950 dark:text-white'
-                    : 'text-gray-500 active:bg-gray-100 dark:text-gray-400 dark:active:bg-gray-900'
+                  contextoAtivo === 'admin'
+                    ? menuAtivo || menuAberto ? 'text-white' : 'text-gray-400 active:bg-white/10'
+                    : menuAtivo || menuAberto
+                      ? 'text-gray-950 dark:text-white'
+                      : 'text-gray-500 active:bg-gray-100 dark:text-gray-400 dark:active:bg-gray-900'
                 }`}
               >
                 {(menuAtivo || menuAberto) && <span className="absolute top-1 h-1 w-1 rounded-full bg-dourado-600 dark:bg-dourado-300" />}
