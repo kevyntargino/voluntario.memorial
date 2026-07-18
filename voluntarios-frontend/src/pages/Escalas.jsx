@@ -11,7 +11,6 @@ import {
   List,
   Loader2,
   MapPin,
-  Radio,
   RefreshCcw,
   Repeat2,
   Search,
@@ -658,6 +657,7 @@ export default function Escalas() {
         dataHora: data.toISOString(),
         local: escala.local,
         descricao: escala.descricao,
+        aoVivo: eventoEstaAoVivo(data, agoraEscalas),
         areas: [area],
       });
     });
@@ -673,7 +673,7 @@ export default function Escalas() {
         data: evento.data,
       }))
       .sort((a, b) => a.data.getTime() - b.data.getTime());
-  }, [escalasVisiveis, mesCalendario]);
+  }, [agoraEscalas, escalasVisiveis, mesCalendario]);
   const temFiltrosAtivos = filtroConfirmacoes
     || Boolean(participacaoSelecionadaId)
     || Boolean(eventoSelecionadoId)
@@ -1100,6 +1100,8 @@ function CalendarioEscalas({
                   <div className="mt-1 grid grid-cols-2 gap-0.5 sm:mt-2 sm:flex sm:flex-wrap">
                     {itens.slice(0, 4).map(({ evento, data }) => {
                       const titulo = `${evento.titulo} - ${formatarDataCompleta(data)} - ${evento.areas.length} função(ões)`;
+                      const eventoAoVivo = Boolean(evento.aoVivo);
+                      const classeCorEvento = evento.tipo === 'ESPORADICA' ? 'bg-amber-500' : 'bg-blue-600';
 
                       return (
                         <button
@@ -1110,7 +1112,12 @@ function CalendarioEscalas({
                           aria-label={titulo}
                           title={titulo}
                         >
-                          <span className={`h-2.5 w-2.5 rounded-full ring-2 ring-white dark:ring-gray-900 sm:h-3 sm:w-3 ${evento.tipo === 'ESPORADICA' ? 'bg-amber-500' : 'bg-blue-600'}`} />
+                          <span className="relative flex h-2.5 w-2.5 sm:h-3 sm:w-3">
+                            {eventoAoVivo && (
+                              <span className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-75 ${classeCorEvento}`} />
+                            )}
+                            <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ring-2 ring-white dark:ring-gray-900 sm:h-3 sm:w-3 ${classeCorEvento}`} />
+                          </span>
                         </button>
                       );
                     })}
