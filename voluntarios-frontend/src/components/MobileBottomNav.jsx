@@ -16,6 +16,7 @@ import {
   UsersRound,
   X,
 } from 'lucide-react';
+import { RecorrenciaBadge } from './RecorrenciaBadge';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
 import { buildApiUrl } from '../lib/api';
@@ -627,6 +628,7 @@ function ProximaEscalaModal({
           ) : (
             <>
               <div className="grid gap-3">
+                <RecorrenciaBadge escala={escala} />
                 <InfoLinha icon={CalendarDays} label="Data e horário" value={formatarData(escala.dataHora)} />
                 <InfoLinha icon={UsersRound} label="Função/equipe" value={escala.equipe?.nome || 'Equipe não informada'} />
                 <InfoLinha icon={escala.local ? MapPin : CalendarCheck2} label={escala.local ? 'Local' : 'Tipo'} value={escala.local || (escala.tipo === 'RECORRENTE' ? 'Evento recorrente' : 'Evento especial')} />

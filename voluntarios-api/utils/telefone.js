@@ -19,3 +19,35 @@ export function normalizarTelefoneBrasilParaLogin(valor) {
 
   return null;
 }
+
+export function getTelefonesBrasilParaLogin(valor) {
+  const digitos = normalizarTelefone(valor);
+
+  if (!digitos) {
+    return {
+      nacional: null,
+      comDdi: null,
+      candidatos: [],
+    };
+  }
+
+  const nacional = ((digitos.length === 12 || digitos.length === 13) && digitos.startsWith('55'))
+    ? digitos.slice(2)
+    : digitos;
+
+  if (![10, 11].includes(nacional.length)) {
+    return {
+      nacional: null,
+      comDdi: null,
+      candidatos: [],
+    };
+  }
+
+  const comDdi = `55${nacional}`;
+
+  return {
+    nacional,
+    comDdi,
+    candidatos: Array.from(new Set([digitos, comDdi, nacional])),
+  };
+}

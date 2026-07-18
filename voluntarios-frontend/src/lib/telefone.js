@@ -94,15 +94,11 @@ export function normalizarTelefoneBrasilParaLogin(valor) {
 
   if (!digitos) return '';
 
-  if ((digitos.length === 12 || digitos.length === 13) && digitos.startsWith('55')) {
-    return digitos;
-  }
+  const numeroNacional = digitos.startsWith('55') && digitos.length > 11
+    ? digitos.slice(2)
+    : digitos;
 
-  if (digitos.length === 10 || digitos.length === 11) {
-    return `55${digitos}`;
-  }
-
-  return '';
+  return [10, 11].includes(numeroNacional.length) ? numeroNacional : '';
 }
 
 export function formatarTelefoneBrasilLogin(valor) {

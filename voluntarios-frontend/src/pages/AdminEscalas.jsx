@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import { Footer } from '../components/Footer';
+import { RecorrenciaBadge } from '../components/RecorrenciaBadge';
 import { UsuarioInfoButton, UsuarioModal } from '../components/UsuarioModal';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
@@ -116,6 +117,13 @@ function getAreasEvento(evento) {
   return evento?.areas || evento?.escalas || [];
 }
 
+function getEquipeIdsEvento(evento) {
+  const ids = evento?.equipes?.map((equipe) => equipe.id)
+    || getAreasEvento(evento).map((area) => area.equipe?.id);
+
+  return Array.from(new Set(ids.filter(Boolean)));
+}
+
 function getOcorrenciasUnicas(evento) {
   const ocorrencias = new Map();
 
@@ -134,17 +142,26 @@ function getAreaPorDataHora(evento, dataHora) {
 }
 
 function criarFormEdicaoEscala(evento, area) {
-  const dataHora = area?.dataHora || evento?.dataHora || '';
+  const dataHora = area?.dataHora || evento?.proximaDataHora || evento?.dataHora || evento?.dataInicio || '';
+  const partesData = getUtcDateParts(dataHora);
+  const tipo = evento?.tipo || area?.tipo || 'ESPORADICA';
+  const frequencia = tipo === 'RECORRENTE'
+    ? (evento?.frequencia === 'MENSAL' ? 'MENSAL' : 'SEMANAL')
+    : 'NAO_REPETE';
 
   return {
     eventoId: area?.eventoId || evento?.id || '',
-    tipo: evento?.tipo || area?.tipo || 'ESPORADICA',
-    frequencia: evento?.frequencia || 'NAO_REPETE',
+    tipo,
+    frequencia,
     dataHoraAtual: dataHora,
     dataHora: toDateTimeInput(dataHora),
+    diaSemana: evento?.diaSemana ?? partesData?.diaSemana ?? 0,
+    semanaMes: evento?.semanaMes || (partesData ? Math.ceil(partesData.dia / 7) : 1),
+    horario: toTime(evento?.dataInicio || dataHora),
     titulo: evento?.titulo || area?.titulo || '',
     local: evento?.local || area?.local || '',
     descricao: evento?.descricao || area?.descricao || '',
+    equipeIds: getEquipeIdsEvento(evento),
     ordemCulto: area?.ordemCulto || null,
     ordemArquivo: null,
   };
@@ -433,8 +450,16 @@ export default function AdminEscalas() {
         },
       ])));
       jaCarregouRef.current = true;
+
+      return {
+        dashboard: dadosDashboard,
+        escalas: dadosEscalas,
+        manuais: dadosManuais,
+        avisos: dadosAvisos,
+      };
     } catch (error) {
       setErro(error.message || 'Não foi possível carregar o painel administrativo.');
+      return null;
     } finally {
       setCarregando(false);
     }
@@ -1049,40 +1074,92 @@ export default function AdminEscalas() {
     setSalvandoId(`editar-escala-${formEdicaoEscala.eventoId}`);
 
     try {
-      const resposta = await fetchComTimeout(buildApiUrl(`/api/escalas/admin/eventos/${formEdicaoEscala.eventoId}/ocorrencias`), {
+      const resposta = await fetchComTimeout(buildApiUrl(`/api/escalas/admin/eventos/${formEdicaoEscala.eventoId}`), {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          tipo: formEdicaoEscala.tipo,
+          frequencia: formEdicaoEscala.tipo === 'RECORRENTE' ? formEdicaoEscala.frequencia : 'NAO_REPETE',
           titulo: formEdicaoEscala.titulo,
           local: formEdicaoEscala.local,
           descricao: formEdicaoEscala.descricao,
           dataHoraAtual: formEdicaoEscala.dataHoraAtual,
           dataHora: formEdicaoEscala.dataHora,
+          diaSemana: Number(formEdicaoEscala.diaSemana),
+          semanaMes: formEdicaoEscala.frequencia === 'MENSAL' ? Number(formEdicaoEscala.semanaMes) : null,
+          horario: formEdicaoEscala.horario,
+          equipeIds: formEdicaoEscala.equipeIds,
         }),
       }, 90000);
       const dados = await resposta.json().catch(() => ({}));
 
-      if (!resposta.ok) throw new Error(dados.erro || 'Não foi possível salvar a escala.');
+      if (!resposta.ok) throw new Error(dados.erro || 'Não foi possível salvar o evento.');
 
       if (formEdicaoEscala.ordemArquivo) {
         try {
           await enviarOrdemCulto({
             eventoId: formEdicaoEscala.eventoId,
-            dataHora: dados.dataHora || formEdicaoEscala.dataHora,
+            dataHora: dados.dataHora || formEdicaoEscala.dataHora || formEdicaoEscala.dataHoraAtual,
           }, formEdicaoEscala.ordemArquivo);
         } catch (error) {
           await carregarDados();
-          throw new Error(`Escala atualizada, mas a ordem de culto não foi anexada: ${error.message}`);
+          throw new Error(`Evento atualizado, mas a ordem de culto não foi anexada: ${error.message}`);
         }
       }
 
       setSucesso(formEdicaoEscala.ordemArquivo
-        ? 'Escala atualizada e ordem de culto anexada.'
-        : dados.mensagem || 'Escala atualizada.');
+        ? 'Evento atualizado e ordem de culto anexada.'
+        : dados.mensagem || 'Evento atualizado.');
       fecharEdicaoEscala();
       await carregarDados();
     } catch (error) {
-      setErro(error.message || 'Não foi possível salvar a escala.');
+      setErro(error.message || 'Não foi possível salvar o evento.');
+    } finally {
+      setSalvandoId(null);
+    }
+  };
+
+  const salvarAtribuicaoVoluntarioAdmin = async (area, voluntarioId) => {
+    const equipeId = area?.equipe?.id;
+
+    if (!area?.id || !equipeId) {
+      setErro('Não foi possível localizar a equipe desta função.');
+      return;
+    }
+
+    if (area.encerrada || escalaEstaEncerrada(area.dataHora)) {
+      setErro('Escalas passadas são somente para consulta e não podem ser alteradas.');
+      return;
+    }
+
+    setErro('');
+    setSucesso('');
+    setSalvandoId(`atribuir-voluntario-${area.id}`);
+
+    try {
+      const voluntarioIds = voluntarioId ? [voluntarioId] : [];
+      const resposta = await fetchComTimeout(buildApiUrl(`/api/equipes/${equipeId}/escalas/${area.id}`), {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ voluntarioIds, substitutoIds: [] }),
+      }, 60000);
+      const dados = await resposta.json().catch(() => ({}));
+
+      if (!resposta.ok) throw new Error(dados.erro || 'Não foi possível salvar a atribuição.');
+
+      setSucesso(dados.mensagem || 'Atribuição atualizada com sucesso.');
+      const dadosAtualizados = await carregarDados();
+      const eventoAtualizado = dadosAtualizados?.escalas?.eventos?.find((evento) => evento.id === (escalaEmEdicao?.id || area.eventoId));
+
+      if (eventoAtualizado) {
+        setEscalaEmEdicao(eventoAtualizado);
+        setFormEdicaoEscala((atual) => atual ? {
+          ...atual,
+          ordemCulto: getAreaPorDataHora(eventoAtualizado, atual.dataHoraAtual)?.ordemCulto || atual.ordemCulto,
+        } : atual);
+      }
+    } catch (error) {
+      setErro(error.message || 'Não foi possível salvar a atribuição.');
     } finally {
       setSalvandoId(null);
     }
@@ -1448,6 +1525,7 @@ export default function AdminEscalas() {
                 onChangeEdicaoEscala={setFormEdicaoEscala}
                 onSelecionarOcorrenciaEdicao={selecionarOcorrenciaEdicao}
                 onSalvarEdicaoEscala={salvarEdicaoEscala}
+                onSalvarAtribuicaoVoluntario={salvarAtribuicaoVoluntarioAdmin}
                 onAbrirExclusaoEscala={abrirExclusaoEscala}
                 onFecharExclusaoEscala={fecharExclusaoEscala}
                 onSelecionarOcorrenciaExclusao={selecionarOcorrenciaExclusao}
@@ -2376,6 +2454,7 @@ function PainelEscalas({
   onChangeEdicaoEscala,
   onSelecionarOcorrenciaEdicao,
   onSalvarEdicaoEscala,
+  onSalvarAtribuicaoVoluntario,
   onAbrirExclusaoEscala,
   onFecharExclusaoEscala,
   onSelecionarOcorrenciaExclusao,
@@ -2799,6 +2878,7 @@ function PainelEscalas({
                         >
                           {evento.tipo === 'ESPORADICA' ? 'Esporádica' : 'Recorrente'}
                         </span>
+                        <RecorrenciaBadge escala={evento} />
                         {selecionado && (
                           <span className="rounded-full bg-gray-950 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-white">
                             Selecionada
@@ -2844,10 +2924,10 @@ function PainelEscalas({
                         disabled={!areaEditavel}
                         onClick={() => onAbrirEdicaoEscala(evento, areaEditavel)}
                         className="inline-flex items-center justify-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-                        title={areaEditavel ? 'Editar escala' : 'Escalas passadas não podem ser editadas'}
+                        title={areaEditavel ? 'Editar evento' : 'Eventos sem ocorrências futuras não podem ser editados'}
                       >
                         <Pencil size={15} />
-                        Editar
+                        Editar evento
                       </button>
                       <button
                         type="button"
@@ -3052,13 +3132,17 @@ function PainelEscalas({
       {escalaEmEdicao && formEdicaoEscala && (
         <ModalEdicaoEscala
           evento={escalaEmEdicao}
+          equipes={equipes}
+          locaisEventos={locaisEventos}
           form={formEdicaoEscala}
           salvandoId={salvandoId}
           onChange={onChangeEdicaoEscala}
           onSelecionarOcorrencia={onSelecionarOcorrenciaEdicao}
           onSubmit={onSalvarEdicaoEscala}
+          onSalvarAtribuicao={onSalvarAtribuicaoVoluntario}
           onClose={onFecharEdicaoEscala}
           onAbrirOrdemCulto={onAbrirOrdemCulto}
+          onAbrirUsuario={onAbrirUsuario}
         />
       )}
       {escalaEmExclusao && formExclusaoEscala && (
@@ -3107,69 +3191,282 @@ function StatusEscalaAdmin({ item }) {
 
 function ModalEdicaoEscala({
   evento,
+  equipes = [],
+  locaisEventos = [],
   form,
   salvandoId,
   onChange,
   onSelecionarOcorrencia,
   onSubmit,
+  onSalvarAtribuicao,
   onClose,
   onAbrirOrdemCulto,
+  onAbrirUsuario,
 }) {
   const salvando = salvandoId === `editar-escala-${form.eventoId}`;
   const ocorrencias = getOcorrenciasUnicas(evento);
-  const areasDaOcorrencia = getAreasEvento(evento)
-    .filter((area) => area.dataHora === form.dataHoraAtual);
-  const podeEditarData = form.frequencia === 'NAO_REPETE';
-  const painelRef = useModalDialog(() => { if (!salvando) onClose(); });
+  const areasDaOcorrencia = useMemo(() => (
+    getAreasEvento(evento).filter((area) => area.dataHora === form.dataHoraAtual)
+  ), [evento, form.dataHoraAtual]);
+  const podeEditarData = form.tipo === 'ESPORADICA';
+  const todasEquipesSelecionadas = equipes.length > 0 && equipes.every((equipe) => form.equipeIds?.includes(equipe.id));
+  const [areaSelecionadaId, setAreaSelecionadaId] = useState('');
+  const [voluntarioSelecionadoId, setVoluntarioSelecionadoId] = useState('');
+  const areaSelecionada = useMemo(() => (
+    areasDaOcorrencia.find((area) => area.id === areaSelecionadaId) || areasDaOcorrencia[0] || null
+  ), [areaSelecionadaId, areasDaOcorrencia]);
+  const equipeDaArea = useMemo(() => (
+    equipes.find((equipe) => equipe.id === areaSelecionada?.equipe?.id) || null
+  ), [areaSelecionada?.equipe?.id, equipes]);
+  const voluntariosEquipe = useMemo(() => equipeDaArea?.voluntarios || [], [equipeDaArea]);
+  const voluntariosAtribuidos = useMemo(() => areaSelecionada?.voluntarios || [], [areaSelecionada]);
+  const areaEncerrada = Boolean(areaSelecionada && (areaSelecionada.encerrada || escalaEstaEncerrada(areaSelecionada.dataHora)));
+  const salvandoAtribuicao = areaSelecionada ? salvandoId === `atribuir-voluntario-${areaSelecionada.id}` : false;
+  const bloqueado = salvando || String(salvandoId || '').startsWith('atribuir-voluntario-');
+  const painelRef = useModalDialog(() => { if (!bloqueado) onClose(); });
+
+  const alternarEquipeEvento = (equipeId) => {
+    onChange((atual) => {
+      const equipeIds = atual.equipeIds || [];
+      return {
+        ...atual,
+        equipeIds: equipeIds.includes(equipeId)
+          ? equipeIds.filter((id) => id !== equipeId)
+          : [...equipeIds, equipeId],
+      };
+    });
+  };
+
+  const alternarTodasEquipesEvento = () => {
+    onChange((atual) => ({
+      ...atual,
+      equipeIds: todasEquipesSelecionadas ? [] : equipes.map((equipe) => equipe.id),
+    }));
+  };
+
+  useEffect(() => {
+    if (!areasDaOcorrencia.some((area) => area.id === areaSelecionadaId)) {
+      setAreaSelecionadaId(areasDaOcorrencia[0]?.id || '');
+    }
+  }, [areaSelecionadaId, areasDaOcorrencia]);
+
+  useEffect(() => {
+    const voluntarioAtual = voluntariosAtribuidos.find((item) => !item.substituto)?.usuario?.id
+      || voluntariosAtribuidos[0]?.usuario?.id
+      || '';
+    setVoluntarioSelecionadoId(voluntarioAtual);
+  }, [areaSelecionada?.id, voluntariosAtribuidos]);
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-gray-950/45 px-4 py-6 backdrop-blur-sm" onMouseDown={(event) => event.target === event.currentTarget && !salvando && onClose()}>
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-gray-950/45 px-4 py-6 backdrop-blur-sm" onMouseDown={(event) => event.target === event.currentTarget && !bloqueado && onClose()}>
       <form ref={painelRef} onSubmit={onSubmit} role="dialog" aria-modal="true" aria-labelledby="titulo-modal-edicao-escala" className="max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
         <div className="flex items-start justify-between gap-4 border-b border-gray-100 px-5 py-4">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-dourado-700">Editar escala</p>
-            <h2 id="titulo-modal-edicao-escala" className="mt-1 text-xl font-bold text-gray-950">{form.titulo || 'Escala sem título'}</h2>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-dourado-700">Editar evento</p>
+            <h2 id="titulo-modal-edicao-escala" className="mt-1 text-xl font-bold text-gray-950">{form.titulo || 'Evento sem título'}</h2>
           </div>
-          <button type="button" disabled={salvando} onClick={onClose} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-gray-200 text-gray-500 transition hover:bg-gray-50 hover:text-gray-900 disabled:opacity-50" title="Fechar" aria-label="Fechar">
+          <button type="button" disabled={bloqueado} onClick={onClose} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-gray-200 text-gray-500 transition hover:bg-gray-50 hover:text-gray-900 disabled:opacity-50" title="Fechar" aria-label="Fechar">
             <X size={18} />
           </button>
         </div>
 
         <div className="max-h-[70vh] space-y-4 overflow-y-auto px-5 py-5">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`rounded-full border px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] ${
+              form.tipo === 'ESPORADICA'
+                ? 'border-amber-200 bg-amber-50 text-amber-700'
+                : 'border-gray-200 bg-gray-50 text-gray-600'
+            }`}
+            >
+              {form.tipo === 'ESPORADICA' ? 'Esporádico' : 'Recorrente'}
+            </span>
+            {form.tipo === 'RECORRENTE' && (
+              <span className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-blue-700">
+                {form.frequencia === 'MENSAL' ? 'Mensal' : 'Semanal'}
+              </span>
+            )}
+          </div>
+
           {ocorrencias.length > 1 && (
             <Select
-              label="Ocorrência"
+              label={form.tipo === 'ESPORADICA' ? 'Ocorrência a ajustar' : 'Ocorrência para atribuição e ordem'}
               value={form.dataHoraAtual}
               options={ocorrencias.map((area) => ({ value: area.dataHora, label: formatarData(area.dataHora) }))}
               onChange={onSelecionarOcorrencia}
             />
           )}
 
-          <div className="grid gap-4 lg:grid-cols-2">
-            <Campo label="Título" value={form.titulo} onChange={(value) => onChange((atual) => ({ ...atual, titulo: value }))} />
-            <Campo
-              label="Data e horário"
-              type="datetime-local"
-              value={form.dataHora}
-              disabled={!podeEditarData}
-              onChange={(value) => onChange((atual) => ({ ...atual, dataHora: value }))}
-            />
-            <Campo label="Local" value={form.local} onChange={(value) => onChange((atual) => ({ ...atual, local: value }))} />
-            <div className="lg:row-span-2">
+          <div className="rounded-xl border border-gray-200 bg-white p-4">
+            <div className="grid gap-4 lg:grid-cols-2">
+              <Campo label="Nome do evento" value={form.titulo} disabled={bloqueado} onChange={(value) => onChange((atual) => ({ ...atual, titulo: value }))} />
+              {form.tipo === 'ESPORADICA' ? (
+                <Campo
+                  label="Data e horário"
+                  type="datetime-local"
+                  min={agoraComoDataHoraInput()}
+                  value={form.dataHora}
+                  disabled={bloqueado || !podeEditarData}
+                  onChange={(value) => onChange((atual) => ({ ...atual, dataHora: value }))}
+                />
+              ) : (
+                <div>
+                  <span className="text-sm font-semibold text-gray-700">Recorrência</span>
+                  <div className="mt-2 grid grid-cols-2 gap-2 rounded-lg border border-gray-200 bg-gray-50 p-1">
+                    {[
+                      { value: 'SEMANAL', label: 'Semanal' },
+                      { value: 'MENSAL', label: 'Mensal' },
+                    ].map((opcao) => (
+                      <button
+                        key={opcao.value}
+                        type="button"
+                        disabled={bloqueado}
+                        onClick={() => onChange((atual) => ({ ...atual, frequencia: opcao.value }))}
+                        className={`rounded-md px-2 py-2 text-sm font-bold transition disabled:opacity-60 ${form.frequencia === opcao.value ? 'bg-gray-950 text-white' : 'text-gray-600 hover:bg-white'}`}
+                      >
+                        {opcao.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {form.tipo === 'RECORRENTE' && (
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <Select label="Dia da semana" value={form.diaSemana} options={dias} onChange={(value) => onChange((atual) => ({ ...atual, diaSemana: Number(value) }))} />
+                {form.frequencia === 'MENSAL' && (
+                  <Select label="Semana do mês" value={form.semanaMes || 1} options={semanas.map((semana) => ({ value: semana, label: `${semana}ª` }))} onChange={(value) => onChange((atual) => ({ ...atual, semanaMes: Number(value) }))} />
+                )}
+                <Campo label="Horário" type="time" value={form.horario || '18:00'} disabled={bloqueado} onChange={(value) => onChange((atual) => ({ ...atual, horario: value }))} />
+              </div>
+            )}
+
+            <div className="mt-4 grid gap-4 lg:grid-cols-2">
+              <CampoLocalEvento label="Local" value={form.local} options={locaisEventos} onChange={(value) => onChange((atual) => ({ ...atual, local: value }))} />
               <CampoTexto label="Descrição" value={form.descricao} onChange={(value) => onChange((atual) => ({ ...atual, descricao: value }))} />
             </div>
           </div>
 
+          <GrupoChecks titulo="Equipes/funções do evento">
+            <label className="flex items-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-900">
+              <input
+                type="checkbox"
+                disabled={bloqueado}
+                checked={todasEquipesSelecionadas}
+                onChange={alternarTodasEquipesEvento}
+              />
+              Selecionar todas as equipes
+            </label>
+            {equipes.map((equipe) => (
+              <label key={equipe.id} className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                <input
+                  type="checkbox"
+                  disabled={bloqueado}
+                  checked={form.equipeIds?.includes(equipe.id)}
+                  onChange={() => alternarEquipeEvento(equipe.id)}
+                />
+                {equipe.nome}
+              </label>
+            ))}
+          </GrupoChecks>
+
           <div>
             <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-gray-400">Funções desta ocorrência</p>
-            <div className="flex flex-wrap gap-2">
+            <div className="grid gap-2 sm:grid-cols-2">
               {areasDaOcorrencia.map((area) => (
-                <span key={area.id} className="rounded border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-bold text-gray-600">
-                  {area.equipe?.nome || 'Sem equipe'}
-                </span>
+                <button
+                  key={area.id}
+                  type="button"
+                  onClick={() => setAreaSelecionadaId(area.id)}
+                  className={`min-h-12 rounded-md border px-3 py-2 text-left transition ${
+                    areaSelecionada?.id === area.id
+                      ? 'border-dourado-300 bg-dourado-50 text-gray-950 ring-2 ring-dourado-100'
+                      : 'border-gray-200 bg-gray-50 text-gray-700 hover:border-gray-300 hover:bg-white'
+                  }`}
+                >
+                  <span className="block text-sm font-bold">{area.equipe?.nome || 'Sem equipe'}</span>
+                  <span className="mt-1 block text-[11px] font-semibold text-gray-500">
+                    {(area.voluntarios || []).length > 0 ? `${area.voluntarios.length} atribuído(s)` : 'Sem voluntário atribuído'}
+                  </span>
+                </button>
               ))}
             </div>
           </div>
+
+          {areaSelecionada && (
+            <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+              <div className="flex flex-col gap-3 border-b border-gray-200 pb-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.14em] text-dourado-700">Atribuição da função</p>
+                  <h3 className="mt-1 text-base font-bold text-gray-950">{areaSelecionada.equipe?.nome || 'Sem equipe'}</h3>
+                  <p className="mt-1 text-xs font-semibold text-gray-500">{formatarData(areaSelecionada.dataHora)}</p>
+                </div>
+                {areaEncerrada && (
+                  <span className="rounded border border-gray-200 bg-white px-2.5 py-1 text-xs font-bold text-gray-500">
+                    Encerrada
+                  </span>
+                )}
+              </div>
+
+              <div className="mt-4">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-gray-400">Voluntário atribuído</p>
+                {voluntariosAtribuidos.length === 0 ? (
+                  <div className="rounded-md border border-dashed border-gray-200 bg-white px-3 py-4 text-sm font-semibold text-gray-400">
+                    Nenhum voluntário atribuído nesta função.
+                  </div>
+                ) : (
+                  <div className="grid gap-2">
+                    {voluntariosAtribuidos.map((item) => (
+                      <div key={item.id} className="rounded-md border border-gray-200 bg-white px-3 py-3">
+                        <div className="flex min-w-0 items-start gap-2">
+                          <UsuarioInfoButton usuario={item.usuario} onClick={onAbrirUsuario} />
+                          <div className="min-w-0 flex-1">
+                            <p className="break-words text-sm font-bold text-gray-900">{item.usuario?.nomeCompleto || 'Voluntário'}</p>
+                            {item.usuario?.telefone && (
+                              <p className="mt-1 text-xs font-medium text-gray-400">{formatarTelefoneExibicao(item.usuario.telefone)}</p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="mt-2">
+                          <StatusEscalaAdmin item={item} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                <Select
+                  label="Alterar ou atribuir voluntário"
+                  value={voluntarioSelecionadoId}
+                  options={[
+                    { value: '', label: 'Nenhum voluntário' },
+                    ...voluntariosEquipe.map((voluntario) => ({
+                      value: voluntario.id,
+                      label: voluntario.nomeCompleto,
+                    })),
+                  ]}
+                  onChange={setVoluntarioSelecionadoId}
+                />
+                <button
+                  type="button"
+                  disabled={bloqueado || areaEncerrada}
+                  onClick={() => onSalvarAtribuicao(areaSelecionada, voluntarioSelecionadoId)}
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-gray-950 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {salvandoAtribuicao ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save size={16} />}
+                  Salvar atribuição
+                </button>
+              </div>
+
+              {voluntariosEquipe.length === 0 && (
+                <p className="mt-3 rounded-md border border-amber-100 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
+                  Esta equipe ainda não tem voluntários cadastrados.
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -3196,7 +3493,7 @@ function ModalEdicaoEscala({
                 key={form.dataHoraAtual}
                 type="file"
                 accept="application/pdf"
-                disabled={salvando}
+                disabled={bloqueado}
                 onChange={(event) => onChange((atual) => ({ ...atual, ordemArquivo: event.target.files?.[0] || null }))}
                 className="block w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none transition file:mr-3 file:rounded-md file:border-0 file:bg-gray-950 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10 disabled:opacity-60"
               />
@@ -3205,12 +3502,12 @@ function ModalEdicaoEscala({
         </div>
 
         <div className="flex flex-col-reverse gap-2 border-t border-gray-100 px-5 py-4 sm:flex-row sm:justify-end">
-          <button type="button" disabled={salvando} onClick={onClose} className="rounded-md border border-gray-200 bg-white px-4 py-2.5 text-sm font-bold text-gray-700 transition hover:bg-gray-50 disabled:opacity-60">
+          <button type="button" disabled={bloqueado} onClick={onClose} className="rounded-md border border-gray-200 bg-white px-4 py-2.5 text-sm font-bold text-gray-700 transition hover:bg-gray-50 disabled:opacity-60">
             Cancelar
           </button>
-          <button disabled={salvando} className="inline-flex items-center justify-center gap-2 rounded-md bg-gray-950 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-gray-800 disabled:opacity-60">
+          <button disabled={bloqueado} className="inline-flex items-center justify-center gap-2 rounded-md bg-gray-950 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-gray-800 disabled:opacity-60">
             {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : form.ordemArquivo ? <FileText size={16} /> : <Save size={16} />}
-            Salvar escala
+            Salvar evento
           </button>
         </div>
       </form>

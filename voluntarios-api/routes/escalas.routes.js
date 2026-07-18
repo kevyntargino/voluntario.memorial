@@ -297,6 +297,51 @@ function datasIguais(dataA, dataB) {
   return new Date(dataA).toISOString() === new Date(dataB).toISOString();
 }
 
+function normalizarIds(ids) {
+  if (!Array.isArray(ids)) return [];
+
+  return Array.from(new Set(ids.filter(Boolean).map(String)));
+}
+
+function normalizarDadosTextoEvento({ titulo, local, descricao }) {
+  const tituloNormalizado = typeof titulo === 'string' ? titulo.trim() : '';
+
+  return {
+    titulo: tituloNormalizado,
+    local: typeof local === 'string' && local.trim() ? local.trim() : null,
+    descricao: typeof descricao === 'string' && descricao.trim() ? descricao.trim() : null,
+  };
+}
+
+function parseHorarioEvento(horario) {
+  const [horasRaw, minutosRaw] = String(horario || '18:00').split(':');
+  const horas = Number(horasRaw);
+  const minutos = Number(minutosRaw);
+
+  if (!Number.isInteger(horas) || horas < 0 || horas > 23 || !Number.isInteger(minutos) || minutos < 0 || minutos > 59) {
+    return null;
+  }
+
+  return { horas, minutos };
+}
+
+function normalizarDatasUnicas(datas) {
+  const datasPorIso = new Map();
+
+  for (const data of datas) {
+    if (!data || Number.isNaN(new Date(data).getTime())) continue;
+    const dataNormalizada = new Date(data);
+    datasPorIso.set(dataNormalizada.toISOString(), dataNormalizada);
+  }
+
+  return Array.from(datasPorIso.values())
+    .sort((a, b) => a.getTime() - b.getTime());
+}
+
+function getChavesDatas(datas) {
+  return new Set(datas.map((data) => new Date(data).toISOString()));
+}
+
 function getErroJanelaAlteracaoEscala(dataOcorrencia, agora = getAgoraEscalas()) {
   const inicio = new Date(dataOcorrencia).getTime();
 
@@ -766,6 +811,303 @@ router.post('/admin/eventos', autenticar, exigirAdmin, async (req, res) => {
     });
   } catch (erro) {
     console.error('[ERRO LOG] POST /api/escalas/admin/eventos:', erro);
+    return res.status(500).json({ erro: 'Erro interno no servidor. Tente novamente mais tarde.' });
+  }
+});
+
+router.patch('/admin/eventos/:id', autenticar, exigirAdmin, async (req, res) => {
+  try {
+    const {
+      tipo, frequencia, dataHora, dataHoraAtual, diaSemana, semanaMes, horario, equipeIds = [],
+    } = req.body ?? {};
+    const dadosTexto = normalizarDadosTextoEvento(req.body ?? {});
+    const equipeIdsNormalizados = normalizarIds(equipeIds);
+
+    if (dadosTexto.titulo.length < 3) {
+      return res.status(400).json({ erro: 'Informe o nome do evento.' });
+    }
+
+    if (equipeIdsNormalizados.length === 0) {
+      return res.status(400).json({ erro: 'Selecione pelo menos uma equipe/função.' });
+    }
+
+    const evento = await prisma.evento.findFirst({
+      where: { id: req.params.id, ativo: true },
+      include: {
+        equipes: { select: { id: true } },
+        escalas: {
+          select: {
+            id: true,
+            equipeId: true,
+            dataHora: true,
+          },
+          orderBy: { dataHora: 'asc' },
+        },
+      },
+    });
+
+    if (!evento) {
+      return res.status(404).json({ erro: 'Evento não encontrado.' });
+    }
+
+    const tipoNormalizado = tipo
+      ? (tipo === 'RECORRENTE' ? 'RECORRENTE' : 'ESPORADICA')
+      : evento.tipo;
+
+    if (tipoNormalizado !== evento.tipo) {
+      return res.status(400).json({ erro: 'Para mudar o tipo do evento, crie um novo evento com a configuração desejada.' });
+    }
+
+    const equipes = await prisma.equipe.findMany({
+      where: { id: { in: equipeIdsNormalizados } },
+      select: {
+        id: true,
+        nome: true,
+        lideres: { select: { id: true } },
+      },
+    });
+
+    if (equipes.length !== equipeIdsNormalizados.length) {
+      return res.status(400).json({ erro: 'Uma ou mais equipes selecionadas são inválidas.' });
+    }
+
+    const agora = getAgoraEscalas();
+    const escalasFuturas = evento.escalas.filter((escala) => (
+      escala.dataHora && new Date(escala.dataHora).getTime() >= agora.getTime()
+    ));
+    let frequenciaNormalizada = 'NAO_REPETE';
+    let primeiraData;
+    let diaSemanaEvento;
+    let semanaMesEvento = null;
+    let datasDesejadas = [];
+    let ocorrenciaAtual = null;
+    let ocorrenciaParaOrdem = null;
+
+    if (evento.tipo === 'RECORRENTE') {
+      frequenciaNormalizada = ['SEMANAL', 'MENSAL'].includes(frequencia)
+        ? frequencia
+        : (evento.frequencia === 'MENSAL' ? 'MENSAL' : 'SEMANAL');
+      const diaSemanaNumero = Number(diaSemana ?? evento.diaSemana);
+      const semanaMesNumero = Number(semanaMes ?? evento.semanaMes ?? 1);
+      const horarioBase = horario || (() => {
+        const { horas, minutos } = getHorarioBase(evento.dataInicio);
+        return `${String(horas).padStart(2, '0')}:${String(minutos).padStart(2, '0')}`;
+      })();
+
+      if (!Number.isInteger(diaSemanaNumero) || diaSemanaNumero < 0 || diaSemanaNumero > 6) {
+        return res.status(400).json({ erro: 'Informe um dia da semana válido.' });
+      }
+
+      if (frequenciaNormalizada === 'MENSAL' && (!Number.isInteger(semanaMesNumero) || semanaMesNumero < 1 || semanaMesNumero > 5)) {
+        return res.status(400).json({ erro: 'Informe em qual semana do mês o evento acontece.' });
+      }
+
+      if (!parseHorarioEvento(horarioBase)) {
+        return res.status(400).json({ erro: 'Horário inválido.' });
+      }
+
+      primeiraData = getProximaDataDaRegra(
+        diaSemanaNumero,
+        frequenciaNormalizada === 'MENSAL' ? semanaMesNumero : null,
+        horarioBase,
+        frequenciaNormalizada,
+      );
+
+      if (!primeiraData) {
+        return res.status(400).json({ erro: 'Não foi possível calcular a próxima ocorrência do evento.' });
+      }
+
+      diaSemanaEvento = diaSemanaNumero;
+      semanaMesEvento = frequenciaNormalizada === 'MENSAL' ? semanaMesNumero : null;
+      datasDesejadas = gerarDatasEvento({
+        ...evento,
+        ...dadosTexto,
+        frequencia: frequenciaNormalizada,
+        dataInicio: primeiraData,
+        dataFim: null,
+        diaSemana: diaSemanaEvento,
+        semanaMes: semanaMesEvento,
+      }, getLimiteEscalasFuturas(agora)).filter((data) => data >= agora);
+      ocorrenciaParaOrdem = datasDesejadas[0] || primeiraData;
+    } else {
+      const datasAtuais = normalizarDatasUnicas(escalasFuturas.map((escala) => escala.dataHora));
+
+      if (datasAtuais.length === 0) {
+        return res.status(409).json({ erro: 'Eventos sem ocorrências futuras são somente para consulta.' });
+      }
+
+      ocorrenciaAtual = parseDataHoraEvento(dataHoraAtual) || datasAtuais[0];
+
+      if (!datasAtuais.some((data) => datasIguais(data, ocorrenciaAtual))) {
+        return res.status(404).json({ erro: 'Ocorrência do evento não encontrada.' });
+      }
+
+      ocorrenciaParaOrdem = parseDataHoraEvento(dataHora || ocorrenciaAtual);
+
+      if (!ocorrenciaParaOrdem) {
+        return res.status(400).json({ erro: 'Informe uma data e um horário válidos para o evento.' });
+      }
+
+      if (ocorrenciaParaOrdem <= getAgoraEvento()) {
+        return res.status(400).json({ erro: 'A ocorrência deve ter data e horário futuros.' });
+      }
+
+      datasDesejadas = normalizarDatasUnicas(datasAtuais.map((data) => (
+        datasIguais(data, ocorrenciaAtual) ? ocorrenciaParaOrdem : data
+      )));
+
+      if (datasDesejadas.length !== datasAtuais.length) {
+        return res.status(409).json({ erro: 'Já existe uma ocorrência desse evento nesta data e horário.' });
+      }
+
+      primeiraData = datasDesejadas[0];
+      diaSemanaEvento = primeiraData.getUTCDay();
+      semanaMesEvento = getSemanaMes(primeiraData);
+    }
+
+    if (datasDesejadas.length === 0) {
+      return res.status(400).json({ erro: 'O evento precisa ter pelo menos uma ocorrência futura.' });
+    }
+
+    const chavesDatasDesejadas = getChavesDatas(datasDesejadas);
+    const chavesOrdensPreservadas = new Set(chavesDatasDesejadas);
+
+    if (evento.tipo === 'ESPORADICA' && ocorrenciaAtual) {
+      chavesOrdensPreservadas.add(new Date(ocorrenciaAtual).toISOString());
+    }
+
+    const ordensCultoFuturas = await prisma.ordemCulto.findMany({
+      where: {
+        eventoId: evento.id,
+        dataHora: { gte: agora },
+      },
+      select: {
+        arquivoKey: true,
+        dataHora: true,
+      },
+    });
+    const ordensCultoRemovidas = ordensCultoFuturas.filter((ordem) => (
+      ordem.dataHora && !chavesOrdensPreservadas.has(new Date(ordem.dataHora).toISOString())
+    ));
+
+    await prisma.$transaction(async (tx) => {
+      if (evento.tipo === 'ESPORADICA' && !datasIguais(ocorrenciaAtual, ocorrenciaParaOrdem)) {
+        await tx.escala.updateMany({
+          where: { eventoId: evento.id, dataHora: ocorrenciaAtual },
+          data: { dataHora: ocorrenciaParaOrdem },
+        });
+        await tx.ordemCulto.updateMany({
+          where: { eventoId: evento.id, dataHora: ocorrenciaAtual },
+          data: {
+            dataHora: ocorrenciaParaOrdem,
+            dataCulto: ocorrenciaParaOrdem,
+          },
+        });
+      }
+
+      await tx.evento.update({
+        where: { id: evento.id },
+        data: {
+          ...dadosTexto,
+          tipo: evento.tipo,
+          frequencia: frequenciaNormalizada,
+          dataInicio: primeiraData,
+          dataFim: null,
+          diaSemana: diaSemanaEvento,
+          semanaMes: semanaMesEvento,
+          equipes: { set: equipes.map((equipe) => ({ id: equipe.id })) },
+        },
+      });
+
+      await tx.escalaModeloVoluntario.deleteMany({
+        where: {
+          eventoId: evento.id,
+          equipeId: { notIn: equipeIdsNormalizados },
+        },
+      });
+
+      await tx.ordemCulto.deleteMany({
+        where: {
+          eventoId: evento.id,
+          dataHora: {
+            gte: agora,
+            notIn: datasDesejadas,
+          },
+        },
+      });
+
+      await tx.escala.deleteMany({
+        where: {
+          eventoId: evento.id,
+          dataHora: { gte: agora },
+          OR: [
+            { equipeId: { notIn: equipeIdsNormalizados } },
+            { dataHora: { notIn: datasDesejadas } },
+          ],
+        },
+      });
+
+      await tx.escala.updateMany({
+        where: { eventoId: evento.id },
+        data: {
+          ...dadosTexto,
+          tipo: evento.tipo,
+        },
+      });
+
+      await tx.escala.createMany({
+        data: datasDesejadas.flatMap((dataOcorrencia) => equipes.map((equipe) => ({
+          id: randomUUID(),
+          eventoId: evento.id,
+          titulo: dadosTexto.titulo,
+          local: dadosTexto.local,
+          descricao: dadosTexto.descricao,
+          tipo: evento.tipo,
+          dataHora: dataOcorrencia,
+          diaSemana: null,
+          semanaMes: null,
+          solicitadaPeloAdmin: true,
+          equipeId: equipe.id,
+        }))),
+        skipDuplicates: true,
+      });
+
+      await aplicarModelosVoluntariosEscalas(tx, {
+        eventoId: evento.id,
+        datas: datasDesejadas,
+        atribuidoPorId: req.usuarioAutenticado.id,
+      });
+
+      const primeiraEscala = await tx.escala.findFirst({
+        where: { eventoId: evento.id },
+        orderBy: { dataHora: 'asc' },
+        select: { dataHora: true },
+      });
+
+      if (evento.tipo === 'ESPORADICA' && primeiraEscala?.dataHora && !datasIguais(primeiraEscala.dataHora, primeiraData)) {
+        await tx.evento.update({
+          where: { id: evento.id },
+          data: {
+            dataInicio: primeiraEscala.dataHora,
+            diaSemana: primeiraEscala.dataHora.getUTCDay(),
+            semanaMes: getSemanaMes(primeiraEscala.dataHora),
+          },
+        });
+      }
+    });
+
+    apagarArquivosOrdensCulto(ordensCultoRemovidas);
+
+    return res.status(200).json({
+      mensagem: 'Evento atualizado e escalas futuras sincronizadas.',
+      dataHora: ocorrenciaParaOrdem.toISOString(),
+    });
+  } catch (erro) {
+    if (erro.code === 'P2002') {
+      return res.status(409).json({ erro: 'Já existe uma escala desse evento nesta data e horário.' });
+    }
+
+    console.error('[ERRO LOG] PATCH /api/escalas/admin/eventos/:id:', erro);
     return res.status(500).json({ erro: 'Erro interno no servidor. Tente novamente mais tarde.' });
   }
 });

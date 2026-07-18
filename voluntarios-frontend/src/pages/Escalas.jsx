@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import { Footer } from '../components/Footer';
+import { RecorrenciaBadge } from '../components/RecorrenciaBadge';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
 import { buildApiUrl } from '../lib/api';
@@ -1517,6 +1518,7 @@ function EventoEscalaCard({ evento, participacaoSelecionadaId, destaqueEvento, a
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="break-words text-xl font-bold text-gray-950 dark:text-white">{evento.titulo}</h2>
               {evento.encerrada && <span className="rounded border border-gray-300 px-2 py-0.5 text-[10px] font-bold uppercase text-gray-500 dark:border-white/60 dark:text-gray-200">Encerrada</span>}
+              <RecorrenciaBadge escala={evento} />
             </div>
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm font-semibold text-gray-600 dark:text-gray-200">
               <span className="inline-flex items-center gap-1.5"><CalendarDays size={15} />{formatarDataCompleta(evento.dataHora)}</span>
@@ -1541,7 +1543,10 @@ function EventoEscalaCard({ evento, participacaoSelecionadaId, destaqueEvento, a
             <section key={escala.id} className="py-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <h3 className="break-words text-sm font-bold text-gray-950 dark:text-white">{escala.equipe?.nome || 'Sem função'}</h3>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="break-words text-sm font-bold text-gray-950 dark:text-white">{escala.equipe?.nome || 'Sem função'}</h3>
+                    <RecorrenciaBadge escala={escala} className="min-h-6 px-2 py-0.5" />
+                  </div>
                   <p className="mt-0.5 text-xs font-semibold text-gray-500 dark:text-gray-400">{totalVoluntarios === 1 ? '1 voluntário' : `${totalVoluntarios} voluntários`}</p>
                 </div>
                 {escala.encerrada && <span className="shrink-0 rounded border border-gray-300 px-2 py-1 text-[10px] font-bold uppercase text-gray-500 dark:border-white/60 dark:text-gray-200">Encerrada</span>}
@@ -1584,7 +1589,12 @@ function EventoEscalaCard({ evento, participacaoSelecionadaId, destaqueEvento, a
                 return (
                   <tr id={minhaParticipacao ? `participacao-${minhaParticipacao.id}-desktop` : undefined} key={`${escala.id}-${item?.id || 'vazio'}`} className={destaque ? 'bg-amber-50 dark:bg-amber-950/40' : ''}>
                     <td className="px-4 py-3"><AvatarVoluntario usuario={item?.usuario} /></td>
-                    <td className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-100">{escala.equipe?.nome || 'Sem função'}</td>
+                    <td className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-100">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span>{escala.equipe?.nome || 'Sem função'}</span>
+                        <RecorrenciaBadge escala={escala} className="min-h-6 px-2 py-0.5" />
+                      </div>
+                    </td>
                     <td className="px-4 py-3">
                       <StatusParticipacao participacao={item} />
                     </td>

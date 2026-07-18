@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import { Footer } from '../components/Footer';
+import { RecorrenciaBadge } from '../components/RecorrenciaBadge';
 import { UsuarioInfoButton, UsuarioModal } from '../components/UsuarioModal';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
@@ -1026,6 +1027,7 @@ export default function MinhaEquipe() {
                               >
                                 {escala.tipo === 'ESPORADICA' ? 'Esporádica' : 'Recorrente'}
                               </span>
+                              <RecorrenciaBadge escala={escala} />
                             </div>
                             <p className="mt-3 text-xl font-bold text-gray-950">{escala.titulo || 'Escala sem título'}</p>
                             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
@@ -1478,6 +1480,7 @@ function ModalEscalaEquipe({
               >
                 {escala.tipo === 'ESPORADICA' ? 'Esporádica' : 'Recorrente'}
               </span>
+              <RecorrenciaBadge escala={escala} />
             </div>
             <h2 id="modal-escala-equipe-titulo" className="mt-2 text-xl font-bold text-gray-950">{escala.titulo || 'Escala sem título'}</h2>
             <p className="mt-1 text-sm text-gray-500">

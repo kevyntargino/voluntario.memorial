@@ -5,7 +5,7 @@ import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
-import { normalizarTelefone, normalizarTelefoneBrasilParaLogin } from '../utils/telefone.js';
+import { getTelefonesBrasilParaLogin, normalizarTelefone } from '../utils/telefone.js';
 import { apagarObjetoStorage } from '../utils/storage.js';
 
 const pool = new Pool({
@@ -254,13 +254,21 @@ router.post('/login', async (req, res) => {
     }
 
     const loginPorEmail = isLoginPorEmail(loginInformado);
+    const telefoneLogin = loginPorEmail ? null : getTelefonesBrasilParaLogin(loginInformado);
     const candidatos = loginPorEmail
       ? await prisma.usuario.findUnique({
         where: { email: normalizarEmail(loginInformado) },
         select: selectUsuarioLogin,
       }).then((usuario) => (usuario ? [usuario] : []))
       : await prisma.usuario.findMany({
-        where: { telefone: normalizarTelefoneBrasilParaLogin(loginInformado) || '__telefone_invalido__' },
+        where: telefoneLogin?.nacional
+          ? {
+            OR: [
+              { telefone: { in: telefoneLogin.candidatos } },
+              { telefone: { endsWith: telefoneLogin.nacional } },
+            ],
+          }
+          : { telefone: '__telefone_invalido__' },
         select: selectUsuarioLogin,
       });
 
