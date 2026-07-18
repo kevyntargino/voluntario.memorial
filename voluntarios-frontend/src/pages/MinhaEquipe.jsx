@@ -28,13 +28,14 @@ import { useNavigation } from '../context/NavigationContext';
 import { buildApiUrl } from '../lib/api';
 import { escalaEstaOcorrendo, getAgoraEscalas } from '../lib/escalas';
 import { PhoneInput } from '../components/PhoneInput';
+import { VinculoRecorrenciaToggle } from '../components/VinculoRecorrenciaToggle';
 import { formatarTelefoneExibicao } from '../lib/telefone';
 
 const formEscalaInicial = {
   id: null,
   titulo: '',
   voluntarioIds: [],
-  substitutoIds: [],
+  vincularRecorrencia: false,
 };
 const formNovoVoluntarioInicial = {
   nomeCompleto: '',
@@ -272,7 +273,7 @@ export default function MinhaEquipe({ pagina = 'dashboard' }) {
       id: escala.id,
       titulo: escala.titulo || '',
       voluntarioIds: escala.voluntarios.map((item) => item.usuario.id),
-      substitutoIds: escala.voluntarios.filter((item) => item.substituto).map((item) => item.usuario.id),
+      vincularRecorrencia: escala.tipo === 'RECORRENTE',
     });
   }, [equipeSelecionada, escalaSelecionadaId, podeGerenciarEquipeSelecionada]);
 
@@ -507,7 +508,7 @@ export default function MinhaEquipe({ pagina = 'dashboard' }) {
         method: 'PATCH',
         body: JSON.stringify({
           voluntarioIds: formEscala.voluntarioIds,
-          substitutoIds: formEscala.substitutoIds,
+          vincularRecorrencia: formEscala.vincularRecorrencia,
         }),
       });
 
@@ -524,7 +525,7 @@ export default function MinhaEquipe({ pagina = 'dashboard' }) {
       id: escala.id,
       titulo: escala.titulo || '',
       voluntarioIds: escala.voluntarios.map((item) => item.usuario.id),
-      substitutoIds: escala.voluntarios.filter((item) => item.substituto).map((item) => item.usuario.id),
+      vincularRecorrencia: escala.tipo === 'RECORRENTE',
     });
   };
 
@@ -615,21 +616,6 @@ export default function MinhaEquipe({ pagina = 'dashboard' }) {
       voluntarioIds: atual.voluntarioIds.includes(voluntarioId)
         ? atual.voluntarioIds.filter((id) => id !== voluntarioId)
         : [...atual.voluntarioIds, voluntarioId],
-      substitutoIds: atual.voluntarioIds.includes(voluntarioId)
-        ? atual.substitutoIds.filter((id) => id !== voluntarioId)
-        : atual.substitutoIds,
-    }));
-  };
-
-  const alternarSubstituto = (voluntarioId) => {
-    setFormEscala((atual) => ({
-      ...atual,
-      voluntarioIds: atual.voluntarioIds.includes(voluntarioId)
-        ? atual.voluntarioIds
-        : [...atual.voluntarioIds, voluntarioId],
-      substitutoIds: atual.substitutoIds.includes(voluntarioId)
-        ? atual.substitutoIds.filter((id) => id !== voluntarioId)
-        : [...atual.substitutoIds, voluntarioId],
     }));
   };
 
@@ -1117,10 +1103,18 @@ export default function MinhaEquipe({ pagina = 'dashboard' }) {
                             <div className="flex flex-col gap-2 border-b border-dourado-100 pb-3 sm:flex-row sm:items-end sm:justify-between">
                               <div>
                                 <p className="text-xs font-bold uppercase tracking-[0.14em] text-dourado-700">Atribuir voluntários</p>
-                                <p className="mt-1 text-sm text-gray-600">Selecione quem participará desta escala e marque substitutos quando necessário.</p>
+                                <p className="mt-1 text-sm text-gray-600">Selecione quem participará desta escala.</p>
                               </div>
                               <span className="text-xs font-bold text-gray-500">{formEscala.voluntarioIds.length} selecionado(s)</span>
                             </div>
+
+                            {escala.tipo === 'RECORRENTE' && (
+                              <VinculoRecorrenciaToggle
+                                ativo={formEscala.vincularRecorrencia}
+                                disabled={salvando}
+                                onChange={(vincularRecorrencia) => setFormEscala((atual) => ({ ...atual, vincularRecorrencia }))}
+                              />
+                            )}
 
                             {equipeSelecionada.voluntarios.length === 0 ? (
                               <div className="mt-4 rounded-md border border-dashed border-gray-200 bg-white px-3 py-5 text-sm text-gray-500">
@@ -1130,7 +1124,6 @@ export default function MinhaEquipe({ pagina = 'dashboard' }) {
                               <div className="mt-4 grid gap-2 md:grid-cols-2">
                                 {equipeSelecionada.voluntarios.map((voluntario) => {
                                   const escalado = formEscala.voluntarioIds.includes(voluntario.id);
-                                  const substituto = formEscala.substitutoIds.includes(voluntario.id);
 
                                   return (
                                     <div key={voluntario.id} className={`rounded-md border p-3 transition ${escalado ? 'border-dourado-300 bg-white' : 'border-gray-200 bg-gray-50'}`}>
@@ -1148,15 +1141,6 @@ export default function MinhaEquipe({ pagina = 'dashboard' }) {
                                           {voluntario.telefone && <p className="truncate text-[11px] font-medium text-gray-500">{formatarTelefoneExibicao(voluntario.telefone)}</p>}
                                         </div>
                                       </div>
-                                      <label className={`mt-3 flex items-center gap-2 border-t pt-2 text-xs font-semibold ${substituto ? 'border-violet-100 text-violet-700' : 'border-gray-100 text-gray-500'}`}>
-                                        <input
-                                          type="checkbox"
-                                          checked={substituto}
-                                          onChange={() => alternarSubstituto(voluntario.id)}
-                                          className="h-4 w-4 accent-violet-600"
-                                        />
-                                        Marcar como substituto
-                                      </label>
                                     </div>
                                   );
                                 })}
@@ -1284,7 +1268,7 @@ export default function MinhaEquipe({ pagina = 'dashboard' }) {
           onEditar={() => editarEscala(escalaModal)}
           onCancelarEdicao={() => setFormEscala(formEscalaInicial)}
           onAlternarVoluntario={alternarVoluntarioNaEscala}
-          onAlternarSubstituto={alternarSubstituto}
+          onAlternarRecorrencia={(vincularRecorrencia) => setFormEscala((atual) => ({ ...atual, vincularRecorrencia }))}
           onSalvar={salvarEscala}
           onAbrirUsuario={setUsuarioModal}
           onAbrirOrdemCulto={abrirOrdemCulto}
@@ -1516,7 +1500,7 @@ function ModalEscalaEquipe({
   onEditar,
   onCancelarEdicao,
   onAlternarVoluntario,
-  onAlternarSubstituto,
+  onAlternarRecorrencia,
   onSalvar,
   onAbrirUsuario,
   onAbrirOrdemCulto,
@@ -1615,10 +1599,18 @@ function ModalEscalaEquipe({
                     <p className="text-xs font-bold uppercase tracking-[0.14em] text-dourado-700">
                       {voluntarios.length === 0 ? 'Atribuir voluntários' : 'Editar voluntários'}
                     </p>
-                    <p className="mt-1 text-sm text-gray-600">Selecione quem participará desta escala e marque substitutos quando necessário.</p>
+                    <p className="mt-1 text-sm text-gray-600">Selecione quem participará desta escala.</p>
                   </div>
                   <span className="text-xs font-bold text-gray-500">{formEscala.voluntarioIds.length} selecionado(s)</span>
                 </div>
+
+                {escala.tipo === 'RECORRENTE' && (
+                  <VinculoRecorrenciaToggle
+                    ativo={formEscala.vincularRecorrencia}
+                    disabled={salvando}
+                    onChange={onAlternarRecorrencia}
+                  />
+                )}
 
                 {voluntariosEquipe.length === 0 ? (
                   <div className="mt-4 rounded-md border border-dashed border-gray-200 bg-white px-3 py-5 text-sm text-gray-500">
@@ -1628,7 +1620,6 @@ function ModalEscalaEquipe({
                   <div className="mt-4 grid gap-2 md:grid-cols-2">
                     {voluntariosEquipe.map((voluntario) => {
                       const escalado = formEscala.voluntarioIds.includes(voluntario.id);
-                      const substituto = formEscala.substitutoIds.includes(voluntario.id);
 
                       return (
                         <div key={voluntario.id} className={`rounded-md border p-3 transition ${escalado ? 'border-dourado-300 bg-white' : 'border-gray-200 bg-gray-50'}`}>
@@ -1646,15 +1637,6 @@ function ModalEscalaEquipe({
                               {voluntario.telefone && <p className="truncate text-[11px] font-medium text-gray-500">{formatarTelefoneExibicao(voluntario.telefone)}</p>}
                             </div>
                           </div>
-                          <label className={`mt-3 flex items-center gap-2 border-t pt-2 text-xs font-semibold ${substituto ? 'border-violet-100 text-violet-700' : 'border-gray-100 text-gray-500'}`}>
-                            <input
-                              type="checkbox"
-                              checked={substituto}
-                              onChange={() => onAlternarSubstituto(voluntario.id)}
-                              className="h-4 w-4 accent-violet-600"
-                            />
-                            Marcar como substituto
-                          </label>
                         </div>
                       );
                     })}

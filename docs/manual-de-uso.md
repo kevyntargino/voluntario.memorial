@@ -62,7 +62,7 @@ Esta area e visivel apenas para lideres de equipe e administradores. Ela mostra 
 Lideres de equipe podem, nas equipes que lideram:
 
 - Adicionar voluntarios (novos voluntarios recebem uma senha temporaria).
-- Definir os voluntarios de cada escala e marcar quem entra como substituto.
+- Definir os voluntarios de cada escala e, nos eventos recorrentes, escolher se a atribuicao vale para a recorrencia ou somente para a ocorrencia selecionada.
 - Atribuir substitutos para pedidos de substituicao.
 
 Somente administradores podem:
@@ -178,7 +178,7 @@ Ao criar ou editar eventos, confira:
 - Equipes participantes.
 - Voluntarios escalados.
 
-Para eventos recorrentes, e possivel definir um **modelo de voluntarios por semana do mes**: indique quem atende na 1a, 2a, 3a, 4a ou 5a ocorrencia. O sistema aplica esse modelo automaticamente as escalas geradas para cada semana correspondente, reduzindo o trabalho manual mes a mes.
+Para eventos recorrentes, e possivel definir um **modelo de voluntarios por semana do mes**. Ao atribuir voluntarios, mantenha a chave **Vincular a recorrencia** ligada para aplicar a selecao as proximas ocorrencias equivalentes ou desligue-a para alterar somente a ocorrencia selecionada. A marcacao de substituto fica disponivel apenas ao atender um pedido de substituicao.
 
 Escalas passadas ficam somente para consulta e nao podem ser alteradas.
 

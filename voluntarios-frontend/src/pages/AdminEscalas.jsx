@@ -37,6 +37,7 @@ import { useNavigation } from '../context/NavigationContext';
 import { buildApiUrl } from '../lib/api';
 import { escalaEstaEncerrada, escalaEstaOcorrendo, getAgoraEscalas } from '../lib/escalas';
 import { PhoneInput } from '../components/PhoneInput';
+import { VinculoRecorrenciaToggle } from '../components/VinculoRecorrenciaToggle';
 import { formatarTelefoneExibicao } from '../lib/telefone';
 import { useModalDialog } from '../lib/useModalDialog';
 
@@ -1149,7 +1150,7 @@ export default function AdminEscalas({ painel: painelDaPagina }) {
     }
   };
 
-  const salvarAtribuicaoVoluntarioAdmin = async (area, voluntarioId) => {
+  const salvarAtribuicaoVoluntarioAdmin = async (area, voluntarioId, vincularRecorrencia = false) => {
     const equipeId = area?.equipe?.id;
 
     if (!area?.id || !equipeId) {
@@ -1171,7 +1172,7 @@ export default function AdminEscalas({ painel: painelDaPagina }) {
       const resposta = await fetchComTimeout(buildApiUrl(`/api/equipes/${equipeId}/escalas/${area.id}`), {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ voluntarioIds, substitutoIds: [] }),
+        body: JSON.stringify({ voluntarioIds, vincularRecorrencia }),
       }, 60000);
       const dados = await resposta.json().catch(() => ({}));
 
@@ -3263,6 +3264,7 @@ function ModalEdicaoEscala({
   const todasEquipesSelecionadas = equipes.length > 0 && equipes.every((equipe) => form.equipeIds?.includes(equipe.id));
   const [areaSelecionadaId, setAreaSelecionadaId] = useState('');
   const [voluntarioSelecionadoId, setVoluntarioSelecionadoId] = useState('');
+  const [vincularRecorrencia, setVincularRecorrencia] = useState(form.tipo === 'RECORRENTE');
   const areaSelecionada = useMemo(() => (
     areasDaOcorrencia.find((area) => area.id === areaSelecionadaId) || areasDaOcorrencia[0] || null
   ), [areaSelecionadaId, areasDaOcorrencia]);
@@ -3306,7 +3308,8 @@ function ModalEdicaoEscala({
       || voluntariosAtribuidos[0]?.usuario?.id
       || '';
     setVoluntarioSelecionadoId(voluntarioAtual);
-  }, [areaSelecionada?.id, voluntariosAtribuidos]);
+    setVincularRecorrencia(form.tipo === 'RECORRENTE');
+  }, [areaSelecionada?.id, form.tipo, voluntariosAtribuidos]);
 
   return (
     <div className="fixed inset-0 z-[90] flex items-center justify-center bg-gray-950/45 px-4 py-6 backdrop-blur-sm" onMouseDown={(event) => event.target === event.currentTarget && !bloqueado && onClose()}>
@@ -3511,6 +3514,14 @@ function ModalEdicaoEscala({
                 )}
               </div>
 
+              {form.tipo === 'RECORRENTE' && (
+                <VinculoRecorrenciaToggle
+                  ativo={vincularRecorrencia}
+                  disabled={bloqueado || areaEncerrada}
+                  onChange={setVincularRecorrencia}
+                />
+              )}
+
               <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
                 <Select
                   label="Alterar ou atribuir voluntário"
@@ -3527,7 +3538,11 @@ function ModalEdicaoEscala({
                 <button
                   type="button"
                   disabled={bloqueado || areaEncerrada}
-                  onClick={() => onSalvarAtribuicao(areaSelecionada, voluntarioSelecionadoId)}
+                  onClick={() => onSalvarAtribuicao(
+                    areaSelecionada,
+                    voluntarioSelecionadoId,
+                    form.tipo === 'RECORRENTE' && vincularRecorrencia,
+                  )}
                   className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-gray-950 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {salvandoAtribuicao ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save size={16} />}

@@ -632,7 +632,8 @@ router.patch('/:equipeId/escalas/:escalaId', autenticar, async (req, res) => {
       return res.status(403).json({ erro: 'Você não pode gerenciar esta equipe.' });
     }
 
-    const { voluntarioIds = [], substitutoIds = [] } = req.body ?? {};
+    const { voluntarioIds = [] } = req.body ?? {};
+    const vincularRecorrencia = req.body?.vincularRecorrencia === true;
 
     const escalaExistente = await prisma.escala.findFirst({
       where: {
@@ -647,6 +648,10 @@ router.patch('/:equipeId/escalas/:escalaId', autenticar, async (req, res) => {
           select: {
             frequencia: true,
           },
+        },
+        voluntarios: {
+          where: { substituto: true },
+          select: { usuarioId: true },
         },
       },
     });
@@ -669,9 +674,10 @@ router.patch('/:equipeId/escalas/:escalaId', autenticar, async (req, res) => {
     });
     const idsPermitidos = new Set((voluntariosDaEquipe?.voluntarios || []).map((voluntario) => voluntario.id));
     const voluntarioIdsValidos = Array.from(new Set(voluntarioIds)).filter((id) => idsPermitidos.has(id));
-    const substitutoIdsValidos = Array.from(new Set(substitutoIds)).filter((id) => voluntarioIdsValidos.includes(id));
+    const substitutoIdsExistentes = new Set(escalaExistente.voluntarios.map((item) => item.usuarioId));
+    const voluntarioIdsRecorrencia = voluntarioIdsValidos.filter((id) => !substitutoIdsExistentes.has(id));
 
-    const participacoesSubstitutos = await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx) => {
       await tx.voluntarioEscala.deleteMany({
         where: {
           escalaId: req.params.escalaId,
@@ -681,65 +687,49 @@ router.patch('/:equipeId/escalas/:escalaId', autenticar, async (req, res) => {
         },
       });
 
-      const substitutosParaNotificar = [];
-
       for (const usuarioId of voluntarioIdsValidos) {
-        const participacao = await tx.voluntarioEscala.upsert({
+        await tx.voluntarioEscala.upsert({
           where: {
             usuarioId_escalaId: {
               usuarioId,
               escalaId: req.params.escalaId,
             },
           },
-          update: {
-            substituto: substitutoIdsValidos.includes(usuarioId),
-          },
+          // A condição de substituto só pode ser criada pelo fluxo de
+          // atendimento a uma solicitação de substituição.
+          update: {},
           create: {
             usuarioId,
             escalaId: req.params.escalaId,
-            substituto: substitutoIdsValidos.includes(usuarioId),
             atribuidoPorId: req.usuarioAutenticado.id,
             dataOcorrenciaStatus: escalaExistente.dataHora,
           },
-          include: {
-            escala: {
-              include: {
-                equipe: {
-                  select: { id: true, nome: true },
-                },
-              },
-            },
-          },
         });
-
-        if (substitutoIdsValidos.includes(usuarioId)) {
-          substitutosParaNotificar.push(participacao);
-        }
       }
 
-      if (escalaExistente.eventoId && escalaExistente.evento?.frequencia !== 'NAO_REPETE') {
+      if (
+        vincularRecorrencia
+        && escalaExistente.eventoId
+        && escalaExistente.evento?.frequencia !== 'NAO_REPETE'
+      ) {
         await sincronizarModeloVoluntariosEscala(tx, {
           eventoId: escalaExistente.eventoId,
           equipeId: req.params.equipeId,
           dataHora: escalaExistente.dataHora,
-          voluntarioIds: voluntarioIdsValidos,
+          voluntarioIds: voluntarioIdsRecorrencia,
           atribuidoPorId: req.usuarioAutenticado.id,
         });
       }
-
-      return substitutosParaNotificar;
     });
-
-    for (const participacao of participacoesSubstitutos) {
-      await notificarSubstituto(prisma, { participacao }).catch((notificationError) => {
-        console.warn('[WARN] Falha ao notificar substituto:', notificationError.message);
-      });
-    }
 
     const equipe = await carregarEquipe(req.params.equipeId, usuario);
 
     return res.status(200).json({
-      mensagem: 'Voluntários atribuídos com sucesso.',
+      mensagem: vincularRecorrencia
+        && escalaExistente.eventoId
+        && escalaExistente.evento?.frequencia !== 'NAO_REPETE'
+        ? 'Voluntários atribuídos à recorrência com sucesso.'
+        : 'Voluntários atribuídos somente a esta ocorrência com sucesso.',
       equipe,
     });
   } catch (erro) {
