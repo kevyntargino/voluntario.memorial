@@ -154,12 +154,33 @@ model Evento {
   equipes     Equipe[]         @relation("EventoEquipes")
   escalas     Escala[]
   ordensCulto OrdemCulto[]
+  ocorrencias EventoOcorrencia[]
   modelosEscalaVoluntarios EscalaModeloVoluntario[]
 
   criadoEm    DateTime         @default(now()) @map("criado_em")
   atualizadoEm DateTime        @updatedAt @map("atualizado_em")
 
   @@map("eventos")
+}
+
+model EventoOcorrencia {
+  id               String    @id @default(uuid()) @db.Uuid
+  eventoId         String    @map("evento_id") @db.Uuid
+  dataHoraOriginal DateTime  @map("data_hora_original")
+  dataHora         DateTime? @map("data_hora")
+  titulo           String?
+  local            String?
+  descricao        String?   @db.Text
+  cancelada        Boolean   @default(false)
+
+  evento           Evento    @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+
+  criadoEm         DateTime  @default(now()) @map("criado_em")
+  atualizadoEm     DateTime  @updatedAt @map("atualizado_em")
+
+  @@unique([eventoId, dataHoraOriginal])
+  @@index([eventoId, dataHora])
+  @@map("eventos_ocorrencias")
 }
 
 model Escala {

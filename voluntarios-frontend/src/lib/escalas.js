@@ -1,4 +1,5 @@
 const TIME_ZONE_ESCALAS = 'America/Campo_Grande';
+export const JANELA_ESCALA_OCORRENDO_MS = 2 * 60 * 60 * 1000;
 
 export function getAgoraEscalas(agora = new Date()) {
   const partes = new Intl.DateTimeFormat('en-US', {
@@ -26,4 +27,13 @@ export function getAgoraEscalas(agora = new Date()) {
 export function escalaEstaEncerrada(dataHora, agora = getAgoraEscalas()) {
   const data = new Date(dataHora);
   return Number.isNaN(data.getTime()) || data.getTime() < agora.getTime();
+}
+
+export function escalaEstaOcorrendo(dataHora, agora = getAgoraEscalas()) {
+  const inicio = new Date(dataHora).getTime();
+  const atual = agora.getTime();
+
+  return !Number.isNaN(inicio)
+    && atual >= inicio - JANELA_ESCALA_OCORRENDO_MS
+    && atual <= inicio + JANELA_ESCALA_OCORRENDO_MS;
 }

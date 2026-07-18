@@ -261,20 +261,39 @@ export async function garantirOcorrenciasEventos(prisma, agora = new Date()) {
       frequencia: { not: 'NAO_REPETE' },
       OR: [{ dataFim: null }, { dataFim: { gte: agora } }],
     },
-    include: { equipes: { select: { id: true } } },
+    include: {
+      equipes: { select: { id: true } },
+      ocorrencias: true,
+    },
   });
 
   for (const evento of eventos) {
-    const datas = gerarDatasEvento(evento, limite).filter((data) => data >= agora && data <= limite);
+    const ocorrencias = evento.ocorrencias || [];
+    const excecoesPorDataOriginal = new Map(ocorrencias.map((ocorrencia) => [
+      ocorrencia.dataHoraOriginal.toISOString(),
+      ocorrencia,
+    ]));
+    const datasRegulares = gerarDatasEvento(evento, limite)
+      .filter((data) => data >= agora && data <= limite && !excecoesPorDataOriginal.has(data.toISOString()));
+    const excecoesAtivas = ocorrencias.filter((ocorrencia) => (
+      !ocorrencia.cancelada
+      && ocorrencia.dataHora
+      && ocorrencia.dataHora >= agora
+      && ocorrencia.dataHora <= limite
+    ));
+    const datas = [
+      ...datasRegulares.map((dataHora) => ({ dataHora, ocorrencia: null })),
+      ...excecoesAtivas.map((ocorrencia) => ({ dataHora: ocorrencia.dataHora, ocorrencia })),
+    ];
     if (datas.length === 0 || evento.equipes.length === 0) continue;
 
     await prisma.escala.createMany({
-      data: datas.flatMap((dataHora) => evento.equipes.map((equipe) => ({
+      data: datas.flatMap(({ dataHora, ocorrencia }) => evento.equipes.map((equipe) => ({
         id: randomUUID(),
         eventoId: evento.id,
-        titulo: evento.titulo,
-        local: evento.local,
-        descricao: evento.descricao,
+        titulo: ocorrencia?.titulo || evento.titulo,
+        local: ocorrencia?.local ?? evento.local,
+        descricao: ocorrencia?.descricao ?? evento.descricao,
         tipo: evento.tipo,
         dataHora,
         diaSemana: null,
@@ -287,7 +306,7 @@ export async function garantirOcorrenciasEventos(prisma, agora = new Date()) {
 
     await aplicarModelosVoluntariosEscalas(prisma, {
       eventoId: evento.id,
-      datas,
+      datas: datas.map(({ dataHora }) => dataHora),
     });
   }
 }

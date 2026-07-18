@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
-  Bell,
   BookOpen,
   CalendarDays,
   CalendarClock,
@@ -36,7 +35,7 @@ import { UsuarioInfoButton, UsuarioModal } from '../components/UsuarioModal';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
 import { buildApiUrl } from '../lib/api';
-import { escalaEstaEncerrada, getAgoraEscalas } from '../lib/escalas';
+import { escalaEstaEncerrada, escalaEstaOcorrendo, getAgoraEscalas } from '../lib/escalas';
 import { PhoneInput } from '../components/PhoneInput';
 import { formatarTelefoneExibicao } from '../lib/telefone';
 import { useModalDialog } from '../lib/useModalDialog';
@@ -153,14 +152,15 @@ function criarFormEdicaoEscala(evento, area) {
     eventoId: area?.eventoId || evento?.id || '',
     tipo,
     frequencia,
+    escopoEdicao: tipo === 'RECORRENTE' ? 'SERIE' : 'OCORRENCIA',
     dataHoraAtual: dataHora,
     dataHora: toDateTimeInput(dataHora),
     diaSemana: evento?.diaSemana ?? partesData?.diaSemana ?? 0,
     semanaMes: evento?.semanaMes || (partesData ? Math.ceil(partesData.dia / 7) : 1),
     horario: toTime(evento?.dataInicio || dataHora),
-    titulo: evento?.titulo || area?.titulo || '',
-    local: evento?.local || area?.local || '',
-    descricao: evento?.descricao || area?.descricao || '',
+    titulo: area?.titulo || evento?.titulo || '',
+    local: area?.local ?? evento?.local ?? '',
+    descricao: area?.descricao ?? evento?.descricao ?? '',
     equipeIds: getEquipeIdsEvento(evento),
     ordemCulto: area?.ordemCulto || null,
     ordemArquivo: null,
@@ -1041,6 +1041,9 @@ export default function AdminEscalas({ painel: painelDaPagina }) {
       ...atual,
       dataHoraAtual: dataHora,
       dataHora: toDateTimeInput(dataHora),
+      titulo: area?.titulo || escalaEmEdicao?.titulo || '',
+      local: area?.local ?? escalaEmEdicao?.local ?? '',
+      descricao: area?.descricao ?? escalaEmEdicao?.descricao ?? '',
       ordemCulto: area?.ordemCulto || null,
       ordemArquivo: null,
     }));
@@ -1088,22 +1091,35 @@ export default function AdminEscalas({ painel: painelDaPagina }) {
     setSalvandoId(`editar-escala-${formEdicaoEscala.eventoId}`);
 
     try {
-      const resposta = await fetchComTimeout(buildApiUrl(`/api/escalas/admin/eventos/${formEdicaoEscala.eventoId}`), {
+      const editandoOcorrencia = formEdicaoEscala.escopoEdicao === 'OCORRENCIA';
+      const endpoint = editandoOcorrencia
+        ? `/api/escalas/admin/eventos/${formEdicaoEscala.eventoId}/ocorrencias`
+        : `/api/escalas/admin/eventos/${formEdicaoEscala.eventoId}`;
+      const corpo = editandoOcorrencia
+        ? {
+            titulo: formEdicaoEscala.titulo,
+            local: formEdicaoEscala.local,
+            descricao: formEdicaoEscala.descricao,
+            dataHoraAtual: formEdicaoEscala.dataHoraAtual,
+            dataHora: formEdicaoEscala.dataHora,
+          }
+        : {
+            tipo: formEdicaoEscala.tipo,
+            frequencia: formEdicaoEscala.tipo === 'RECORRENTE' ? formEdicaoEscala.frequencia : 'NAO_REPETE',
+            titulo: formEdicaoEscala.titulo,
+            local: formEdicaoEscala.local,
+            descricao: formEdicaoEscala.descricao,
+            dataHoraAtual: formEdicaoEscala.dataHoraAtual,
+            dataHora: formEdicaoEscala.dataHora,
+            diaSemana: Number(formEdicaoEscala.diaSemana),
+            semanaMes: formEdicaoEscala.frequencia === 'MENSAL' ? Number(formEdicaoEscala.semanaMes) : null,
+            horario: formEdicaoEscala.horario,
+            equipeIds: formEdicaoEscala.equipeIds,
+          };
+      const resposta = await fetchComTimeout(buildApiUrl(endpoint), {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tipo: formEdicaoEscala.tipo,
-          frequencia: formEdicaoEscala.tipo === 'RECORRENTE' ? formEdicaoEscala.frequencia : 'NAO_REPETE',
-          titulo: formEdicaoEscala.titulo,
-          local: formEdicaoEscala.local,
-          descricao: formEdicaoEscala.descricao,
-          dataHoraAtual: formEdicaoEscala.dataHoraAtual,
-          dataHora: formEdicaoEscala.dataHora,
-          diaSemana: Number(formEdicaoEscala.diaSemana),
-          semanaMes: formEdicaoEscala.frequencia === 'MENSAL' ? Number(formEdicaoEscala.semanaMes) : null,
-          horario: formEdicaoEscala.horario,
-          equipeIds: formEdicaoEscala.equipeIds,
-        }),
+        body: JSON.stringify(corpo),
       }, 90000);
       const dados = await resposta.json().catch(() => ({}));
 
@@ -2490,6 +2506,12 @@ function PainelEscalas({
   const [periodo, setPeriodo] = useState('futuras');
   const [eventoSelecionadoId, setEventoSelecionadoId] = useState('');
   const [eventoExpandidoId, setEventoExpandidoId] = useState('');
+  const [agoraEscalas, setAgoraEscalas] = useState(() => getAgoraEscalas());
+
+  useEffect(() => {
+    const intervalo = window.setInterval(() => setAgoraEscalas(getAgoraEscalas()), 60000);
+    return () => window.clearInterval(intervalo);
+  }, []);
   const locaisEventos = useMemo(() => {
     const locais = new Map();
 
@@ -2506,12 +2528,13 @@ function PainelEscalas({
     return Array.from(locais.values()).sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }, [eventos]);
   const eventosDoPeriodo = useMemo(() => {
-    const agora = getAgoraEscalas().getTime();
+    const agora = agoraEscalas.getTime();
     return eventos.map((evento) => {
     const escalas = (evento.escalas || evento.areas || [])
       .filter((escala) => {
         const data = new Date(escala.dataHora).getTime();
-        return periodo === 'passadas' ? data < agora : data >= agora;
+        const ocorrendo = escalaEstaOcorrendo(escala.dataHora, agoraEscalas);
+        return periodo === 'passadas' ? data < agora && !ocorrendo : data >= agora || ocorrendo;
       })
       .sort((a, b) => new Date(a.dataHora).getTime() - new Date(b.dataHora).getTime());
 
@@ -2530,7 +2553,7 @@ function PainelEscalas({
     if (periodo === 'passadas') return ordemEscalas === 'proximas' ? -diferenca : diferenca;
     return ordemEscalas === 'proximas' ? diferenca : -diferenca;
     });
-  }, [eventos, periodo, ordemEscalas]);
+  }, [agoraEscalas, eventos, periodo, ordemEscalas]);
   const ocorrenciasCalendario = useMemo(() => criarOcorrenciasDosEventos(eventosDoPeriodo), [eventosDoPeriodo]);
   const eventosFuturos = periodo === 'futuras' ? eventosDoPeriodo : [];
   const eventosEsporadicos = useMemo(() => eventosDoPeriodo.filter((evento) => evento.tipo === 'ESPORADICA'), [eventosDoPeriodo]);
@@ -2846,6 +2869,7 @@ function PainelEscalas({
                   )}
                 </div>
                 {eventosListagem.map((evento, index) => {
+                  const eventoAoVivo = (evento.areas || []).some((area) => escalaEstaOcorrendo(area.dataHora, agoraEscalas));
                   const mostrarTituloRecorrente = evento.tipo === 'RECORRENTE' && eventosListagem[index - 1]?.tipo !== 'RECORRENTE';
                   const acoesOrdemCulto = evento.areas.filter((area) => {
                     const primeiraEscalaDaOcorrencia = evento.areas.find((item) => item.dataHora === area.dataHora)?.id === area.id;
@@ -2878,7 +2902,9 @@ function PainelEscalas({
                     }
                   }}
                   className={`min-w-0 overflow-hidden rounded-2xl border bg-gradient-to-br from-white to-gray-50 p-4 shadow-sm transition sm:p-5 ${
-                    selecionado ? 'border-dourado-400 ring-2 ring-dourado-200' : 'border-gray-200 hover:border-gray-300'
+                    eventoAoVivo
+                      ? 'border-red-400 ring-2 ring-red-200'
+                      : selecionado ? 'border-dourado-400 ring-2 ring-dourado-200' : 'border-gray-200 hover:border-gray-300'
                   }`}
                 >
                   <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -2899,6 +2925,7 @@ function PainelEscalas({
                           {evento.tipo === 'ESPORADICA' ? 'Esporádica' : 'Recorrente'}
                         </span>
                         <RecorrenciaBadge escala={evento} />
+                        {eventoAoVivo && <EscalaOcorrendoBadge />}
                         {selecionado && (
                           <span className="rounded-full bg-gray-950 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-white">
                             Selecionada
@@ -3231,7 +3258,8 @@ function ModalEdicaoEscala({
   const areasDaOcorrencia = useMemo(() => (
     getAreasEvento(evento).filter((area) => area.dataHora === form.dataHoraAtual)
   ), [evento, form.dataHoraAtual]);
-  const podeEditarData = form.tipo === 'ESPORADICA';
+  const editandoOcorrencia = form.escopoEdicao === 'OCORRENCIA';
+  const podeEditarData = form.tipo === 'ESPORADICA' || editandoOcorrencia;
   const todasEquipesSelecionadas = equipes.length > 0 && equipes.every((equipe) => form.equipeIds?.includes(equipe.id));
   const [areaSelecionadaId, setAreaSelecionadaId] = useState('');
   const [voluntarioSelecionadoId, setVoluntarioSelecionadoId] = useState('');
@@ -3315,17 +3343,36 @@ function ModalEdicaoEscala({
 
           {ocorrencias.length > 1 && (
             <Select
-              label={form.tipo === 'ESPORADICA' ? 'Ocorrência a ajustar' : 'Ocorrência para atribuição e ordem'}
+              label="Ocorrência"
               value={form.dataHoraAtual}
               options={ocorrencias.map((area) => ({ value: area.dataHora, label: formatarData(area.dataHora) }))}
               onChange={onSelecionarOcorrencia}
             />
           )}
 
+          {form.tipo === 'RECORRENTE' && (
+            <div className="grid grid-cols-2 gap-2 rounded-lg border border-gray-200 bg-gray-50 p-1">
+              {[
+                { value: 'SERIE', label: 'Toda a série' },
+                { value: 'OCORRENCIA', label: 'Só esta data' },
+              ].map((opcao) => (
+                <button
+                  key={opcao.value}
+                  type="button"
+                  disabled={bloqueado}
+                  onClick={() => onChange((atual) => ({ ...atual, escopoEdicao: opcao.value }))}
+                  className={`rounded-md px-3 py-2 text-sm font-bold transition disabled:opacity-60 ${form.escopoEdicao === opcao.value ? 'bg-gray-950 text-white' : 'text-gray-600 hover:bg-white'}`}
+                >
+                  {opcao.label}
+                </button>
+              ))}
+            </div>
+          )}
+
           <div className="rounded-xl border border-gray-200 bg-white p-4">
             <div className="grid gap-4 lg:grid-cols-2">
               <Campo label="Nome do evento" value={form.titulo} disabled={bloqueado} onChange={(value) => onChange((atual) => ({ ...atual, titulo: value }))} />
-              {form.tipo === 'ESPORADICA' ? (
+              {podeEditarData ? (
                 <Campo
                   label="Data e horário"
                   type="datetime-local"
@@ -3357,7 +3404,7 @@ function ModalEdicaoEscala({
               )}
             </div>
 
-            {form.tipo === 'RECORRENTE' && (
+            {form.tipo === 'RECORRENTE' && !editandoOcorrencia && (
               <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 <Select label="Dia da semana" value={form.diaSemana} options={dias} onChange={(value) => onChange((atual) => ({ ...atual, diaSemana: Number(value) }))} />
                 {form.frequencia === 'MENSAL' && (
@@ -3373,6 +3420,7 @@ function ModalEdicaoEscala({
             </div>
           </div>
 
+          {!editandoOcorrencia && (
           <GrupoChecks titulo="Equipes/funções do evento">
             <label className="flex items-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-900">
               <input
@@ -3395,6 +3443,7 @@ function ModalEdicaoEscala({
               </label>
             ))}
           </GrupoChecks>
+          )}
 
           <div>
             <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-gray-400">Funções desta ocorrência</p>
@@ -3533,7 +3582,7 @@ function ModalEdicaoEscala({
           </button>
           <button disabled={bloqueado} className="inline-flex items-center justify-center gap-2 rounded-md bg-gray-950 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-gray-800 disabled:opacity-60">
             {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : form.ordemArquivo ? <FileText size={16} /> : <Save size={16} />}
-            Salvar evento
+            {editandoOcorrencia ? 'Salvar ocorrência' : 'Salvar evento'}
           </button>
         </div>
       </form>
@@ -3550,7 +3599,6 @@ function ModalExclusaoEscala({
   onClose,
 }) {
   const excluindo = salvandoId === `excluir-escala-${form.eventoId}`;
-  const excluiSerie = form.frequencia !== 'NAO_REPETE';
   const ocorrenciasExcluiveis = getOcorrenciasUnicas(evento)
     .filter((area) => !(area.encerrada || escalaEstaEncerrada(area.dataHora)));
   const areasDaOcorrencia = getAreasEvento(evento)
@@ -3567,17 +3615,15 @@ function ModalExclusaoEscala({
           <div className="min-w-0">
             <p className="text-sm font-bold uppercase tracking-[0.16em] text-red-700">Confirmar exclusão</p>
             <h2 id="titulo-modal-exclusao-escala" className="mt-2 break-words text-xl font-bold leading-7 text-gray-950">
-              Excluir {excluiSerie ? 'evento recorrente' : 'escala'} {form.titulo || 'selecionada'}?
+              {form.frequencia !== 'NAO_REPETE' ? 'Cancelar ocorrência' : 'Excluir escala'} {form.titulo || 'selecionada'}?
             </h2>
             <p className="mt-2 text-sm leading-6 text-gray-600">
-              {excluiSerie
-                ? 'Todas as escalas futuras deste evento serão removidas e novas ocorrências deixarão de ser geradas.'
-                : 'Esta ocorrência será removida com voluntários, status e ordem de culto vinculados a ela.'}
+              Esta ocorrência será removida com voluntários, status e ordem de culto vinculados a ela.
             </p>
           </div>
         </div>
 
-        {!excluiSerie && ocorrenciasExcluiveis.length > 1 && (
+        {ocorrenciasExcluiveis.length > 1 && (
           <div className="mt-5">
             <Select
               label="Ocorrência"
@@ -3590,7 +3636,7 @@ function ModalExclusaoEscala({
 
         <div className="mt-5 rounded-xl border border-red-100 bg-red-50 p-4">
           <p className="text-xs font-bold uppercase tracking-[0.14em] text-red-700">
-            {excluiSerie ? 'A partir de' : 'Ocorrência'}
+            Ocorrência
           </p>
           <p className="mt-1 text-sm font-bold text-gray-950">{formatarData(form.dataHoraAtual)}</p>
           {areasDaOcorrencia.length > 0 && (
@@ -3620,11 +3666,23 @@ function ModalExclusaoEscala({
             className="inline-flex items-center justify-center gap-2 rounded-md bg-red-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-red-700 disabled:opacity-60"
           >
             {excluindo ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 size={16} />}
-            Excluir
+            {form.frequencia !== 'NAO_REPETE' ? 'Cancelar ocorrência' : 'Excluir'}
           </button>
         </div>
       </div>
     </div>
+  );
+}
+
+function EscalaOcorrendoBadge() {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-red-700">
+      <span className="relative flex h-2 w-2">
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
+        <span className="relative h-2 w-2 rounded-full bg-red-600" />
+      </span>
+      Ocorrendo agora
+    </span>
   );
 }
 
@@ -3634,7 +3692,12 @@ function CalendarioEscalas({ eventos }) {
     return new Date(hoje.getFullYear(), hoje.getMonth(), 1);
   });
   const [diaSelecionado, setDiaSelecionado] = useState(null);
-  const hoje = new Date();
+  const [agora, setAgora] = useState(() => getAgoraEscalas());
+  useEffect(() => {
+    const intervalo = window.setInterval(() => setAgora(getAgoraEscalas()), 60000);
+    return () => window.clearInterval(intervalo);
+  }, []);
+  const hoje = agora;
   const inicioMes = new Date(mesAtual.getFullYear(), mesAtual.getMonth(), 1);
   const inicioGrade = new Date(inicioMes);
   inicioGrade.setDate(inicioGrade.getDate() - inicioGrade.getDay());
@@ -3711,9 +3774,15 @@ function CalendarioEscalas({ eventos }) {
               <span className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold ${isHoje ? 'bg-gray-950 text-white' : pertenceAoMes ? 'text-gray-700' : 'text-gray-300'}`}>{data.getDate()}</span>
               {eventosDoDia.length > 0 && (
                 <span className="absolute bottom-1.5 left-1.5 right-1.5 flex flex-wrap gap-1 sm:bottom-2 sm:left-2 sm:right-2">
-                  {eventosDoDia.slice(0, 3).map((evento) => (
-                    <span key={evento.id} className={`h-1.5 w-1.5 rounded-full sm:h-2 sm:w-2 ${evento.tipo === 'ESPORADICA' ? 'bg-amber-500' : 'bg-sky-600'}`} title={evento.titulo} />
-                  ))}
+                  {eventosDoDia.slice(0, 3).map((evento) => {
+                    const eventoAoVivo = (evento.areas || []).some((area) => escalaEstaOcorrendo(area.dataHora, agora));
+                    return (
+                    <span key={evento.id} className="relative flex h-2 w-2" title={eventoAoVivo ? `${evento.titulo} — ocorrendo agora` : evento.titulo}>
+                      {eventoAoVivo && <span className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-75 ${evento.tipo === 'ESPORADICA' ? 'bg-amber-500' : 'bg-sky-600'}`} />}
+                      <span className={`relative h-1.5 w-1.5 rounded-full sm:h-2 sm:w-2 ${evento.tipo === 'ESPORADICA' ? 'bg-amber-500' : 'bg-sky-600'}`} />
+                    </span>
+                    );
+                  })}
                   {eventosDoDia.length > 3 && <span className="text-[9px] font-bold leading-2 text-gray-500">+{eventosDoDia.length - 3}</span>}
                 </span>
               )}
@@ -3724,6 +3793,7 @@ function CalendarioEscalas({ eventos }) {
       <div className="flex flex-wrap items-center gap-4 border-t border-gray-100 px-4 py-3 text-xs font-semibold text-gray-500">
         <span className="inline-flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-sky-600" />Recorrente</span>
         <span className="inline-flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-amber-500" />Esporádica</span>
+        <span className="inline-flex items-center gap-2"><span className="h-2 w-2 animate-ping rounded-full bg-red-500" />Ocorrendo agora</span>
       </div>
 
       {diaSelecionado && eventosSelecionados.length > 0 && (

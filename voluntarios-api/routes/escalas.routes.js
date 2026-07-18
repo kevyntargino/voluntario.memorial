@@ -861,6 +861,7 @@ router.patch('/admin/eventos/:id', autenticar, exigirAdmin, async (req, res) => 
           },
           orderBy: { dataHora: 'asc' },
         },
+        ocorrencias: true,
       },
     });
 
@@ -987,6 +988,22 @@ router.patch('/admin/eventos/:id', autenticar, exigirAdmin, async (req, res) => 
       return res.status(400).json({ erro: 'O evento precisa ter pelo menos uma ocorrência futura.' });
     }
 
+    const datasExcecoesAtivas = evento.tipo === 'RECORRENTE'
+      ? evento.ocorrencias
+        .filter((ocorrencia) => !ocorrencia.cancelada && ocorrencia.dataHora)
+        .map((ocorrencia) => ocorrencia.dataHora)
+      : [];
+
+    if (evento.tipo === 'RECORRENTE') {
+      const chavesDatasComExcecao = new Set(evento.ocorrencias.map((ocorrencia) => (
+        new Date(ocorrencia.dataHoraOriginal).toISOString()
+      )));
+      datasDesejadas = normalizarDatasUnicas([
+        ...datasDesejadas.filter((data) => !chavesDatasComExcecao.has(new Date(data).toISOString())),
+        ...datasExcecoesAtivas,
+      ]);
+    }
+
     const chavesDatasDesejadas = getChavesDatas(datasDesejadas);
     const chavesOrdensPreservadas = new Set(chavesDatasDesejadas);
 
@@ -1066,7 +1083,10 @@ router.patch('/admin/eventos/:id', autenticar, exigirAdmin, async (req, res) => 
       });
 
       await tx.escala.updateMany({
-        where: { eventoId: evento.id },
+        where: {
+          eventoId: evento.id,
+          ...(datasExcecoesAtivas.length > 0 ? { dataHora: { notIn: datasExcecoesAtivas } } : {}),
+        },
         data: {
           ...dadosTexto,
           tipo: evento.tipo,
@@ -1165,6 +1185,14 @@ router.patch('/admin/eventos/:id/ocorrencias', autenticar, exigirAdmin, async (r
           where: { dataHora: ocorrenciaAtual },
           select: { id: true },
         },
+        ocorrencias: {
+          where: {
+            OR: [
+              { dataHoraOriginal: ocorrenciaAtual },
+              { dataHora: ocorrenciaAtual },
+            ],
+          },
+        },
       },
     });
 
@@ -1174,57 +1202,55 @@ router.patch('/admin/eventos/:id/ocorrencias', autenticar, exigirAdmin, async (r
 
     const alterouData = !datasIguais(ocorrenciaAtual, novaOcorrencia);
 
-    if (alterouData && evento.frequencia !== 'NAO_REPETE') {
-      return res.status(400).json({ erro: 'A data de eventos recorrentes segue a regra de recorrência.' });
-    }
+    const excecaoExistente = evento.ocorrencias?.find((item) => (
+      datasIguais(item.dataHoraOriginal, ocorrenciaAtual)
+      || (item.dataHora && datasIguais(item.dataHora, ocorrenciaAtual))
+    ));
+    const dataHoraOriginal = excecaoExistente?.dataHoraOriginal || ocorrenciaAtual;
 
     await prisma.$transaction(async (tx) => {
-      await tx.evento.update({
-        where: { id: evento.id },
+      await tx.escala.updateMany({
+        where: { eventoId: evento.id, dataHora: ocorrenciaAtual },
         data: dadosTexto,
       });
 
-      await tx.escala.updateMany({
-        where: { eventoId: evento.id },
-        data: dadosTexto,
-      });
+      if (alterouData) {
+        await tx.escala.updateMany({
+          where: { eventoId: evento.id, dataHora: ocorrenciaAtual },
+          data: { dataHora: novaOcorrencia },
+        });
 
-      if (!alterouData) return;
+        await tx.ordemCulto.updateMany({
+          where: { eventoId: evento.id, dataHora: ocorrenciaAtual },
+          data: { dataHora: novaOcorrencia, dataCulto: novaOcorrencia },
+        });
+      }
 
-      await tx.escala.updateMany({
-        where: { eventoId: evento.id, dataHora: ocorrenciaAtual },
-        data: {
-          dataHora: novaOcorrencia,
-        },
-      });
-
-      await tx.ordemCulto.updateMany({
-        where: { eventoId: evento.id, dataHora: ocorrenciaAtual },
-        data: {
-          dataHora: novaOcorrencia,
-          dataCulto: novaOcorrencia,
-        },
-      });
-
-      const primeiraEscala = await tx.escala.findFirst({
-        where: { eventoId: evento.id },
-        orderBy: { dataHora: 'asc' },
-        select: { dataHora: true },
-      });
-      const dataInicio = primeiraEscala?.dataHora || novaOcorrencia;
-
-      await tx.evento.update({
-        where: { id: evento.id },
-        data: {
-          dataInicio,
-          diaSemana: dataInicio.getUTCDay(),
-          semanaMes: getSemanaMes(dataInicio),
-        },
-      });
+      if (evento.frequencia !== 'NAO_REPETE') {
+        await tx.eventoOcorrencia.upsert({
+          where: {
+            eventoId_dataHoraOriginal: {
+              eventoId: evento.id,
+              dataHoraOriginal,
+            },
+          },
+          create: {
+            eventoId: evento.id,
+            dataHoraOriginal,
+            dataHora: novaOcorrencia,
+            ...dadosTexto,
+          },
+          update: {
+            dataHora: novaOcorrencia,
+            cancelada: false,
+            ...dadosTexto,
+          },
+        });
+      }
     });
 
     return res.status(200).json({
-      mensagem: 'Escala atualizada com sucesso.',
+      mensagem: 'Ocorrência atualizada sem alterar as demais datas do evento.',
       dataHora: novaOcorrencia.toISOString(),
     });
   } catch (erro) {
@@ -1256,6 +1282,14 @@ router.delete('/admin/eventos/:id/ocorrencias', autenticar, exigirAdmin, async (
           where: { dataHora: ocorrencia },
           select: { id: true },
         },
+        ocorrencias: {
+          where: {
+            OR: [
+              { dataHoraOriginal: ocorrencia },
+              { dataHora: ocorrencia },
+            ],
+          },
+        },
       },
     });
 
@@ -1264,39 +1298,54 @@ router.delete('/admin/eventos/:id/ocorrencias', autenticar, exigirAdmin, async (
     }
 
     if (evento.frequencia !== 'NAO_REPETE') {
-      const agora = getAgoraEscalas();
+      const excecaoExistente = evento.ocorrencias?.find((item) => (
+        datasIguais(item.dataHoraOriginal, ocorrencia)
+        || (item.dataHora && datasIguais(item.dataHora, ocorrencia))
+      ));
+      const dataHoraOriginal = excecaoExistente?.dataHoraOriginal || ocorrencia;
       const ordensCultoRemovidas = await prisma.ordemCulto.findMany({
         where: {
           eventoId: evento.id,
-          dataHora: { gte: agora },
+          dataHora: ocorrencia,
         },
         select: { arquivoKey: true },
       });
-      const removidas = await prisma.$transaction(async (tx) => {
-        await tx.evento.update({
-          where: { id: evento.id },
-          data: { ativo: false },
+      await prisma.$transaction(async (tx) => {
+        await tx.eventoOcorrencia.upsert({
+          where: {
+            eventoId_dataHoraOriginal: {
+              eventoId: evento.id,
+              dataHoraOriginal,
+            },
+          },
+          create: {
+            eventoId: evento.id,
+            dataHoraOriginal,
+            dataHora: ocorrencia,
+            cancelada: true,
+          },
+          update: {
+            cancelada: true,
+          },
         });
         await tx.ordemCulto.deleteMany({
           where: {
             eventoId: evento.id,
-            dataHora: { gte: agora },
+            dataHora: ocorrencia,
           },
         });
-        const resultado = await tx.escala.deleteMany({
+        await tx.escala.deleteMany({
           where: {
             eventoId: evento.id,
-            dataHora: { gte: agora },
+            dataHora: ocorrencia,
           },
         });
-
-        return resultado.count;
       });
 
       apagarArquivosOrdensCulto(ordensCultoRemovidas);
 
       return res.status(200).json({
-        mensagem: `${removidas} escala(s) futura(s) removida(s). O evento recorrente não gerará novas ocorrências.`,
+        mensagem: 'Ocorrência cancelada. As demais datas do evento recorrente foram mantidas.',
       });
     }
 

@@ -23,7 +23,7 @@ import { RecorrenciaBadge, RecorrenciaOrdinal } from './RecorrenciaBadge';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
 import { buildApiUrl } from '../lib/api';
-import { getAgoraEscalas } from '../lib/escalas';
+import { escalaEstaOcorrendo, getAgoraEscalas } from '../lib/escalas';
 import { formatarTelefoneExibicao } from '../lib/telefone';
 
 const statusConfig = {
@@ -114,6 +114,12 @@ function getProximaEscala(escalas, agora = getAgoraEscalas(), alvo = {}) {
     }
   }
 
+  const confirmadaEmAndamento = candidatas.find((escala) => escalaEstaAcontecendo(escala, agora));
+
+  if (confirmadaEmAndamento) {
+    return confirmadaEmAndamento;
+  }
+
   const jaIniciadas = candidatas
     .filter((escala) => getDataEscala(escala).getTime() <= agoraMs)
     .sort((a, b) => getDataEscala(b).getTime() - getDataEscala(a).getTime());
@@ -202,16 +208,8 @@ function getDisponibilidadeAcoesEscala(escala, participacao, agora = getAgoraEsc
 }
 
 function escalaEstaAcontecendo(escala, agora = getAgoraEscalas()) {
-  const data = getDataEscala(escala);
-
-  if (!data) {
-    return false;
-  }
-
-  const inicio = data.getTime();
-  const atual = agora.getTime();
-
-  return atual >= inicio && atual <= inicio + DURACAO_REFERENCIA_EVENTO_MS;
+  return escala?.minhaParticipacao?.status === 'CONFIRMADA'
+    && escalaEstaOcorrendo(escala.dataHora, agora);
 }
 
 function getEstadoAtalhoProximaEscala(escala, agora = getAgoraEscalas()) {
@@ -596,17 +594,13 @@ export function MobileBottomNav() {
   const renderItem = (item) => {
     const Icon = item.icon;
     const ativo = itemNavegacaoEstaAtivo(item, pathname);
-    const classesContexto = contextoAtivo === 'admin'
+    const classesContexto = contextoAtivo !== 'principal'
       ? ativo
-        ? 'text-white'
-        : 'text-gray-400 active:bg-white/10'
-      : contextoAtivo === 'equipe'
-        ? ativo
-          ? 'text-dourado-900 dark:text-dourado-100'
-          : 'text-dourado-700/70 active:bg-dourado-100 dark:text-dourado-300/70 dark:active:bg-dourado-900'
-        : ativo
-          ? 'text-gray-950 dark:text-white'
-          : 'text-gray-500 active:bg-gray-100 dark:text-gray-400 dark:active:bg-gray-900';
+        ? 'bg-gray-950 text-white shadow-sm dark:bg-white dark:text-gray-950'
+        : 'text-gray-500 hover:bg-gray-100 active:bg-gray-200 dark:text-gray-400 dark:hover:bg-gray-800 dark:active:bg-gray-700'
+      : ativo
+        ? 'text-gray-950 dark:text-white'
+        : 'text-gray-500 active:bg-gray-100 dark:text-gray-400 dark:active:bg-gray-900';
 
     return (
       <button
@@ -616,7 +610,7 @@ export function MobileBottomNav() {
         aria-current={ativo ? 'page' : undefined}
         className={`relative flex min-w-0 flex-col items-center justify-center gap-1 rounded-md px-1 py-2 text-[11px] font-semibold transition-colors ${classesContexto}`}
       >
-        {ativo && <span className={`absolute top-1 h-1 w-1 rounded-full ${contextoAtivo === 'admin' ? 'bg-dourado-400' : 'bg-dourado-600 dark:bg-dourado-300'}`} />}
+        {ativo && contextoAtivo === 'principal' && <span className="absolute top-1 h-1 w-1 rounded-full bg-gray-950 dark:bg-white" />}
         <Icon size={21} strokeWidth={ativo ? 2.4 : 1.8} />
         <span className="truncate">{item.label}</span>
       </button>
@@ -667,11 +661,7 @@ export function MobileBottomNav() {
         aria-label={contextoAtivo === 'admin' ? 'Navegação administrativa' : contextoAtivo === 'equipe' ? 'Navegação da equipe' : 'Navegação principal'}
         data-navigation-context={contextoAtivo}
         className={`fixed inset-x-0 bottom-0 z-40 border-t pb-[env(safe-area-inset-bottom)] shadow-[0_-1px_14px_rgba(15,23,42,0.08)] backdrop-blur-xl lg:hidden ${
-          contextoAtivo === 'admin'
-            ? 'border-gray-800 bg-gray-950/95'
-            : contextoAtivo === 'equipe'
-              ? 'border-dourado-300 bg-dourado-50/95 dark:border-dourado-800 dark:bg-gray-950/95'
-              : 'border-gray-200 bg-white/95 dark:border-gray-800 dark:bg-gray-950/95'
+          'border-gray-200 bg-white/95 dark:border-gray-800 dark:bg-gray-950/95'
         }`}
       >
         <div className="relative mx-auto max-w-md px-3">
@@ -690,7 +680,7 @@ export function MobileBottomNav() {
                       onClick={() => navegarPara(item.path)}
                       className={`flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-semibold transition ${
                         ativo
-                          ? 'bg-dourado-50 text-dourado-800 dark:bg-dourado-950/30 dark:text-dourado-200'
+                          ? 'bg-gray-950 text-white dark:bg-white dark:text-gray-950'
                           : 'text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800'
                       }`}
                     >
@@ -715,14 +705,12 @@ export function MobileBottomNav() {
                 aria-expanded={menuAberto}
                 aria-haspopup="menu"
                 className={`relative flex min-w-0 flex-col items-center justify-center gap-1 rounded-md px-1 py-2 text-[11px] font-semibold transition-colors ${
-                  contextoAtivo === 'admin'
-                    ? menuAtivo || menuAberto ? 'text-white' : 'text-gray-400 active:bg-white/10'
-                    : menuAtivo || menuAberto
-                      ? 'text-gray-950 dark:text-white'
-                      : 'text-gray-500 active:bg-gray-100 dark:text-gray-400 dark:active:bg-gray-900'
+                  menuAtivo || menuAberto
+                    ? 'bg-gray-950 text-white shadow-sm dark:bg-white dark:text-gray-950'
+                    : 'text-gray-500 active:bg-gray-100 dark:text-gray-400 dark:active:bg-gray-900'
                 }`}
               >
-                {(menuAtivo || menuAberto) && <span className="absolute top-1 h-1 w-1 rounded-full bg-dourado-600 dark:bg-dourado-300" />}
+                {menuAtivo || menuAberto ? <span className="absolute top-1 h-1 w-1 rounded-full bg-gray-400 dark:bg-gray-600" /> : null}
                 <MoreHorizontal size={22} strokeWidth={menuAtivo || menuAberto ? 2.4 : 1.8} />
                 <span className="truncate">Mais</span>
               </button>

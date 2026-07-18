@@ -26,6 +26,7 @@ import { UsuarioInfoButton, UsuarioModal } from '../components/UsuarioModal';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
 import { buildApiUrl } from '../lib/api';
+import { escalaEstaOcorrendo, getAgoraEscalas } from '../lib/escalas';
 import { PhoneInput } from '../components/PhoneInput';
 import { formatarTelefoneExibicao } from '../lib/telefone';
 
@@ -164,6 +165,12 @@ export default function MinhaEquipe({ pagina = 'dashboard' }) {
   const [paginaEscalas, setPaginaEscalas] = useState(1);
   const [itensPorPaginaEscalas, setItensPorPaginaEscalas] = useState(5);
   const [escalaModalId, setEscalaModalId] = useState('');
+  const [agoraEscalas, setAgoraEscalas] = useState(() => getAgoraEscalas());
+
+  useEffect(() => {
+    const intervalo = window.setInterval(() => setAgoraEscalas(getAgoraEscalas()), 60000);
+    return () => window.clearInterval(intervalo);
+  }, []);
 
   const carregarEquipes = useCallback(async () => {
     setErro('');
@@ -1045,7 +1052,7 @@ export default function MinhaEquipe({ pagina = 'dashboard' }) {
                         Nenhuma escala encontrada com os filtros selecionados.
                       </div>
                     ) : escalasPaginadas.map((escala) => (
-                      <div id={`equipe-escala-${escala.id}`} key={escala.id} className="rounded-2xl border border-gray-200 bg-gradient-to-br from-white to-gray-50 p-5 shadow-sm">
+                      <div id={`equipe-escala-${escala.id}`} key={escala.id} className={`rounded-2xl border bg-gradient-to-br from-white to-gray-50 p-5 shadow-sm ${escalaEstaOcorrendo(escala.dataHora, agoraEscalas) ? 'border-red-400 ring-2 ring-red-200' : 'border-gray-200'}`}>
                         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
@@ -1061,6 +1068,7 @@ export default function MinhaEquipe({ pagina = 'dashboard' }) {
                                 {escala.tipo === 'ESPORADICA' ? 'Esporádica' : 'Recorrente'}
                               </span>
                               <RecorrenciaBadge escala={escala} />
+                              {escalaEstaOcorrendo(escala.dataHora, agoraEscalas) && <EscalaOcorrendoBadge />}
                             </div>
                             <p className="mt-3 break-words text-xl font-bold text-gray-950">
                               {escala.titulo || 'Escala sem título'}
@@ -1316,6 +1324,18 @@ function ResumoEquipe({ label, valor }) {
   );
 }
 
+function EscalaOcorrendoBadge() {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-red-700">
+      <span className="relative flex h-2 w-2">
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
+        <span className="relative h-2 w-2 rounded-full bg-red-600" />
+      </span>
+      Ocorrendo agora
+    </span>
+  );
+}
+
 function SeletorVisualizacaoEquipe({ value, onChange }) {
   return (
     <div>
@@ -1369,7 +1389,11 @@ function CalendarioEscalasEquipe({
 
     return mapa;
   }, [escalas]);
-  const agora = new Date();
+  const [agora, setAgora] = useState(() => getAgoraEscalas());
+  useEffect(() => {
+    const intervalo = window.setInterval(() => setAgora(getAgoraEscalas()), 60000);
+    return () => window.clearInterval(intervalo);
+  }, []);
   const hoje = chaveDataUtc(new Date(Date.UTC(agora.getFullYear(), agora.getMonth(), agora.getDate())));
   const tituloMes = new Intl.DateTimeFormat('pt-BR', {
     month: 'long',
@@ -1423,6 +1447,7 @@ function CalendarioEscalasEquipe({
                 {itens.slice(0, 4).map(({ escala }) => {
                   const pendentes = (escala.voluntarios || []).filter((item) => item.status === 'PENDENTE').length;
                   const titulo = `${escala.titulo || 'Escala sem título'} - ${formatarData(escala.dataHora)} - ${escala.voluntarios?.length || 0} voluntário(s)${pendentes > 0 ? ` - ${pendentes} pendente(s)` : ''}`;
+                  const aoVivo = escalaEstaOcorrendo(escala.dataHora, agora);
 
                   return (
                     <button
@@ -1433,7 +1458,10 @@ function CalendarioEscalasEquipe({
                       aria-label={titulo}
                       title={titulo}
                     >
-                      <span className={`h-2.5 w-2.5 rounded-full ring-2 ring-white sm:h-3 sm:w-3 ${escala.tipo === 'ESPORADICA' ? 'bg-amber-500' : 'bg-blue-600'}`} />
+                      <span className="relative flex h-2.5 w-2.5 sm:h-3 sm:w-3">
+                        {aoVivo && <span className={`absolute inline-flex h-full w-full animate-ping rounded-full ${escala.tipo === 'ESPORADICA' ? 'bg-amber-500' : 'bg-blue-600'}`} />}
+                        <span className={`relative h-2.5 w-2.5 rounded-full ring-2 ring-white sm:h-3 sm:w-3 ${escala.tipo === 'ESPORADICA' ? 'bg-amber-500' : 'bg-blue-600'}`} />
+                      </span>
                     </button>
                   );
                 })}
