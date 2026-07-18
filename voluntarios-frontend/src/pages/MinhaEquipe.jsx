@@ -115,6 +115,7 @@ function formatarData(dataHora) {
   return new Intl.DateTimeFormat('pt-BR', {
     dateStyle: 'medium',
     timeStyle: 'short',
+    timeZone: 'UTC',
   }).format(new Date(dataHora));
 }
 
