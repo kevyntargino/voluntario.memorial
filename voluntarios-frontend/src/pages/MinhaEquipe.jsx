@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import { Footer } from '../components/Footer';
-import { RecorrenciaBadge } from '../components/RecorrenciaBadge';
+import { RecorrenciaBadge, RecorrenciaOrdinal } from '../components/RecorrenciaBadge';
 import { UsuarioInfoButton, UsuarioModal } from '../components/UsuarioModal';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
@@ -1029,7 +1029,10 @@ export default function MinhaEquipe() {
                               </span>
                               <RecorrenciaBadge escala={escala} />
                             </div>
-                            <p className="mt-3 text-xl font-bold text-gray-950">{escala.titulo || 'Escala sem título'}</p>
+                            <p className="mt-3 break-words text-xl font-bold text-gray-950">
+                              {escala.titulo || 'Escala sem título'}
+                              <RecorrenciaOrdinal escala={escala} className="ml-2" />
+                            </p>
                             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
                               <span>{formatarData(escala.dataHora)}</span>
                               {escala.local && <span>Local: {escala.local}</span>}
@@ -1482,7 +1485,10 @@ function ModalEscalaEquipe({
               </span>
               <RecorrenciaBadge escala={escala} />
             </div>
-            <h2 id="modal-escala-equipe-titulo" className="mt-2 text-xl font-bold text-gray-950">{escala.titulo || 'Escala sem título'}</h2>
+            <h2 id="modal-escala-equipe-titulo" className="mt-2 break-words text-xl font-bold text-gray-950">
+              {escala.titulo || 'Escala sem título'}
+              <RecorrenciaOrdinal escala={escala} className="ml-2" />
+            </h2>
             <p className="mt-1 text-sm text-gray-500">
               {formatarData(escala.dataHora)}
               {escala.local ? ` · ${escala.local}` : ''}

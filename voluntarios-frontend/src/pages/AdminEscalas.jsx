@@ -31,7 +31,7 @@ import {
 } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import { Footer } from '../components/Footer';
-import { RecorrenciaBadge } from '../components/RecorrenciaBadge';
+import { RecorrenciaBadge, RecorrenciaOrdinal } from '../components/RecorrenciaBadge';
 import { UsuarioInfoButton, UsuarioModal } from '../components/UsuarioModal';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
@@ -124,34 +124,6 @@ function getEquipeIdsEvento(evento) {
   return Array.from(new Set(ids.filter(Boolean)));
 }
 
-function getOrdinalSemanaMensal(evento) {
-  if (evento?.frequencia !== 'MENSAL') return null;
-
-  const semanaMes = Number(evento.semanaMes);
-
-  if (!Number.isInteger(semanaMes) || semanaMes < 1 || semanaMes > 5) {
-    return null;
-  }
-
-  return `${semanaMes}º`;
-}
-
-function OrdinalSemanaEvento({ evento, className = '' }) {
-  const ordinal = getOrdinalSemanaMensal(evento);
-
-  if (!ordinal) return null;
-
-  return (
-    <span
-      className={`inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full border border-dourado-200 bg-dourado-50 px-1.5 align-middle text-xs font-black leading-none text-dourado-700 ${className}`}
-      title={`Recorrência mensal na ${ordinal.replace('º', 'ª')} semana`}
-      aria-label={`Recorrência mensal na ${ordinal.replace('º', 'ª')} semana`}
-    >
-      {ordinal}
-    </span>
-  );
-}
-
 function getOcorrenciasUnicas(evento) {
   const ocorrencias = new Map();
 
@@ -233,6 +205,8 @@ function criarOcorrenciasDosEventos(eventos) {
         titulo: evento.titulo,
         tipo: evento.tipo,
         frequencia: evento.frequencia,
+        diaSemana: evento.diaSemana,
+        semanaMes: evento.semanaMes,
         dataHora: escala.dataHora,
         local: evento.local,
         descricao: evento.descricao,
@@ -1660,7 +1634,10 @@ function ProximaEscala({ escala, onAbrirUsuario }) {
         <p className="mt-3 text-sm text-gray-500">Nenhuma escala futura encontrada.</p>
       ) : (
         <div className="mt-4">
-          <p className="text-sm font-bold text-gray-950">{escala.titulo || 'Escala sem título'}</p>
+          <p className="text-sm font-bold text-gray-950">
+            {escala.titulo || 'Escala sem título'}
+            <RecorrenciaOrdinal escala={escala} className="ml-1" />
+          </p>
           <p className="mt-1 text-sm text-gray-500">{escala.equipe?.nome} - {formatarData(escala.dataHora)}</p>
           {escala.local && <p className="mt-1 text-xs text-gray-500">Local: {escala.local}</p>}
           <div className="mt-4 flex flex-wrap gap-2">
@@ -2830,7 +2807,7 @@ function PainelEscalas({
                   </span>
                   <p className="mt-3 line-clamp-2 text-sm font-bold text-gray-950">
                     {evento.titulo}
-                    <OrdinalSemanaEvento evento={evento} className="ml-1" />
+                    <RecorrenciaOrdinal escala={evento} className="ml-1" />
                   </p>
                   <p className="mt-2 text-xs font-semibold text-gray-500">{formatarData(evento.dataHora)}</p>
                   <p className="mt-1 text-xs text-gray-400">{evento.totalEscalasFuturas} escala(s) futura(s)</p>
@@ -2918,7 +2895,7 @@ function PainelEscalas({
                       </div>
                       <h3 className="mt-3 break-words text-xl font-bold text-gray-950">
                         {evento.titulo}
-                        <OrdinalSemanaEvento evento={evento} className="ml-2" />
+                        <RecorrenciaOrdinal escala={evento} className="ml-2" />
                       </h3>
                       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
                         <span>{formatarData(evento.dataHora)}</span>
@@ -3299,7 +3276,7 @@ function ModalEdicaoEscala({
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-dourado-700">Editar evento</p>
             <h2 id="titulo-modal-edicao-escala" className="mt-1 break-words text-xl font-bold text-gray-950">
               {form.titulo || 'Evento sem título'}
-              <OrdinalSemanaEvento evento={form} className="ml-2" />
+              <RecorrenciaOrdinal escala={form} className="ml-2" />
             </h2>
           </div>
           <button type="button" disabled={bloqueado} onClick={onClose} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-gray-200 text-gray-500 transition hover:bg-gray-50 hover:text-gray-900 disabled:opacity-50" title="Fechar" aria-label="Fechar">
@@ -3760,7 +3737,7 @@ function CalendarioEscalas({ eventos }) {
                   </div>
                   <h3 className="mt-2 break-words text-base font-bold text-gray-950">
                     {evento.titulo}
-                    <OrdinalSemanaEvento evento={evento} className="ml-2" />
+                    <RecorrenciaOrdinal escala={evento} className="ml-2" />
                   </h3>
                   <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-600">
                     <span>{formatarData(dataEvento(evento))}</span>

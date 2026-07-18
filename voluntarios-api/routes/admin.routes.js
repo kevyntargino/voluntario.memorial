@@ -130,12 +130,21 @@ function formatarEscala(escala) {
     return null;
   }
 
+  const recorrencia = {
+    frequencia: escala.evento?.frequencia || null,
+    diaSemana: escala.evento?.diaSemana ?? escala.diaSemana,
+    semanaMes: escala.evento?.semanaMes ?? escala.semanaMes,
+  };
+
   return {
     id: escala.id,
     titulo: escala.titulo,
     local: escala.local,
     descricao: escala.descricao,
     tipo: escala.tipo,
+    frequencia: recorrencia.frequencia,
+    diaSemana: recorrencia.diaSemana,
+    semanaMes: recorrencia.semanaMes,
     dataHora: escala.dataHora,
     equipe: escala.equipe,
     voluntarios: escala.voluntarios.map(formatarParticipacao),
@@ -230,6 +239,13 @@ router.get('/dashboard', autenticar, exigirAdmin, async (req, res) => {
             select: {
               id: true,
               nome: true,
+            },
+          },
+          evento: {
+            select: {
+              frequencia: true,
+              diaSemana: true,
+              semanaMes: true,
             },
           },
           voluntarios: {

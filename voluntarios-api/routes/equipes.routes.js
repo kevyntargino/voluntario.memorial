@@ -205,6 +205,14 @@ function formatarParticipacao(item, dataOcorrencia, tipoEscala) {
   };
 }
 
+function getDadosRecorrenciaEscala(escala) {
+  return {
+    frequencia: escala.evento?.frequencia || null,
+    diaSemana: escala.evento?.diaSemana ?? escala.diaSemana,
+    semanaMes: escala.evento?.semanaMes ?? escala.semanaMes,
+  };
+}
+
 function formatarEquipe(equipe, usuario) {
   const usuarioPodeGerenciar = podeGerenciar(usuario, equipe.id);
 
@@ -229,6 +237,7 @@ function formatarEquipe(equipe, usuario) {
     escalas: usuarioPodeGerenciar ? equipe.escalas.map((escala) => {
       const dataOcorrencia = getProximaOcorrencia(escala);
       const ordem = escala.evento?.ordensCulto?.find((item) => datasIguais(item.dataHora, dataOcorrencia)) || null;
+      const recorrencia = getDadosRecorrenciaEscala(escala);
 
       return {
         id: escala.id,
@@ -236,8 +245,9 @@ function formatarEquipe(equipe, usuario) {
         local: escala.local,
         descricao: escala.descricao,
         tipo: escala.tipo,
-        diaSemana: escala.diaSemana,
-        semanaMes: escala.semanaMes,
+        frequencia: recorrencia.frequencia,
+        diaSemana: recorrencia.diaSemana,
+        semanaMes: recorrencia.semanaMes,
         dataHora: dataOcorrencia,
         grupoEsporadicoId: escala.grupoEsporadicoId,
         solicitadaPeloAdmin: escala.solicitadaPeloAdmin,

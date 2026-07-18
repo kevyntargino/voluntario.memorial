@@ -96,6 +96,10 @@ test('gera pedido individual de confirmação 5 dias antes', async () => {
   assert.equal(resultado.count, 1);
   assert.equal(prisma.criadas[0].usuarioId, 'voluntario-1');
   assert.equal(prisma.criadas[0].tipo, 'CONFIRMACAO_ESCALA');
+  assert.equal(
+    prisma.criadas[0].link,
+    '/?abrirProximaEscala=1&proximaParticipacao=participacao-1&dataOcorrencia=2026-07-21T18%3A00%3A00.000Z',
+  );
   assert.match(prisma.criadas[0].chave, /^confirmacao:5d:/);
 });
 
@@ -106,6 +110,10 @@ test('repete o pedido individual de confirmação 3 dias antes', async () => {
 
   assert.equal(prisma.criadas.length, 1);
   assert.equal(prisma.criadas[0].usuarioId, 'voluntario-1');
+  assert.equal(
+    prisma.criadas[0].link,
+    '/?abrirProximaEscala=1&proximaParticipacao=participacao-1&dataOcorrencia=2026-07-19T18%3A00%3A00.000Z',
+  );
   assert.match(prisma.criadas[0].chave, /^confirmacao:3d:/);
 });
 
@@ -121,6 +129,10 @@ test('lembra o voluntário 1 dia antes da escala', async () => {
   assert.equal(prisma.criadas[0].usuarioId, 'voluntario-1');
   assert.equal(prisma.criadas[0].tipo, 'LEMBRETE_ESCALA');
   assert.equal(prisma.criadas[0].titulo, 'Sua escala é amanhã');
+  assert.equal(
+    prisma.criadas[0].link,
+    '/?abrirProximaEscala=1&proximaParticipacao=participacao-1&dataOcorrencia=2026-07-17T18%3A00%3A00.000Z',
+  );
   assert.match(prisma.criadas[0].chave, /^lembrete-escala:1d:/);
 });
 

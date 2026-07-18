@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import { Footer } from '../components/Footer';
-import { RecorrenciaBadge } from '../components/RecorrenciaBadge';
+import { RecorrenciaBadge, RecorrenciaOrdinal } from '../components/RecorrenciaBadge';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
 import { buildApiUrl } from '../lib/api';
@@ -604,6 +604,9 @@ export default function Escalas() {
           local: escala.local,
           descricao: escala.descricao,
           tipo: escala.tipo,
+          frequencia: escala.frequencia,
+          diaSemana: escala.diaSemana,
+          semanaMes: escala.semanaMes,
           encerrada: escalaLista.encerrada,
           aoVivo,
           ordemCulto: escala.ordemCulto,
@@ -654,6 +657,9 @@ export default function Escalas() {
         id: chaveEvento,
         titulo: escala.titulo || 'Evento sem título',
         tipo: escala.tipo,
+        frequencia: escala.frequencia,
+        diaSemana: escala.diaSemana,
+        semanaMes: escala.semanaMes,
         data,
         dataHora: data.toISOString(),
         local: escala.local,
@@ -1190,7 +1196,10 @@ function ModalEvento({ evento, onClose, onAbrirOrdemCulto }) {
         <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-gray-200 bg-white px-4 py-4 dark:border-gray-800 dark:bg-gray-900 sm:px-5">
           <div className="min-w-0">
             <p className="text-xs font-bold uppercase text-gray-500 dark:text-gray-400">{evento.areas.length} função(ões) requisitada(s)</p>
-            <h2 id="modal-evento-titulo" className="mt-1 text-xl font-bold text-gray-950 dark:text-white">{evento.titulo}</h2>
+            <h2 id="modal-evento-titulo" className="mt-1 break-words text-xl font-bold text-gray-950 dark:text-white">
+              {evento.titulo}
+              <RecorrenciaOrdinal escala={evento} className="ml-2" />
+            </h2>
           </div>
           <button ref={fecharRef} type="button" onClick={onClose} className="grid h-10 w-10 shrink-0 place-items-center rounded-md border border-gray-300 text-gray-500 transition hover:bg-gray-50 hover:text-gray-900 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white" aria-label="Fechar detalhes do evento" title="Fechar">
             <X size={18} />
@@ -1516,7 +1525,10 @@ function EventoEscalaCard({ evento, participacaoSelecionadaId, destaqueEvento, a
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="break-words text-xl font-bold text-gray-950 dark:text-white">{evento.titulo}</h2>
+              <h2 className="break-words text-xl font-bold text-gray-950 dark:text-white">
+                {evento.titulo}
+                <RecorrenciaOrdinal escala={evento} className="ml-2" />
+              </h2>
               {evento.encerrada && <span className="rounded border border-gray-300 px-2 py-0.5 text-[10px] font-bold uppercase text-gray-500 dark:border-white/60 dark:text-gray-200">Encerrada</span>}
               <RecorrenciaBadge escala={evento} />
             </div>

@@ -16,7 +16,7 @@ import {
   UsersRound,
   X,
 } from 'lucide-react';
-import { RecorrenciaBadge } from './RecorrenciaBadge';
+import { RecorrenciaBadge, RecorrenciaOrdinal } from './RecorrenciaBadge';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
 import { buildApiUrl } from '../lib/api';
@@ -52,6 +52,9 @@ const LIMITE_ACAO_ESCALA_ANTES_INICIO_MS = 2 * HORA_MS;
 const DURACAO_REFERENCIA_EVENTO_MS = 2 * HORA_MS;
 const JANELA_PROXIMA_ESCALA_APOS_TERMINO_MS = 3 * HORA_MS;
 const RETENCAO_PROXIMA_ESCALA_MS = DURACAO_REFERENCIA_EVENTO_MS + JANELA_PROXIMA_ESCALA_APOS_TERMINO_MS;
+const QUERY_ABRIR_PROXIMA_ESCALA = 'abrirProximaEscala';
+const QUERY_PARTICIPACAO_PROXIMA_ESCALA = 'proximaParticipacao';
+const QUERY_DATA_PROXIMA_ESCALA = 'dataOcorrencia';
 
 function formatarData(dataHora) {
   if (!dataHora) return 'Data a confirmar';
@@ -68,7 +71,17 @@ function getDataEscala(escala) {
   return data && !Number.isNaN(data.getTime()) ? data : null;
 }
 
-function getProximaEscala(escalas, agora = getAgoraEscalas()) {
+function mesmaDataEscala(data, dataReferencia) {
+  if (!data || !dataReferencia) {
+    return false;
+  }
+
+  const referencia = new Date(dataReferencia);
+
+  return !Number.isNaN(referencia.getTime()) && data.getTime() === referencia.getTime();
+}
+
+function getProximaEscala(escalas, agora = getAgoraEscalas(), alvo = {}) {
   const agoraMs = agora.getTime();
   const candidatas = [...(escalas || [])]
     .filter((escala) => {
@@ -78,6 +91,26 @@ function getProximaEscala(escalas, agora = getAgoraEscalas()) {
         && data
         && data.getTime() + RETENCAO_PROXIMA_ESCALA_MS >= agoraMs;
     });
+  const participacaoAlvo = alvo.participacaoId || '';
+  const dataAlvo = alvo.dataOcorrencia || '';
+
+  if (participacaoAlvo) {
+    const escalaComData = candidatas.find((escala) => (
+      escala.minhaParticipacao?.id === participacaoAlvo
+      && (!dataAlvo || mesmaDataEscala(getDataEscala(escala), dataAlvo))
+    ));
+
+    if (escalaComData) {
+      return escalaComData;
+    }
+
+    const escalaSemData = candidatas.find((escala) => escala.minhaParticipacao?.id === participacaoAlvo);
+
+    if (escalaSemData) {
+      return escalaSemData;
+    }
+  }
+
   const jaIniciadas = candidatas
     .filter((escala) => getDataEscala(escala).getTime() <= agoraMs)
     .sort((a, b) => getDataEscala(b).getTime() - getDataEscala(a).getTime());
@@ -165,6 +198,56 @@ function getDisponibilidadeAcoesEscala(escala, participacao, agora = getAgoraEsc
   };
 }
 
+function escalaEstaAcontecendo(escala, agora = getAgoraEscalas()) {
+  const data = getDataEscala(escala);
+
+  if (!data) {
+    return false;
+  }
+
+  const inicio = data.getTime();
+  const atual = agora.getTime();
+
+  return atual >= inicio && atual <= inicio + DURACAO_REFERENCIA_EVENTO_MS;
+}
+
+function getEstadoAtalhoProximaEscala(escala, agora = getAgoraEscalas()) {
+  const participacao = escala?.minhaParticipacao;
+
+  if (escalaEstaAcontecendo(escala, agora)) {
+    return {
+      tipo: 'ao-vivo',
+      label: 'Agora',
+      title: 'Evento acontecendo',
+      ariaLabel: 'Abrir escala em andamento',
+      icon: CalendarCheck2,
+      className: 'bg-emerald-600 text-white shadow-emerald-600/35 dark:bg-emerald-400 dark:text-gray-950',
+    };
+  }
+
+  const disponibilidadeAcoes = getDisponibilidadeAcoesEscala(escala, participacao, agora);
+
+  if (participacao?.status === 'PENDENTE' && disponibilidadeAcoes.podeConfirmar) {
+    return {
+      tipo: 'pendente',
+      label: 'Confirmar',
+      title: 'Confirmação pendente',
+      ariaLabel: 'Abrir escala com confirmação pendente',
+      icon: AlertCircle,
+      className: 'mobile-bottom-nav-pending bg-amber-500 text-gray-950 shadow-amber-500/35 dark:bg-amber-300 dark:text-gray-950',
+    };
+  }
+
+  return {
+    tipo: 'normal',
+    label: 'Próxima',
+    title: 'Próxima escala',
+    ariaLabel: 'Abrir próxima escala',
+    icon: CalendarCheck2,
+    className: 'bg-gray-950 text-white shadow-gray-950/25 dark:bg-dourado-500 dark:text-gray-950',
+  };
+}
+
 function getDestinoEscala(escala) {
   if (escala?.eventoId && escala?.dataHora) {
     return `/escalas?evento=${encodeURIComponent(escala.eventoId)}&data=${encodeURIComponent(escala.dataHora)}`;
@@ -179,7 +262,7 @@ function getDestinoEscala(escala) {
 
 export function MobileBottomNav() {
   const { token, usuario, logout } = useAuth();
-  const { pathname, navigate } = useNavigation();
+  const { pathname, search, navigate } = useNavigation();
   const [modalAberto, setModalAberto] = useState(false);
   const [carregandoEscala, setCarregandoEscala] = useState(false);
   const [erroEscala, setErroEscala] = useState('');
@@ -193,6 +276,7 @@ export function MobileBottomNav() {
   const [agoraEscalas, setAgoraEscalas] = useState(() => getAgoraEscalas());
   const fecharRef = useRef(null);
   const navRef = useRef(null);
+  const deepLinkTratadoRef = useRef('');
   const isAdmin = usuario?.permissoes?.includes('ADMINISTRADOR');
   const itensNavegacao = [
     { label: 'Início', path: '/', icon: Home },
@@ -209,15 +293,20 @@ export function MobileBottomNav() {
     item.path === '/' ? pathname === '/' : pathname.startsWith(item.path)
   ));
 
-  const carregarProximaEscala = useCallback(async () => {
-    if (!token) return;
+  const carregarProximaEscala = useCallback(async ({ abrirModal = true, participacaoId = '', dataOcorrencia = '' } = {}) => {
+    if (!token) {
+      setProximaEscala(null);
+      return;
+    }
 
-    setModalAberto(true);
-    setCarregandoEscala(true);
-    setErroEscala('');
-    setErroAcaoEscala('');
-    setSubstituicaoAberta(false);
-    setJustificativaSubstituicao('');
+    if (abrirModal) {
+      setModalAberto(true);
+      setCarregandoEscala(true);
+      setErroEscala('');
+      setErroAcaoEscala('');
+      setSubstituicaoAberta(false);
+      setJustificativaSubstituicao('');
+    }
 
     try {
       const agoraAtual = getAgoraEscalas();
@@ -239,13 +328,17 @@ export function MobileBottomNav() {
       }
 
       const escalas = dados.escalas || [];
-      const escalaSelecionada = getProximaEscala(escalas, agoraAtual);
+      const escalaSelecionada = getProximaEscala(escalas, agoraAtual, { participacaoId, dataOcorrencia });
       setProximaEscala(enriquecerComVoluntariosDaOcorrencia(escalas, escalaSelecionada));
     } catch (error) {
-      setErroEscala(error.message || 'Não foi possível carregar sua próxima escala.');
-      setProximaEscala(null);
+      if (abrirModal) {
+        setErroEscala(error.message || 'Não foi possível carregar sua próxima escala.');
+        setProximaEscala(null);
+      }
     } finally {
-      setCarregandoEscala(false);
+      if (abrirModal) {
+        setCarregandoEscala(false);
+      }
     }
   }, [logout, navigate, token]);
 
@@ -390,6 +483,40 @@ export function MobileBottomNav() {
   }, []);
 
   useEffect(() => {
+    carregarProximaEscala({ abrirModal: false });
+  }, [carregarProximaEscala]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(search || '');
+    const abrirProximaEscala = ['1', 'true'].includes(
+      String(params.get(QUERY_ABRIR_PROXIMA_ESCALA) || '').toLowerCase(),
+    );
+
+    if (!abrirProximaEscala) {
+      return;
+    }
+
+    const chaveDeepLink = `${pathname}${search || ''}`;
+
+    if (deepLinkTratadoRef.current === chaveDeepLink) {
+      return;
+    }
+
+    deepLinkTratadoRef.current = chaveDeepLink;
+    carregarProximaEscala({
+      abrirModal: true,
+      participacaoId: params.get(QUERY_PARTICIPACAO_PROXIMA_ESCALA) || params.get('participacao') || '',
+      dataOcorrencia: params.get(QUERY_DATA_PROXIMA_ESCALA) || '',
+    });
+
+    params.delete(QUERY_ABRIR_PROXIMA_ESCALA);
+    params.delete(QUERY_PARTICIPACAO_PROXIMA_ESCALA);
+    params.delete(QUERY_DATA_PROXIMA_ESCALA);
+
+    navigate(`${pathname}${params.toString() ? `?${params.toString()}` : ''}`, { replace: true });
+  }, [carregarProximaEscala, navigate, pathname, search]);
+
+  useEffect(() => {
     if (!menuAberto) return undefined;
 
     const fecharComEscape = (event) => {
@@ -444,23 +571,37 @@ export function MobileBottomNav() {
     );
   };
 
-  const renderProximaItem = () => (
-    <div key="proxima" className="flex justify-center">
-      <button
-        type="button"
-        onClick={() => {
-          setMenuAberto(false);
-          carregarProximaEscala();
-        }}
-        className="relative -mt-5 flex h-[4.45rem] w-[4.45rem] flex-col items-center justify-center gap-0.5 rounded-full border-[5px] border-white bg-gray-950 text-white shadow-xl shadow-gray-950/25 transition active:scale-95 dark:border-gray-950 dark:bg-dourado-500 dark:text-gray-950"
-        aria-label="Abrir próxima escala"
-        title="Próxima escala"
-      >
-        {carregandoEscala && modalAberto ? <Loader2 className="h-5 w-5 animate-spin" /> : <CalendarCheck2 size={24} />}
-        <span className="text-[10px] font-bold leading-none">Próxima</span>
-      </button>
-    </div>
-  );
+  const renderProximaItem = () => {
+    const estadoAtalho = getEstadoAtalhoProximaEscala(proximaEscala, agoraEscalas);
+    const AtalhoIcon = estadoAtalho.icon;
+    const carregandoAtalho = carregandoEscala && modalAberto;
+
+    return (
+      <div key="proxima" className="flex justify-center">
+        <button
+          type="button"
+          onClick={() => {
+            setMenuAberto(false);
+            carregarProximaEscala();
+          }}
+          className={`relative -mt-5 flex h-[4.45rem] w-[4.45rem] flex-col items-center justify-center gap-0.5 overflow-visible rounded-full border-[5px] border-white shadow-xl transition active:scale-95 dark:border-gray-950 ${estadoAtalho.className}`}
+          aria-label={estadoAtalho.ariaLabel}
+          title={estadoAtalho.title}
+        >
+          {estadoAtalho.tipo === 'ao-vivo' && (
+            <>
+              <span className="mobile-bottom-nav-radar absolute inset-0 rounded-full border border-emerald-400/70" />
+              <span className="mobile-bottom-nav-radar mobile-bottom-nav-radar-delay absolute inset-0 rounded-full border border-emerald-300/60" />
+            </>
+          )}
+          <span className="relative z-10 grid place-items-center">
+            {carregandoAtalho ? <Loader2 className="h-5 w-5 animate-spin" /> : <AtalhoIcon size={24} />}
+          </span>
+          <span className="relative z-10 max-w-[3.5rem] truncate text-[10px] font-bold leading-none">{estadoAtalho.label}</span>
+        </button>
+      </div>
+    );
+  };
 
   const renderNavItem = (item) => (
     item.tipo === 'proxima' ? renderProximaItem() : renderItem(item)
@@ -602,6 +743,7 @@ function ProximaEscalaModal({
             <p className="text-xs font-bold uppercase text-dourado-700 dark:text-dourado-300">Próxima escala</p>
             <h2 id="modal-proxima-escala-titulo" className="mt-1 text-xl font-bold text-gray-950 dark:text-white">
               {escala?.titulo || 'Sua próxima participação'}
+              <RecorrenciaOrdinal escala={escala} className="ml-2" />
             </h2>
           </div>
           <button ref={fecharRef} type="button" onClick={onClose} className="grid h-10 w-10 shrink-0 place-items-center rounded-md border border-gray-300 text-gray-500 transition hover:bg-gray-50 hover:text-gray-900 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white" aria-label="Fechar próxima escala" title="Fechar">

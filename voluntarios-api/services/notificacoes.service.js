@@ -128,6 +128,23 @@ function formatarData(data) {
   return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'UTC' }).format(data);
 }
 
+function getLinkModalProximaEscala(participacao, dataOcorrencia) {
+  const params = new URLSearchParams({
+    abrirProximaEscala: '1',
+  });
+  const data = dataOcorrencia ? new Date(dataOcorrencia) : null;
+
+  if (participacao?.id) {
+    params.set('proximaParticipacao', participacao.id);
+  }
+
+  if (data && !Number.isNaN(data.getTime())) {
+    params.set('dataOcorrencia', data.toISOString());
+  }
+
+  return `/?${params.toString()}`;
+}
+
 export async function criarNotificacoes(prisma, notificacoes) {
   const dados = notificacoes
     .filter((item) => item?.usuarioId && item?.chave && item?.titulo && item?.mensagem)
@@ -384,7 +401,7 @@ export async function gerarNotificacoesAutomaticas(prisma, agora = getAgoraNotif
         tipo: 'LEMBRETE_ESCALA',
         titulo: 'Sua escala é amanhã',
         mensagem: `Sua escala em ${equipeNome} está marcada para ${dataTexto}.`,
-        link: `/escalas?filtro=confirmacoes&participacao=${participacao.id}`,
+        link: getLinkModalProximaEscala(participacao, dataOcorrencia),
         chave: `lembrete-escala:1d:${participacao.id}:${new Date(dataOcorrencia).toISOString()}`,
       });
     }
@@ -399,7 +416,7 @@ export async function gerarNotificacoesAutomaticas(prisma, agora = getAgoraNotif
         tipo: 'CONFIRMACAO_ESCALA',
         titulo: dias === 5 ? 'Confirme sua próxima escala' : 'Lembrete: confirme sua escala',
         mensagem: `Sua escala em ${equipeNome} está marcada para ${dataTexto}. Confirme sua participação no painel de escalas.`,
-        link: `/escalas?filtro=confirmacoes&participacao=${participacao.id}`,
+        link: getLinkModalProximaEscala(participacao, dataOcorrencia),
         chave: `confirmacao:${dias}d:${participacao.id}:${new Date(dataOcorrencia).toISOString()}`,
       });
     }

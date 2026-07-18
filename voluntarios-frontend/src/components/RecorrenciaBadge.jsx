@@ -48,3 +48,21 @@ export function RecorrenciaBadge({ escala, className = '' }) {
     </span>
   );
 }
+
+export function RecorrenciaOrdinal({ escala, className = '' }) {
+  const recorrencia = getRecorrenciaEscala(escala);
+
+  if (!recorrencia) {
+    return null;
+  }
+
+  return (
+    <span
+      className={`inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full border border-dourado-200 bg-dourado-50 px-1.5 align-middle text-xs font-black leading-none text-dourado-700 dark:border-dourado-700 dark:bg-dourado-950/50 dark:text-dourado-200 ${className}`}
+      title={recorrencia.title}
+      aria-label={recorrencia.title}
+    >
+      {recorrencia.ordinal}
+    </span>
+  );
+}

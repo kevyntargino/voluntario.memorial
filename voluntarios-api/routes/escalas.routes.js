@@ -387,10 +387,19 @@ function formatarParticipacao(item, dataOcorrencia, tipoEscala) {
   };
 }
 
+function getDadosRecorrenciaEscala(escala) {
+  return {
+    frequencia: escala.evento?.frequencia || null,
+    diaSemana: escala.evento?.diaSemana ?? escala.diaSemana,
+    semanaMes: escala.evento?.semanaMes ?? escala.semanaMes,
+  };
+}
+
 function formatarEscala(voluntarioEscala) {
   const dataOcorrencia = getProximaOcorrencia(voluntarioEscala.escala);
   const usarStatusEspecifico = voluntarioEscala.escala.tipo !== 'RECORRENTE'
     || datasIguais(voluntarioEscala.dataOcorrenciaStatus, dataOcorrencia);
+  const recorrencia = getDadosRecorrenciaEscala(voluntarioEscala.escala);
 
   return {
     id: voluntarioEscala.id,
@@ -411,8 +420,9 @@ function formatarEscala(voluntarioEscala) {
       local: voluntarioEscala.escala.local,
       descricao: voluntarioEscala.escala.descricao,
       tipo: voluntarioEscala.escala.tipo,
-      diaSemana: voluntarioEscala.escala.diaSemana,
-      semanaMes: voluntarioEscala.escala.semanaMes,
+      frequencia: recorrencia.frequencia,
+      diaSemana: recorrencia.diaSemana,
+      semanaMes: recorrencia.semanaMes,
       dataHora: dataOcorrencia,
       grupoEsporadicoId: voluntarioEscala.escala.grupoEsporadicoId,
       solicitadaPeloAdmin: voluntarioEscala.escala.solicitadaPeloAdmin,
@@ -430,6 +440,7 @@ function formatarEscalaCompleta(escala, usuarioId) {
   const minhaParticipacaoBase = escala.voluntarios.find((item) => item.usuarioId === usuarioId) || null;
   const minhaParticipacao = minhaParticipacaoBase ? formatarParticipacao(minhaParticipacaoBase, dataOcorrencia, escala.tipo) : null;
   const ordem = escala.evento?.ordensCulto?.find((item) => datasIguais(item.dataHora, dataOcorrencia)) || null;
+  const recorrencia = getDadosRecorrenciaEscala(escala);
 
   return {
     id: escala.id,
@@ -437,12 +448,19 @@ function formatarEscalaCompleta(escala, usuarioId) {
     local: escala.local,
     descricao: escala.descricao,
     tipo: escala.tipo,
-    diaSemana: escala.diaSemana,
-    semanaMes: escala.semanaMes,
+    frequencia: recorrencia.frequencia,
+    diaSemana: recorrencia.diaSemana,
+    semanaMes: recorrencia.semanaMes,
     dataHora: dataOcorrencia,
     grupoEsporadicoId: escala.grupoEsporadicoId,
     eventoId: escala.eventoId,
-    evento: escala.evento ? { id: escala.evento.id, titulo: escala.evento.titulo } : null,
+    evento: escala.evento ? {
+      id: escala.evento.id,
+      titulo: escala.evento.titulo,
+      frequencia: escala.evento.frequencia,
+      diaSemana: escala.evento.diaSemana,
+      semanaMes: escala.evento.semanaMes,
+    } : null,
     ordemCulto: ordem ? {
       id: ordem.id,
       titulo: ordem.titulo,
@@ -1592,6 +1610,15 @@ router.get('/minhas', autenticar, async (req, res) => {
               select: {
                 id: true,
                 nome: true,
+              },
+            },
+            evento: {
+              select: {
+                id: true,
+                titulo: true,
+                frequencia: true,
+                diaSemana: true,
+                semanaMes: true,
               },
             },
           },
