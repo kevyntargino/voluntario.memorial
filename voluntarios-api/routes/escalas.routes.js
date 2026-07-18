@@ -30,6 +30,13 @@ const prisma = new PrismaClient({
 const router = Router();
 const timeZoneEventos = process.env.EVENT_TIME_ZONE || 'America/Campo_Grande';
 const nomesDiasSemana = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
+const HORA_MS = 60 * 60 * 1000;
+const DIA_MS = 24 * HORA_MS;
+const ANTECEDENCIA_CONFIRMACAO_ESCALA_MS = 5 * DIA_MS;
+const LIMITE_ACAO_ESCALA_ANTES_INICIO_MS = 2 * HORA_MS;
+const DURACAO_REFERENCIA_EVENTO_MS = 2 * HORA_MS;
+const JANELA_PROXIMA_ESCALA_APOS_TERMINO_MS = 3 * HORA_MS;
+const RETENCAO_ATALHO_PROXIMA_ESCALA_MS = DURACAO_REFERENCIA_EVENTO_MS + JANELA_PROXIMA_ESCALA_APOS_TERMINO_MS;
 
 function getJwtSecret() {
   if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
@@ -290,6 +297,28 @@ function datasIguais(dataA, dataB) {
   return new Date(dataA).toISOString() === new Date(dataB).toISOString();
 }
 
+function getErroJanelaAlteracaoEscala(dataOcorrencia, agora = getAgoraEscalas()) {
+  const inicio = new Date(dataOcorrencia).getTime();
+
+  if (Number.isNaN(inicio)) {
+    return 'Data da escala inválida.';
+  }
+
+  const atual = agora.getTime();
+  const abertura = inicio - ANTECEDENCIA_CONFIRMACAO_ESCALA_MS;
+  const fechamento = inicio - LIMITE_ACAO_ESCALA_ANTES_INICIO_MS;
+
+  if (atual < abertura) {
+    return 'A confirmação da escala fica disponível a partir de 5 dias antes do evento.';
+  }
+
+  if (atual >= fechamento) {
+    return 'O prazo para confirmar ou solicitar substituição encerra 2 horas antes do evento.';
+  }
+
+  return null;
+}
+
 function formatarParticipacao(item, dataOcorrencia, tipoEscala) {
   const temOcorrenciaEspecifica = Boolean(item.dataOcorrenciaSubstituicao);
 
@@ -397,10 +426,14 @@ router.get('/', autenticar, async (req, res) => {
     await garantirOcorrenciasEventos(prisma);
     const visao = req.query.visao === 'minhas' ? 'minhas' : 'todas';
     const agora = getAgoraEscalas();
+    const usarJanelaAtalhoProxima = ['1', 'true'].includes(String(req.query.atalhoProxima || '').toLowerCase());
+    const inicioBusca = usarJanelaAtalhoProxima
+      ? new Date(agora.getTime() - RETENCAO_ATALHO_PROXIMA_ESCALA_MS)
+      : agora;
 
     const escalas = await prisma.escala.findMany({
       where: {
-        dataHora: { gte: agora },
+        dataHora: { gte: inicioBusca },
         voluntarios: visao === 'minhas'
           ? {
               some: {
@@ -1273,6 +1306,10 @@ router.patch('/:id/status', autenticar, async (req, res) => {
       },
       select: {
         id: true,
+        status: true,
+        dataOcorrenciaStatus: true,
+        dataOcorrenciaSubstituicao: true,
+        substituto: true,
         usuario: {
           select: {
             id: true,
@@ -1306,6 +1343,21 @@ router.patch('/:id/status', autenticar, async (req, res) => {
 
     if (Number.isNaN(dataOcorrenciaStatus.getTime()) || !datasIguais(dataOcorrenciaStatus, ocorrenciaAtual)) {
       return res.status(400).json({ erro: 'A ocorrência informada não corresponde à próxima escala.' });
+    }
+
+    const statusAtualOcorrencia = escalaExistente.escala.tipo !== 'RECORRENTE'
+      || datasIguais(escalaExistente.dataOcorrenciaStatus, dataOcorrenciaStatus)
+      ? escalaExistente.status
+      : 'PENDENTE';
+
+    if (statusAtualOcorrencia === 'CONFIRMADA') {
+      return res.status(409).json({ erro: 'Esta escala já foi confirmada.' });
+    }
+
+    const erroJanelaAlteracao = getErroJanelaAlteracaoEscala(dataOcorrenciaStatus);
+
+    if (erroJanelaAlteracao) {
+      return res.status(409).json({ erro: erroJanelaAlteracao });
     }
 
     if (escalaEstaEncerrada(dataOcorrenciaStatus)) {

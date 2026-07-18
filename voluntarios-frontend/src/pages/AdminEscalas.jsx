@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   Bell,
@@ -95,6 +95,10 @@ const filtrosRecorrentes = dias.flatMap(({ value: diaSemana, label: diaLabel }) 
 function formatarData(dataHora) {
   if (!dataHora) return 'Sem data';
   return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' }).format(new Date(dataHora));
+}
+
+function normalizarTextoBusca(texto) {
+  return String(texto || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }
 
 function toTime(dataHora) {
@@ -2387,6 +2391,21 @@ function PainelEscalas({
   const [periodo, setPeriodo] = useState('futuras');
   const [eventoSelecionadoId, setEventoSelecionadoId] = useState('');
   const [eventoExpandidoId, setEventoExpandidoId] = useState('');
+  const locaisEventos = useMemo(() => {
+    const locais = new Map();
+
+    eventos.forEach((evento) => {
+      [evento.local, ...(evento.escalas || evento.areas || []).map((escala) => escala.local)]
+        .filter((local) => typeof local === 'string' && local.trim())
+        .forEach((local) => {
+          const localLimpo = local.trim();
+          const chave = normalizarTextoBusca(localLimpo);
+          if (!locais.has(chave)) locais.set(chave, localLimpo);
+        });
+    });
+
+    return Array.from(locais.values()).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [eventos]);
   const eventosDoPeriodo = useMemo(() => {
     const agora = getAgoraEscalas().getTime();
     return eventos.map((evento) => {
@@ -2562,7 +2581,7 @@ function PainelEscalas({
                 )}
 
                 <div className="grid gap-3 lg:grid-cols-2">
-                  <Campo label="Local" value={formEscala.local} onChange={(value) => onChangeEscala((atual) => ({ ...atual, local: value }))} />
+                  <CampoLocalEvento label="Local" value={formEscala.local} options={locaisEventos} onChange={(value) => onChangeEscala((atual) => ({ ...atual, local: value }))} />
                   <CampoTexto label="Descrição" value={formEscala.descricao} onChange={(value) => onChangeEscala((atual) => ({ ...atual, descricao: value }))} />
                 </div>
                 <GrupoChecks titulo="Equipes/funções do evento">
@@ -3672,6 +3691,77 @@ function Campo({ label, value, onChange, type = 'text', placeholder = '', min, d
         className={`mt-2 block w-full rounded-md border border-gray-200 px-3 py-2.5 text-sm outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10 disabled:cursor-not-allowed disabled:opacity-70 ${disabled ? 'bg-gray-50 text-gray-500' : 'bg-white'}`}
       />
     </label>
+  );
+}
+
+function CampoLocalEvento({ label, value, options, onChange }) {
+  const inputId = useId();
+  const [aberto, setAberto] = useState(false);
+  const inputRef = useRef(null);
+  const termo = normalizarTextoBusca(value);
+  const opcoesFiltradas = useMemo(() => {
+    const lista = Array.isArray(options) ? options : [];
+    if (!termo) return lista;
+    return lista.filter((option) => normalizarTextoBusca(option).includes(termo));
+  }, [options, termo]);
+
+  const selecionarLocal = (local) => {
+    onChange(local);
+    setAberto(false);
+  };
+
+  const selecionarOutro = () => {
+    setAberto(false);
+    inputRef.current?.focus();
+  };
+
+  return (
+    <div className="relative">
+      <label htmlFor={inputId} className="text-sm font-semibold text-gray-700">{label}</label>
+      <input
+        id={inputId}
+        ref={inputRef}
+        type="text"
+        value={value}
+        placeholder="Digite ou selecione um local"
+        autoComplete="off"
+        onFocus={() => setAberto(true)}
+        onClick={() => setAberto(true)}
+        onChange={(event) => {
+          onChange(event.target.value);
+          setAberto(true);
+        }}
+        onBlur={() => window.setTimeout(() => setAberto(false), 120)}
+        className="mt-2 block w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
+      />
+      {aberto && (
+        <div className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-md border border-gray-200 bg-white p-1 shadow-xl shadow-gray-950/10">
+          {opcoesFiltradas.length > 0 ? (
+            opcoesFiltradas.map((local) => (
+              <button
+                key={local}
+                type="button"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => selecionarLocal(local)}
+                className="block min-h-9 w-full rounded px-3 text-left text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+              >
+                {local}
+              </button>
+            ))
+          ) : (
+            <p className="px-3 py-2 text-sm font-semibold text-gray-400">Nenhum local salvo encontrado.</p>
+          )}
+          <button
+            type="button"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={selecionarOutro}
+            className="mt-1 block min-h-9 w-full rounded border-t border-gray-100 px-3 text-left text-sm font-bold text-dourado-700 transition hover:bg-dourado-50"
+          >
+            Outro local
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 

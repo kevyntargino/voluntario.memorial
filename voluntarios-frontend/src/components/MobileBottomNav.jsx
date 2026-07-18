@@ -6,13 +6,13 @@ import {
   CalendarDays,
   CheckCircle2,
   Clock3,
+  Eye,
   Home,
   Loader2,
   MapPin,
   MoreHorizontal,
   RefreshCcw,
   ShieldCheck,
-  UserRound,
   UsersRound,
   X,
 } from 'lucide-react';
@@ -44,6 +44,13 @@ const statusConfig = {
     icon: AlertCircle,
   },
 };
+const HORA_MS = 60 * 60 * 1000;
+const DIA_MS = 24 * HORA_MS;
+const ANTECEDENCIA_CONFIRMACAO_ESCALA_MS = 5 * DIA_MS;
+const LIMITE_ACAO_ESCALA_ANTES_INICIO_MS = 2 * HORA_MS;
+const DURACAO_REFERENCIA_EVENTO_MS = 2 * HORA_MS;
+const JANELA_PROXIMA_ESCALA_APOS_TERMINO_MS = 3 * HORA_MS;
+const RETENCAO_PROXIMA_ESCALA_MS = DURACAO_REFERENCIA_EVENTO_MS + JANELA_PROXIMA_ESCALA_APOS_TERMINO_MS;
 
 function formatarData(dataHora) {
   if (!dataHora) return 'Data a confirmar';
@@ -55,18 +62,106 @@ function formatarData(dataHora) {
   }).format(new Date(dataHora));
 }
 
-function getProximaEscala(escalas) {
-  const agora = getAgoraEscalas().getTime();
+function getDataEscala(escala) {
+  const data = escala?.dataHora ? new Date(escala.dataHora) : null;
+  return data && !Number.isNaN(data.getTime()) ? data : null;
+}
 
-  return [...(escalas || [])]
+function getProximaEscala(escalas, agora = getAgoraEscalas()) {
+  const agoraMs = agora.getTime();
+  const candidatas = [...(escalas || [])]
     .filter((escala) => {
-      const data = escala.dataHora ? new Date(escala.dataHora) : null;
+      const data = getDataEscala(escala);
+
       return escala.minhaParticipacao
         && data
-        && !Number.isNaN(data.getTime())
-        && data.getTime() >= agora;
-    })
-    .sort((a, b) => new Date(a.dataHora).getTime() - new Date(b.dataHora).getTime())[0] || null;
+        && data.getTime() + RETENCAO_PROXIMA_ESCALA_MS >= agoraMs;
+    });
+  const jaIniciadas = candidatas
+    .filter((escala) => getDataEscala(escala).getTime() <= agoraMs)
+    .sort((a, b) => getDataEscala(b).getTime() - getDataEscala(a).getTime());
+
+  if (jaIniciadas.length > 0) {
+    return jaIniciadas[0];
+  }
+
+  return candidatas
+    .sort((a, b) => getDataEscala(a).getTime() - getDataEscala(b).getTime())[0] || null;
+}
+
+function getChaveOcorrenciaEscala(escala) {
+  const data = getDataEscala(escala);
+  const dataIso = data?.toISOString() || 'sem-data';
+
+  if (escala?.eventoId) return `evento:${escala.eventoId}:${dataIso}`;
+  if (escala?.grupoEsporadicoId) return `grupo:${escala.grupoEsporadicoId}:${dataIso}`;
+  return `escala:${escala?.id || 'sem-id'}:${dataIso}`;
+}
+
+function enriquecerComVoluntariosDaOcorrencia(escalas, proximaEscala) {
+  if (!proximaEscala) return null;
+
+  const chave = getChaveOcorrenciaEscala(proximaEscala);
+  const escalasDaOcorrencia = (escalas || []).filter((escala) => getChaveOcorrenciaEscala(escala) === chave);
+
+  if (escalasDaOcorrencia.length <= 1) {
+    return proximaEscala;
+  }
+
+  return {
+    ...proximaEscala,
+    ordemCulto: proximaEscala.ordemCulto || escalasDaOcorrencia.find((escala) => escala.ordemCulto)?.ordemCulto || null,
+    voluntarios: escalasDaOcorrencia.flatMap((escala) => (
+      (escala.voluntarios || []).map((item) => ({
+        ...item,
+        equipe: escala.equipe,
+        escalaId: escala.id,
+      }))
+    )),
+  };
+}
+
+function getDisponibilidadeAcoesEscala(escala, participacao, agora = getAgoraEscalas()) {
+  const data = getDataEscala(escala);
+
+  if (!participacao || !data) {
+    return { podeConfirmar: false, podePedirSubstituicao: false, mensagem: '' };
+  }
+
+  if (participacao.status === 'CONFIRMADA') {
+    return { podeConfirmar: false, podePedirSubstituicao: false, mensagem: 'Esta escala já foi confirmada.' };
+  }
+
+  if (participacao.status === 'AUSENTE') {
+    return { podeConfirmar: false, podePedirSubstituicao: false, mensagem: 'Esta escala foi marcada como ausente.' };
+  }
+
+  const inicio = data.getTime();
+  const atual = agora.getTime();
+  const abertura = inicio - ANTECEDENCIA_CONFIRMACAO_ESCALA_MS;
+  const fechamento = inicio - LIMITE_ACAO_ESCALA_ANTES_INICIO_MS;
+
+  if (atual < abertura) {
+    return {
+      podeConfirmar: false,
+      podePedirSubstituicao: false,
+      mensagem: `A confirmação abre em ${formatarData(new Date(abertura).toISOString())}.`,
+    };
+  }
+
+  if (atual >= fechamento) {
+    return {
+      podeConfirmar: false,
+      podePedirSubstituicao: false,
+      mensagem: 'O prazo para confirmar ou pedir substituição encerrou 2 horas antes do evento.',
+    };
+  }
+
+  return {
+    podeConfirmar: true,
+    podePedirSubstituicao: participacao.status !== 'PEDIU_SUBSTITUICAO',
+    mensagem: '',
+  };
 }
 
 function getDestinoEscala(escala) {
@@ -89,10 +184,12 @@ export function MobileBottomNav() {
   const [erroEscala, setErroEscala] = useState('');
   const [proximaEscala, setProximaEscala] = useState(null);
   const [atualizandoStatus, setAtualizandoStatus] = useState('');
+  const [abrindoOrdemCulto, setAbrindoOrdemCulto] = useState(false);
   const [substituicaoAberta, setSubstituicaoAberta] = useState(false);
   const [justificativaSubstituicao, setJustificativaSubstituicao] = useState('');
   const [erroAcaoEscala, setErroAcaoEscala] = useState('');
   const [menuAberto, setMenuAberto] = useState(false);
+  const [agoraEscalas, setAgoraEscalas] = useState(() => getAgoraEscalas());
   const fecharRef = useRef(null);
   const navRef = useRef(null);
   const isAdmin = usuario?.permissoes?.includes('ADMINISTRADOR');
@@ -103,7 +200,6 @@ export function MobileBottomNav() {
   ];
   const itensMenu = [
     { label: 'Manuais', path: '/manuais', icon: BookOpen },
-    { label: 'Perfil', path: '/perfil', icon: UserRound },
     ...(isAdmin ? [{ label: 'Admin', path: '/admin', icon: ShieldCheck }] : []),
   ];
   const menuAtivo = itensMenu.some((item) => (
@@ -121,7 +217,10 @@ export function MobileBottomNav() {
     setJustificativaSubstituicao('');
 
     try {
-      const resposta = await fetch(buildApiUrl('/api/escalas?visao=minhas'), {
+      const agoraAtual = getAgoraEscalas();
+      setAgoraEscalas(agoraAtual);
+
+      const resposta = await fetch(buildApiUrl('/api/escalas?visao=todas&atalhoProxima=1'), {
         headers: { Authorization: `Bearer ${token}` },
       });
       const dados = await resposta.json().catch(() => ({}));
@@ -136,7 +235,9 @@ export function MobileBottomNav() {
         throw new Error(dados.erro || 'Não foi possível carregar sua próxima escala.');
       }
 
-      setProximaEscala(getProximaEscala(dados.escalas || []));
+      const escalas = dados.escalas || [];
+      const escalaSelecionada = getProximaEscala(escalas, agoraAtual);
+      setProximaEscala(enriquecerComVoluntariosDaOcorrencia(escalas, escalaSelecionada));
     } catch (error) {
       setErroEscala(error.message || 'Não foi possível carregar sua próxima escala.');
       setProximaEscala(null);
@@ -144,6 +245,44 @@ export function MobileBottomNav() {
       setCarregandoEscala(false);
     }
   }, [logout, navigate, token]);
+
+  const abrirOrdemCulto = useCallback(async () => {
+    const ordemCulto = proximaEscala?.ordemCulto;
+
+    if (!ordemCulto || !token) return;
+
+    const janela = window.open('', '_blank', 'noopener,noreferrer');
+
+    setAbrindoOrdemCulto(true);
+    setErroAcaoEscala('');
+
+    try {
+      const resposta = await fetch(buildApiUrl(ordemCulto.arquivoUrl || `/api/ordens-culto/${ordemCulto.id}/arquivo`), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!resposta.ok) {
+        const dados = await resposta.json().catch(() => ({}));
+        throw new Error(dados.erro || 'Não foi possível abrir a ordem de culto.');
+      }
+
+      const url = URL.createObjectURL(await resposta.blob());
+
+      if (janela) {
+        janela.opener = null;
+        janela.location.href = url;
+      } else {
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }
+
+      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (error) {
+      janela?.close();
+      setErroAcaoEscala(error.message || 'Não foi possível abrir a ordem de culto.');
+    } finally {
+      setAbrindoOrdemCulto(false);
+    }
+  }, [proximaEscala, token]);
 
   const atualizarStatusProximaEscala = useCallback(async (status, justificativa = '') => {
     const participacaoId = proximaEscala?.minhaParticipacao?.id;
@@ -238,6 +377,14 @@ export function MobileBottomNav() {
       document.body.style.overflow = overflowAnterior;
     };
   }, [modalAberto]);
+
+  useEffect(() => {
+    const intervalo = window.setInterval(() => {
+      setAgoraEscalas(getAgoraEscalas());
+    }, 60000);
+
+    return () => window.clearInterval(intervalo);
+  }, []);
 
   useEffect(() => {
     if (!menuAberto) return undefined;
@@ -366,6 +513,8 @@ export function MobileBottomNav() {
           erro={erroEscala}
           erroAcao={erroAcaoEscala}
           atualizandoStatus={atualizandoStatus}
+          abrindoOrdemCulto={abrindoOrdemCulto}
+          agoraEscalas={agoraEscalas}
           substituicaoAberta={substituicaoAberta}
           justificativaSubstituicao={justificativaSubstituicao}
           fecharRef={fecharRef}
@@ -382,6 +531,7 @@ export function MobileBottomNav() {
           }}
           onChangeJustificativa={setJustificativaSubstituicao}
           onSolicitarSubstituicao={() => atualizarStatusProximaEscala('PEDIU_SUBSTITUICAO', justificativaSubstituicao)}
+          onAbrirOrdemCulto={abrirOrdemCulto}
           onAbrirEscalas={() => {
             navigate(getDestinoEscala(proximaEscala));
             setModalAberto(false);
@@ -398,6 +548,8 @@ function ProximaEscalaModal({
   erro,
   erroAcao,
   atualizandoStatus,
+  abrindoOrdemCulto,
+  agoraEscalas,
   substituicaoAberta,
   justificativaSubstituicao,
   fecharRef,
@@ -407,13 +559,21 @@ function ProximaEscalaModal({
   onCancelarSubstituicao,
   onChangeJustificativa,
   onSolicitarSubstituicao,
+  onAbrirOrdemCulto,
   onAbrirEscalas,
 }) {
   const participacao = escala?.minhaParticipacao;
   const config = statusConfig[participacao?.status] || statusConfig.PENDENTE;
   const StatusIcon = config.icon;
-  const podeConfirmar = participacao && !['CONFIRMADA', 'AUSENTE'].includes(participacao.status);
-  const podePedirSubstituicao = participacao && !['PEDIU_SUBSTITUICAO', 'AUSENTE'].includes(participacao.status);
+  const disponibilidadeAcoes = getDisponibilidadeAcoesEscala(escala, participacao, agoraEscalas);
+  const podeConfirmar = disponibilidadeAcoes.podeConfirmar;
+  const podePedirSubstituicao = disponibilidadeAcoes.podePedirSubstituicao;
+  const mostrarAcoes = podeConfirmar || podePedirSubstituicao;
+  const usuarioAtualId = (escala?.voluntarios || []).find((item) => item.id === participacao?.id)?.usuario?.id;
+  const outrosVoluntarios = (escala?.voluntarios || []).filter((item) => (
+    item.id !== participacao?.id
+    && (!usuarioAtualId || item.usuario?.id !== usuarioAtualId)
+  ));
 
   return (
     <div className="fixed inset-0 z-[85] flex items-end justify-center bg-gray-950/65 px-0 sm:items-center sm:px-4 sm:py-6 sm:backdrop-blur-sm" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
@@ -454,6 +614,18 @@ function ProximaEscalaModal({
                 <InfoLinha icon={escala.local ? MapPin : CalendarCheck2} label={escala.local ? 'Local' : 'Tipo'} value={escala.local || (escala.tipo === 'RECORRENTE' ? 'Evento recorrente' : 'Evento especial')} />
               </div>
 
+              {escala.ordemCulto && (
+                <button
+                  type="button"
+                  disabled={abrindoOrdemCulto}
+                  onClick={onAbrirOrdemCulto}
+                  className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-800 transition hover:bg-gray-50 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-950 dark:text-white dark:hover:bg-gray-800"
+                >
+                  {abrindoOrdemCulto ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye size={16} />}
+                  Visualizar ordem de culto
+                </button>
+              )}
+
               <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-3 dark:border-gray-800 dark:bg-gray-950">
                 <p className="text-xs font-bold uppercase text-gray-500 dark:text-gray-400">Seu status</p>
                 <span className={`mt-2 inline-flex items-center gap-1.5 rounded border px-2 py-1 text-xs font-bold ${config.className}`}>
@@ -462,70 +634,83 @@ function ProximaEscalaModal({
                 </span>
               </div>
 
-              <div className="rounded-md border border-gray-200 bg-white px-3 py-3 dark:border-gray-800 dark:bg-gray-950">
-                <p className="text-xs font-bold uppercase text-gray-500 dark:text-gray-400">Ações da escala</p>
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                  <button
-                    type="button"
-                    disabled={!podeConfirmar || Boolean(atualizandoStatus)}
-                    onClick={onConfirmar}
-                    className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-3 py-2 text-sm font-bold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {atualizandoStatus === 'CONFIRMADA' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 size={16} />}
-                    Confirmar escala
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!podePedirSubstituicao || Boolean(atualizandoStatus)}
-                    onClick={onAbrirSubstituicao}
-                    className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-bold text-sky-700 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-200"
-                  >
-                    <RefreshCcw size={16} />
-                    Pedir substituição
-                  </button>
+              {disponibilidadeAcoes.mensagem && (
+                <div className="flex items-start gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-600 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-300">
+                  <Clock3 className="mt-0.5 h-4 w-4 shrink-0" />
+                  {disponibilidadeAcoes.mensagem}
                 </div>
+              )}
 
-                {substituicaoAberta && (
-                  <div className="mt-3 rounded-md border border-sky-200 bg-sky-50 p-3 dark:border-sky-800 dark:bg-sky-950/40">
-                    <label className="block text-sm font-bold text-sky-800 dark:text-sky-100">
-                      Justificativa
-                      <textarea
-                        value={justificativaSubstituicao}
-                        onChange={(event) => onChangeJustificativa(event.target.value)}
-                        rows={3}
-                        className="mt-2 block w-full rounded-md border border-sky-200 bg-white px-3 py-2 text-sm text-gray-800 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-500/10 dark:border-sky-800 dark:bg-gray-950 dark:text-white"
-                        placeholder="Explique rapidamente por que precisa de substituição."
-                      />
-                    </label>
-                    <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:justify-end">
+              {mostrarAcoes && (
+                <div className="rounded-md border border-gray-200 bg-white px-3 py-3 dark:border-gray-800 dark:bg-gray-950">
+                  <p className="text-xs font-bold uppercase text-gray-500 dark:text-gray-400">Ações da escala</p>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    {podeConfirmar && (
                       <button
                         type="button"
                         disabled={Boolean(atualizandoStatus)}
-                        onClick={onCancelarSubstituicao}
-                        className="min-h-9 rounded-md border border-sky-200 bg-white px-3 py-2 text-sm font-bold text-sky-700 transition hover:bg-sky-50 disabled:opacity-50 dark:border-sky-800 dark:bg-gray-950 dark:text-sky-100"
+                        onClick={onConfirmar}
+                        className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-3 py-2 text-sm font-bold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        Cancelar
+                        {atualizandoStatus === 'CONFIRMADA' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 size={16} />}
+                        Confirmar escala
                       </button>
+                    )}
+                    {podePedirSubstituicao && (
                       <button
                         type="button"
                         disabled={Boolean(atualizandoStatus)}
-                        onClick={onSolicitarSubstituicao}
-                        className="inline-flex min-h-9 items-center justify-center gap-2 rounded-md bg-sky-700 px-3 py-2 text-sm font-bold text-white transition hover:bg-sky-800 disabled:opacity-50"
+                        onClick={onAbrirSubstituicao}
+                        className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-bold text-sky-700 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-200"
                       >
-                        {atualizandoStatus === 'PEDIU_SUBSTITUICAO' ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw size={15} />}
-                        Enviar pedido
+                        <RefreshCcw size={16} />
+                        Pedir substituição
                       </button>
+                    )}
+                  </div>
+
+                  {substituicaoAberta && podePedirSubstituicao && (
+                    <div className="mt-3 rounded-md border border-sky-200 bg-sky-50 p-3 dark:border-sky-800 dark:bg-sky-950/40">
+                      <label className="block text-sm font-bold text-sky-800 dark:text-sky-100">
+                        Justificativa
+                        <textarea
+                          value={justificativaSubstituicao}
+                          onChange={(event) => onChangeJustificativa(event.target.value)}
+                          rows={3}
+                          className="mt-2 block w-full rounded-md border border-sky-200 bg-white px-3 py-2 text-sm text-gray-800 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-500/10 dark:border-sky-800 dark:bg-gray-950 dark:text-white"
+                          placeholder="Explique rapidamente por que precisa de substituição."
+                        />
+                      </label>
+                      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:justify-end">
+                        <button
+                          type="button"
+                          disabled={Boolean(atualizandoStatus)}
+                          onClick={onCancelarSubstituicao}
+                          className="min-h-9 rounded-md border border-sky-200 bg-white px-3 py-2 text-sm font-bold text-sky-700 transition hover:bg-sky-50 disabled:opacity-50 dark:border-sky-800 dark:bg-gray-950 dark:text-sky-100"
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          type="button"
+                          disabled={Boolean(atualizandoStatus)}
+                          onClick={onSolicitarSubstituicao}
+                          className="inline-flex min-h-9 items-center justify-center gap-2 rounded-md bg-sky-700 px-3 py-2 text-sm font-bold text-white transition hover:bg-sky-800 disabled:opacity-50"
+                        >
+                          {atualizandoStatus === 'PEDIU_SUBSTITUICAO' ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw size={15} />}
+                          Enviar pedido
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
+              )}
 
-                {erroAcao && (
-                  <div role="alert" className="mt-3 flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200">
-                    <AlertCircle className="mt-0.5 h-4 w-4" />
-                    {erroAcao}
-                  </div>
-                )}
-              </div>
+              {erroAcao && (
+                <div role="alert" className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200">
+                  <AlertCircle className="mt-0.5 h-4 w-4" />
+                  {erroAcao}
+                </div>
+              )}
 
               {escala.descricao && (
                 <div>
@@ -536,14 +721,20 @@ function ProximaEscalaModal({
 
               <div>
                 <div className="flex items-center justify-between gap-3">
-                  <h3 className="text-sm font-bold text-gray-950 dark:text-white">Pessoas escaladas</h3>
-                  <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">{escala.voluntarios?.length || 0}</span>
+                  <h3 className="text-sm font-bold text-gray-950 dark:text-white">Outros voluntários escalados</h3>
+                  <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">{outrosVoluntarios.length}</span>
                 </div>
-                <div className="mt-2 divide-y divide-gray-100 rounded-md border border-gray-200 bg-white dark:divide-gray-800 dark:border-gray-800 dark:bg-gray-950">
-                  {(escala.voluntarios || []).map((item) => (
-                    <VoluntarioEscalado key={item.id} item={item} destaque={item.id === participacao?.id} />
-                  ))}
-                </div>
+                {outrosVoluntarios.length > 0 ? (
+                  <div className="mt-2 divide-y divide-gray-100 rounded-md border border-gray-200 bg-white dark:divide-gray-800 dark:border-gray-800 dark:bg-gray-950">
+                    {outrosVoluntarios.map((item) => (
+                      <VoluntarioEscalado key={item.id} item={item} />
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-2 rounded-md border border-dashed border-gray-300 bg-gray-50 px-3 py-4 text-sm font-semibold text-gray-500 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-400">
+                    Nenhum outro voluntário escalado nesta função.
+                  </p>
+                )}
               </div>
             </>
           )}
@@ -578,6 +769,9 @@ function InfoLinha({ icon: Icon, label, value }) {
 function VoluntarioEscalado({ item, destaque }) {
   const config = statusConfig[item.status] || statusConfig.PENDENTE;
   const StatusIcon = config.icon;
+  const detalhe = [item.equipe?.nome, item.usuario?.telefone ? formatarTelefoneExibicao(item.usuario.telefone) : '']
+    .filter(Boolean)
+    .join(' - ');
 
   return (
     <div className={`flex items-center justify-between gap-3 px-3 py-3 ${destaque ? 'bg-dourado-50 dark:bg-dourado-950/20' : ''}`}>
@@ -587,7 +781,7 @@ function VoluntarioEscalado({ item, destaque }) {
         </span>
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{item.usuario?.nomeCompleto || 'Voluntário'}</p>
-          {item.usuario?.telefone && <p className="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">{formatarTelefoneExibicao(item.usuario.telefone)}</p>}
+          {detalhe && <p className="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">{detalhe}</p>}
         </div>
       </div>
       <div className="flex shrink-0 flex-col items-end gap-1">
