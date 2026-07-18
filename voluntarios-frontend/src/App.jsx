@@ -148,14 +148,14 @@ function AppRouter() {
   }
 
   return (
-    <>
+    <div className="lg:pl-64">
       <Suspense fallback={<PageFallback />}>{page}</Suspense>
       <ProfileCompletionNotification />
       <MobileBottomNav />
       <PwaInstallPrompt />
       <PushNotificationManager />
       <AppSettings />
-    </>
+    </div>
   );
 }
 

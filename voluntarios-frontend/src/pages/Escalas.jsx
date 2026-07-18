@@ -1557,7 +1557,6 @@ function EventoEscalaCard({ evento, participacaoSelecionadaId, destaqueEvento, a
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="break-words text-sm font-bold text-gray-950 dark:text-white">{escala.equipe?.nome || 'Sem função'}</h3>
-                    <RecorrenciaBadge escala={escala} className="min-h-6 px-2 py-0.5" />
                   </div>
                   <p className="mt-0.5 text-xs font-semibold text-gray-500 dark:text-gray-400">{totalVoluntarios === 1 ? '1 voluntário' : `${totalVoluntarios} voluntários`}</p>
                 </div>
@@ -1604,7 +1603,6 @@ function EventoEscalaCard({ evento, participacaoSelecionadaId, destaqueEvento, a
                     <td className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-100">
                       <div className="flex flex-wrap items-center gap-2">
                         <span>{escala.equipe?.nome || 'Sem função'}</span>
-                        <RecorrenciaBadge escala={escala} className="min-h-6 px-2 py-0.5" />
                       </div>
                     </td>
                     <td className="px-4 py-3">

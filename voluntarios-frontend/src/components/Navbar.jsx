@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BadgeCheck, Bell, Camera, CheckCheck, Image as ImageIcon, Loader2, LogOut, Pencil, Save, Settings, Trash2, User, X } from 'lucide-react';
+import { BadgeCheck, Bell, BookOpen, CalendarDays, Camera, CheckCheck, Home, Image as ImageIcon, Loader2, LogOut, Pencil, Save, Settings, ShieldCheck, Trash2, User, Users, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
 import { buildApiUrl } from '../lib/api';
@@ -73,10 +73,17 @@ export default function Navbar() {
   const fotoInputRef = useRef(null);
   const cameraInputRef = useRef(null);
   const { token, usuario, atualizarUsuario, logout } = useAuth();
-  const { navigate } = useNavigation();
+  const { navigate, pathname } = useNavigation();
   const usuarioAvatarUrl = usuario?.urlFoto || formPerfil.urlFoto || '';
   const podeVerEquipe = Boolean(usuario);
   const isAdmin = usuario?.permissoes?.includes('ADMINISTRADOR');
+  const itensNavegacao = [
+    { label: 'Início', path: '/', icon: Home },
+    { label: 'Escalas', path: '/escalas', icon: CalendarDays },
+    { label: 'Manuais', path: '/manuais', icon: BookOpen },
+    ...(podeVerEquipe ? [{ label: 'Equipe', path: '/minha-equipe', icon: Users }] : []),
+    ...(isAdmin ? [{ label: 'Admin', path: '/admin', icon: ShieldCheck }] : []),
+  ];
   const avisosRepresentadosPorNotificacao = useMemo(() => new Set(
     notificacoes
       .filter((notificacao) => notificacao.tipo === 'AVISO')
@@ -512,80 +519,16 @@ export default function Navbar() {
 
   return (
     <>
-      <nav className="sticky top-0 z-[60] border-b border-gray-200 bg-white/95 backdrop-blur-xl dark:border-gray-800 dark:bg-gray-950/95">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex h-14 justify-between md:h-16">
-          
-          {/* Logo / Título */}
+      <nav className="sticky top-0 z-[60] border-b border-gray-200 bg-white/95 backdrop-blur-xl dark:border-gray-800 dark:bg-gray-950/95 lg:hidden">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6">
+          <div className="flex h-14 items-center justify-between">
           <div className="flex items-center">
             <button type="button" onClick={() => navigate('/')} className="flex items-center gap-2">
-              <img src={logo} alt="MCom" className="h-8 w-8 object-contain md:h-9 md:w-9" />
-              <span className="text-lg font-bold text-gray-950 dark:text-white md:text-xl">MCom</span>
+              <img src={logo} alt="MCom" className="h-8 w-8 object-contain" />
+              <span className="text-lg font-bold text-gray-950 dark:text-white">MCom</span>
             </button>
           </div>
-
-          {/* Links de Navegação - Desktop */}
-          <div className="hidden md:flex md:items-center md:gap-7">
-            <button type="button" onClick={() => irPara('/')} className="font-sans text-gray-600 hover:text-gray-950 transition-colors font-medium dark:text-gray-300 dark:hover:text-white">
-              Início
-            </button>
-            <button type="button" onClick={() => irPara('/escalas')} className="font-sans text-gray-600 hover:text-gray-950 transition-colors font-medium dark:text-gray-300 dark:hover:text-white">
-              Escalas
-            </button>
-            <button type="button" onClick={() => irPara('/manuais')} className="font-sans text-gray-600 hover:text-gray-950 transition-colors font-medium dark:text-gray-300 dark:hover:text-white">
-              Manuais
-            </button>
-            {podeVerEquipe && (
-              <button type="button" onClick={() => irPara('/minha-equipe')} className="font-sans text-gray-600 hover:text-gray-950 transition-colors font-medium dark:text-gray-300 dark:hover:text-white">
-                Equipe
-              </button>
-            )}
-            {isAdmin && (
-              <button type="button" onClick={() => irPara('/admin')} className="font-sans text-gray-600 hover:text-gray-950 transition-colors font-medium dark:text-gray-300 dark:hover:text-white">
-                Admin
-              </button>
-            )}
-            
-          </div>
-
-          {/* Ações do Usuário - Desktop */}
-          <div className="hidden md:flex items-center space-x-4">
-            <button
-              type="button"
-              onClick={abrirNotificacoes}
-              className="relative grid h-10 w-10 place-items-center rounded-full border border-gray-200 bg-white text-gray-600 transition hover:border-gray-400 hover:text-gray-950 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:border-gray-500 dark:hover:text-white"
-              aria-label="Abrir notificações"
-            >
-              <Bell size={18} />
-              {totalNaoVisualizados > 0 && (
-                <span className="absolute -right-1 -top-1 grid min-h-5 min-w-5 place-items-center rounded-full bg-gray-950 px-1 text-[10px] font-bold text-white">
-                  {totalNaoVisualizados > 99 ? '99+' : totalNaoVisualizados}
-                </span>
-              )}
-            </button>
-            <button type="button" onClick={abrirPerfil} className="flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-950 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:border-gray-500 dark:hover:text-white">
-              <span className="grid h-8 w-8 place-items-center overflow-hidden rounded-full bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-200">
-                {usuarioAvatarUrl ? (
-                  <img src={usuarioAvatarUrl} alt="" className="h-full w-full object-cover" />
-                ) : (
-                  <User size={18} />
-                )}
-              </span>
-              <span className="max-w-36 truncate">{usuario?.nomeCompleto || 'Perfil'}</span>
-            </button>
-            <select
-              value={tema}
-              onChange={(event) => setTema(event.target.value)}
-              className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 outline-none transition hover:border-gray-400 focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10 dark:bg-gray-800 dark:text-gray-100"
-              aria-label="Selecionar tema"
-            >
-              <option value="claro">Modo claro</option>
-              <option value="escuro">Modo escuro</option>
-            </select>
-          </div>
-
-          {/* Ações Mobile */}
-          <div className="flex items-center md:hidden">
+          <div className="flex items-center">
             <button
               type="button"
               onClick={abrirNotificacoes}
@@ -616,8 +559,73 @@ export default function Navbar() {
         </div>
       </nav>
 
+      <aside className="fixed inset-y-0 left-0 z-[60] hidden w-64 flex-col border-r border-gray-200 bg-white/95 px-4 py-5 backdrop-blur-xl dark:border-gray-800 dark:bg-gray-950/95 lg:flex">
+        <button type="button" onClick={() => navigate('/')} className="flex items-center gap-3 px-2 py-1 text-left">
+          <img src={logo} alt="MCom" className="h-10 w-10 object-contain" />
+          <span className="text-xl font-bold text-gray-950 dark:text-white">MCom</span>
+        </button>
+
+        <nav aria-label="Navegação principal" className="mt-8 flex flex-1 flex-col gap-1">
+          {itensNavegacao.map((item) => {
+            const Icon = item.icon;
+            const ativo = item.path === '/' ? pathname === '/' : pathname.startsWith(item.path);
+
+            return (
+              <button
+                key={item.path}
+                type="button"
+                onClick={() => irPara(item.path)}
+                aria-current={ativo ? 'page' : undefined}
+                className={`flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-semibold transition-colors ${
+                  ativo
+                    ? 'bg-dourado-50 text-dourado-800 dark:bg-gray-800 dark:text-dourado-200'
+                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-950 dark:text-gray-300 dark:hover:bg-gray-900 dark:hover:text-white'
+                }`}
+              >
+                <Icon size={19} strokeWidth={ativo ? 2.4 : 1.9} />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+
+        <div className="space-y-2 border-t border-gray-200 pt-4 dark:border-gray-800">
+          <select
+            value={tema}
+            onChange={(event) => setTema(event.target.value)}
+            className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 outline-none transition hover:border-gray-400 focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+            aria-label="Selecionar tema"
+          >
+            <option value="claro">Modo claro</option>
+            <option value="escuro">Modo escuro</option>
+          </select>
+          <button
+            type="button"
+            onClick={abrirNotificacoes}
+            className="relative flex min-h-11 w-full items-center gap-3 rounded-md px-3 text-sm font-semibold text-gray-600 transition hover:bg-gray-50 hover:text-gray-950 dark:text-gray-300 dark:hover:bg-gray-900 dark:hover:text-white"
+          >
+            <Bell size={19} />
+            <span>Notificações</span>
+            {totalNaoVisualizados > 0 && (
+              <span className="ml-auto grid min-h-5 min-w-5 place-items-center rounded-full bg-gray-950 px-1 text-[10px] font-bold text-white dark:bg-white dark:text-gray-950">
+                {totalNaoVisualizados > 99 ? '99+' : totalNaoVisualizados}
+              </span>
+            )}
+          </button>
+          <button type="button" onClick={abrirPerfil} className="flex min-h-12 w-full items-center gap-3 rounded-md px-2 text-left transition hover:bg-gray-50 dark:hover:bg-gray-900">
+            <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-200">
+              {usuarioAvatarUrl ? <img src={usuarioAvatarUrl} alt="" className="h-full w-full object-cover" /> : <User size={18} />}
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-semibold text-gray-900 dark:text-white">{usuario?.nomeCompleto || 'Perfil'}</span>
+              <span className="block truncate text-xs text-gray-500 dark:text-gray-400">Minha conta</span>
+            </span>
+          </button>
+        </div>
+      </aside>
+
       {notificacoesAberto && (
-        <div className="fixed inset-x-0 bottom-0 top-14 z-[70] overflow-hidden rounded-t-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-950 md:absolute md:inset-x-auto md:bottom-auto md:right-8 md:top-[4.5rem] md:max-h-[calc(100vh-6rem)] md:w-[calc(100vw-2rem)] md:max-w-md md:rounded-lg">
+        <div className="fixed inset-x-0 bottom-0 top-14 z-[70] overflow-hidden rounded-t-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-950 lg:inset-x-auto lg:bottom-auto lg:left-[17rem] lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:w-[calc(100vw-18rem)] lg:max-w-md lg:rounded-lg">
           <div className="flex items-start justify-between gap-3 border-b border-gray-100 px-5 py-4 dark:border-gray-800">
             <div>
               <h2 className="text-base font-bold text-gray-950 dark:text-white">Notificações</h2>
@@ -682,7 +690,7 @@ export default function Navbar() {
       )}
 
       {perfilAberto && (
-        <div className="fixed inset-x-0 bottom-0 top-14 z-[70] overflow-hidden rounded-t-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-950 md:absolute md:inset-x-auto md:bottom-auto md:right-8 md:top-[4.5rem] md:w-[calc(100vw-2rem)] md:max-w-xl md:rounded-lg">
+        <div className="fixed inset-x-0 bottom-0 top-14 z-[70] overflow-hidden rounded-t-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-950 lg:inset-x-auto lg:bottom-auto lg:left-[17rem] lg:top-4 lg:w-[calc(100vw-18rem)] lg:max-w-xl lg:rounded-lg">
           <div className="flex items-start justify-between gap-4 border-b border-gray-100 px-5 py-4 dark:border-gray-800">
             <div className="flex min-w-0 items-center gap-3">
               <button

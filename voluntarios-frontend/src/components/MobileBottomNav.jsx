@@ -609,8 +609,8 @@ export function MobileBottomNav() {
 
   return (
     <>
-      <div className="h-[calc(5.75rem+env(safe-area-inset-bottom))] md:hidden" aria-hidden="true" />
-      <nav ref={navRef} aria-label="Navegação principal" className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-1px_14px_rgba(15,23,42,0.08)] backdrop-blur-xl dark:border-gray-800 dark:bg-gray-950/95 md:hidden">
+      <div className="h-[calc(5.75rem+env(safe-area-inset-bottom))] lg:hidden" aria-hidden="true" />
+      <nav ref={navRef} aria-label="Navegação principal" className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-1px_14px_rgba(15,23,42,0.08)] backdrop-blur-xl dark:border-gray-800 dark:bg-gray-950/95 lg:hidden">
         <div className="relative mx-auto max-w-md px-3">
           {temMenuMais && menuAberto && (
             <div role="menu" className="absolute bottom-[calc(100%+0.65rem)] right-3 w-56 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-2xl shadow-gray-950/10 dark:border-gray-800 dark:bg-gray-900">
