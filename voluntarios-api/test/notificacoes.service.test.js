@@ -154,6 +154,36 @@ test('lembra o voluntário confirmado 1 dia antes da escala', async () => {
   assert.match(prisma.criadas[0].mensagem, /Filmagem/);
 });
 
+test('avisa o voluntário confirmado quando o evento inicia', async () => {
+  const dataHora = '2026-07-16T10:00:00.000Z';
+  const prisma = criarPrisma([criarParticipacao({
+    status: 'CONFIRMADA',
+    dataHora,
+    dataOcorrenciaStatus: new Date(dataHora),
+  })]);
+
+  const resultado = await gerarNotificacoesAutomaticas(
+    prisma,
+    new Date('2026-07-16T10:30:00.000Z'),
+  );
+
+  assert.equal(resultado.count, 1);
+  assert.equal(prisma.criadas[0].tipo, 'LEMBRETE_ESCALA');
+  assert.equal(prisma.criadas[0].titulo, 'Seu evento está iniciando');
+  assert.match(prisma.criadas[0].chave, /^inicio-evento:participacao-1:/);
+});
+
+test('não avisa o início para voluntário não confirmado', async () => {
+  const prisma = criarPrisma([criarParticipacao({ dataHora: '2026-07-16T10:00:00.000Z' })]);
+
+  const resultado = await gerarNotificacoesAutomaticas(
+    prisma,
+    new Date('2026-07-16T10:30:00.000Z'),
+  );
+
+  assert.equal(resultado.count, 0);
+});
+
 test('não lembra quem pediu substituição 1 dia antes da escala', async () => {
   const dataHora = '2026-07-17T18:00:00.000Z';
   const prisma = criarPrisma([criarParticipacao({

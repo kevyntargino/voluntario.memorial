@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-export const DIAS_ESCALAS_FUTURAS = 60;
+export const DIAS_ESCALAS_FUTURAS = 90;
 export const DIAS_HISTORICO_ESCALAS = 90;
 
 function adicionarDias(data, dias, fimDoDia = false) {

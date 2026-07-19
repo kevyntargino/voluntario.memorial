@@ -2,6 +2,7 @@ import webpush from 'web-push';
 
 let webPushConfigurado = false;
 const timeZoneEventos = process.env.EVENT_TIME_ZONE || 'America/Campo_Grande';
+const DURACAO_REFERENCIA_EVENTO_MS = 2 * 60 * 60 * 1000;
 
 function configurarWebPush() {
   if (webPushConfigurado) {
@@ -71,7 +72,7 @@ export function getProximaOcorrenciaNotificacao(escala, agora = new Date()) {
       escala.dataHora,
     );
 
-    if (ocorrencia && ocorrencia >= agora) {
+    if (ocorrencia && ocorrencia >= new Date(agora.getTime() - DURACAO_REFERENCIA_EVENTO_MS)) {
       return ocorrencia;
     }
   }
@@ -358,7 +359,9 @@ export async function notificarNovaEscalaAdmin(prisma, { escalas }) {
 export async function gerarNotificacoesAutomaticas(prisma, agora = getAgoraNotificacao()) {
   const participacoes = await prisma.voluntarioEscala.findMany({
     where: {
-      escala: { dataHora: { gte: agora } },
+      // Mantém escalas que começaram há até duas horas para a execução horária
+      // ainda conseguir emitir o aviso de início.
+      escala: { dataHora: { gte: new Date(agora.getTime() - DURACAO_REFERENCIA_EVENTO_MS) } },
     },
     include: {
       usuario: {
@@ -386,7 +389,7 @@ export async function gerarNotificacoesAutomaticas(prisma, agora = getAgoraNotif
   for (const participacao of participacoes) {
     const dataOcorrencia = getProximaOcorrenciaNotificacao(participacao.escala, agora);
 
-    if (!dataOcorrencia || new Date(dataOcorrencia) <= agora) {
+    if (!dataOcorrencia || new Date(dataOcorrencia) < new Date(agora.getTime() - DURACAO_REFERENCIA_EVENTO_MS)) {
       continue;
     }
 
@@ -394,6 +397,20 @@ export async function gerarNotificacoesAutomaticas(prisma, agora = getAgoraNotif
     const status = getStatusParticipacaoNaOcorrencia(participacao, dataOcorrencia);
     const equipeNome = participacao.escala.equipe?.nome || 'sua equipe';
     const dataTexto = formatarData(new Date(dataOcorrencia));
+    const inicioEvento = new Date(dataOcorrencia);
+    const eventoEmInicio = agora >= inicioEvento
+      && agora < new Date(inicioEvento.getTime() + DURACAO_REFERENCIA_EVENTO_MS);
+
+    if (status === 'CONFIRMADA' && eventoEmInicio) {
+      notificacoes.push({
+        usuarioId: participacao.usuarioId,
+        tipo: 'LEMBRETE_ESCALA',
+        titulo: 'Seu evento está iniciando',
+        mensagem: `${participacao.escala.titulo || 'Sua escala'} em ${equipeNome} começa agora.`,
+        link: getLinkModalProximaEscala(participacao, dataOcorrencia),
+        chave: `inicio-evento:${participacao.id}:${inicioEvento.toISOString()}`,
+      });
+    }
 
     if (dias === 1 && ['PENDENTE', 'CONFIRMADA'].includes(status)) {
       notificacoes.push({

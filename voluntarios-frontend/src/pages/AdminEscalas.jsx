@@ -252,6 +252,18 @@ function agoraComoDataHoraInput() {
   return `${ano}-${mes}-${dia}T${horas}:${minutos}`;
 }
 
+function limiteEscalasFuturasComoDataHoraInput() {
+  const limite = new Date();
+  limite.setDate(limite.getDate() + 90);
+  const ano = limite.getFullYear();
+  const mes = String(limite.getMonth() + 1).padStart(2, '0');
+  const dia = String(limite.getDate()).padStart(2, '0');
+  const horas = String(limite.getHours()).padStart(2, '0');
+  const minutos = String(limite.getMinutes()).padStart(2, '0');
+
+  return `${ano}-${mes}-${dia}T${horas}:${minutos}`;
+}
+
 function criarFormUsuario(usuario) {
   return {
     nomeCompleto: usuario.nomeCompleto || '',
@@ -2669,6 +2681,7 @@ function PainelEscalas({
                     label="Data exata"
                     type="datetime-local"
                     min={agoraComoDataHoraInput()}
+                    max={limiteEscalasFuturasComoDataHoraInput()}
                     value={formEscala.dataHora}
                     onChange={(value) => onChangeEscala((atual) => ({ ...atual, dataHora: value }))}
                   />
@@ -3380,6 +3393,7 @@ function ModalEdicaoEscala({
                   label="Data e horário"
                   type="datetime-local"
                   min={agoraComoDataHoraInput()}
+                  max={limiteEscalasFuturasComoDataHoraInput()}
                   value={form.dataHora}
                   disabled={bloqueado || !podeEditarData}
                   onChange={(value) => onChange((atual) => ({ ...atual, dataHora: value }))}

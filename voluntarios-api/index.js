@@ -142,10 +142,13 @@ if (process.env.NODE_ENV !== 'test') {
     garantirOcorrenciasEventos(prisma).catch((erro) => {
       console.warn('[WARN] Falha na manutenção automática das escalas:', erro.message);
     });
+  }, 60 * 60 * 1000);
+
+  setInterval(() => {
     gerarNotificacoesAutomaticas(prisma).catch((erro) => {
       console.warn('[WARN] Falha ao gerar notificações automáticas:', erro.message);
     });
-  }, 60 * 60 * 1000);
+  }, 5 * 60 * 1000);
 
   setInterval(consultarPingApi, 10 * 1000);
 }

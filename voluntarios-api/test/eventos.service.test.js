@@ -78,10 +78,10 @@ test('evento mensal pode acontecer na segunda quarta-feira', () => {
   ]);
 });
 
-test('janelas de escalas abrangem 60 dias futuros e 90 dias de histórico', () => {
+test('janelas de escalas abrangem 90 dias futuros e 90 dias de histórico', () => {
   const agora = new Date('2026-07-16T10:30:00.000Z');
 
-  assert.equal(getLimiteEscalasFuturas(agora).toISOString(), '2026-09-14T23:59:59.999Z');
+  assert.equal(getLimiteEscalasFuturas(agora).toISOString(), '2026-10-14T23:59:59.999Z');
   assert.equal(getInicioHistoricoEscalas(agora).toISOString(), '2026-04-17T00:00:00.000Z');
 });
 

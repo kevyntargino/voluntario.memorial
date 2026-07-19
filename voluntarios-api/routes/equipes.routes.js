@@ -8,6 +8,7 @@ import { notificarSubstituto } from '../services/notificacoes.service.js';
 import { normalizarTelefone } from '../utils/telefone.js';
 import {
   garantirOcorrenciasEventos,
+  getLimiteEscalasFuturas,
   sincronizarModeloVoluntariosEscala,
 } from '../services/eventos.service.js';
 import { escalaEstaEncerrada, getAgoraEscalas } from '../utils/escalas.js';
@@ -288,7 +289,7 @@ async function carregarEquipe(equipeId, usuario) {
         },
       },
       escalas: {
-        where: { dataHora: { gte: getAgoraEscalas() } },
+        where: { dataHora: { gte: getAgoraEscalas(), lte: getLimiteEscalasFuturas() } },
         orderBy: [{ dataHora: 'asc' }, { criadoEm: 'asc' }],
         include: {
           evento: { include: { ordensCulto: true } },
@@ -360,7 +361,7 @@ router.get('/minhas', autenticar, async (req, res) => {
           },
         },
         escalas: {
-          where: { dataHora: { gte: getAgoraEscalas() } },
+          where: { dataHora: { gte: getAgoraEscalas(), lte: getLimiteEscalasFuturas() } },
           orderBy: [{ dataHora: 'asc' }, { criadoEm: 'asc' }],
           include: {
             evento: { include: { ordensCulto: true } },

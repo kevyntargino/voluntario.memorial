@@ -496,7 +496,7 @@ router.get('/', autenticar, async (req, res) => {
 
     const escalas = await prisma.escala.findMany({
       where: {
-        dataHora: { gte: inicioBusca },
+        dataHora: { gte: inicioBusca, lte: getLimiteEscalasFuturas(agora) },
         voluntarios: visao === 'minhas'
           ? {
               some: {
@@ -571,7 +571,7 @@ router.get('/admin', autenticar, exigirAdmin, async (req, res) => {
 
     const escalas = await prisma.escala.findMany({
       where: {
-        dataHora: { gte: getInicioHistoricoEscalas() },
+        dataHora: { gte: getInicioHistoricoEscalas(), lte: getLimiteEscalasFuturas() },
       },
       include: {
         equipe: {
@@ -633,7 +633,7 @@ router.get('/admin', autenticar, exigirAdmin, async (req, res) => {
           orderBy: [{ semanaMes: 'asc' }, { criadoEm: 'asc' }],
         },
         escalas: {
-          where: { dataHora: { gte: getInicioHistoricoEscalas() } },
+          where: { dataHora: { gte: getInicioHistoricoEscalas(), lte: getLimiteEscalasFuturas() } },
           include: {
             equipe: { select: { id: true, nome: true } },
             evento: { include: { ordensCulto: true } },
@@ -728,10 +728,17 @@ router.post('/admin/eventos', autenticar, exigirAdmin, async (req, res) => {
 
     if (!primeiraData) return res.status(400).json({ erro: 'Informe uma data e um horário válidos.' });
     if (primeiraData <= getAgoraEvento()) return res.status(400).json({ erro: 'A primeira ocorrência deve ser futura.' });
+    if (primeiraData > getLimiteEscalasFuturas(getAgoraEvento())) {
+      return res.status(400).json({ erro: 'As escalas podem ser geradas no máximo para os próximos 90 dias.' });
+    }
+    const limiteEscalasFuturas = getLimiteEscalasFuturas(getAgoraEvento());
     if (frequenciaNormalizada === 'NAO_REPETE') {
       const datasValidas = datasInformadas.map(parseDataHoraEvento);
       if (datasValidas.length === 0 || datasValidas.some((data) => !data || data <= getAgoraEvento())) {
         return res.status(400).json({ erro: 'Todas as datas do evento devem ser válidas e futuras.' });
+      }
+      if (datasValidas.some((data) => data > limiteEscalasFuturas)) {
+        return res.status(400).json({ erro: 'As escalas podem ser geradas no máximo para os próximos 90 dias.' });
       }
     }
     if (tipoNormalizado === 'ESPORADICA' && frequenciaNormalizada !== 'NAO_REPETE' && (!fim || fim < primeiraData)) {
@@ -988,6 +995,10 @@ router.patch('/admin/eventos/:id', autenticar, exigirAdmin, async (req, res) => 
       return res.status(400).json({ erro: 'O evento precisa ter pelo menos uma ocorrência futura.' });
     }
 
+    if (datasDesejadas.some((data) => data > getLimiteEscalasFuturas(agora))) {
+      return res.status(400).json({ erro: 'As escalas podem ser geradas no máximo para os próximos 90 dias.' });
+    }
+
     const datasExcecoesAtivas = evento.tipo === 'RECORRENTE'
       ? evento.ocorrencias
         .filter((ocorrencia) => !ocorrencia.cancelada && ocorrencia.dataHora)
@@ -1176,6 +1187,9 @@ router.patch('/admin/eventos/:id/ocorrencias', autenticar, exigirAdmin, async (r
 
     if (novaOcorrencia <= getAgoraEvento()) {
       return res.status(400).json({ erro: 'A escala deve ter data e horário futuros.' });
+    }
+    if (novaOcorrencia > getLimiteEscalasFuturas(getAgoraEvento())) {
+      return res.status(400).json({ erro: 'A escala pode ser agendada no máximo para os próximos 90 dias.' });
     }
 
     const evento = await prisma.evento.findFirst({
@@ -1514,6 +1528,9 @@ router.post('/admin/esporadicas', autenticar, exigirAdmin, async (req, res) => {
     if (datas.some((data) => data <= agora)) {
       return res.status(400).json({ erro: 'As escalas esporádicas devem ter data e horário futuros.' });
     }
+    if (datas.some((data) => data > getLimiteEscalasFuturas(agora))) {
+      return res.status(400).json({ erro: 'As escalas podem ser criadas no máximo para os próximos 90 dias.' });
+    }
 
     const grupos = datas.map((data) => ({
       data,
@@ -1649,7 +1666,7 @@ router.get('/minhas', autenticar, async (req, res) => {
       where: {
         usuarioId: req.usuarioAutenticado.id,
         escala: {
-          dataHora: { gte: getAgoraEscalas() },
+          dataHora: { gte: getAgoraEscalas(), lte: getLimiteEscalasFuturas() },
         },
       },
       include: {
