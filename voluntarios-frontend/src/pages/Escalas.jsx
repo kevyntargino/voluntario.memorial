@@ -1593,7 +1593,7 @@ function EventoEscalaCard({ evento, participacaoSelecionadaId, destaqueEvento, a
       <div className="hidden overflow-x-auto md:block">
         <table className="w-full min-w-[680px] text-left text-sm">
           <thead className="border-b border-gray-200 bg-gray-50 text-[11px] font-bold uppercase text-gray-500 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-300">
-            <tr><th className="px-4 py-2.5">Voluntário</th><th className="px-4 py-2.5">Função</th><th className="px-4 py-2.5">Status</th><th className="px-4 py-2.5 text-right">Ações</th></tr>
+            <tr><th className="px-4 py-2.5">Função</th><th className="px-4 py-2.5">Voluntário</th><th className="px-4 py-2.5">Status</th><th className="px-4 py-2.5 text-right">Ações</th></tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
             {evento.escalas.flatMap((escala) => {
@@ -1604,12 +1604,12 @@ function EventoEscalaCard({ evento, participacaoSelecionadaId, destaqueEvento, a
 
                 return (
                   <tr id={minhaParticipacao ? `participacao-${minhaParticipacao.id}-desktop` : undefined} key={`${escala.id}-${item?.id || 'vazio'}`} className={destaque ? 'bg-amber-50 dark:bg-amber-950/40' : ''}>
-                    <td className="px-4 py-3"><AvatarVoluntario usuario={item?.usuario} /></td>
                     <td className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-100">
                       <div className="flex flex-wrap items-center gap-2">
                         <span>{escala.equipe?.nome || 'Sem função'}</span>
                       </div>
                     </td>
+                    <td className="px-4 py-3"><AvatarVoluntario usuario={item?.usuario} /></td>
                     <td className="px-4 py-3">
                       <StatusParticipacao participacao={item} />
                     </td>

@@ -1189,32 +1189,37 @@ export default function MinhaEquipe({ pagina = 'dashboard' }) {
                                     selecionado ? 'border-amber-300 bg-amber-50 ring-2 ring-amber-200' : 'border-gray-200 bg-gray-50'
                                   }`}
                                 >
-                                  <div className="flex items-start gap-2">
-                                    <UsuarioInfoButton usuario={item.usuario} onClick={setUsuarioModal} />
-                                    <div className="min-w-0">
-                                      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                                        <p className="text-sm font-bold text-gray-900">{item.usuario.nomeCompleto}</p>
-                                        {item.usuario.telefone && (
-                                          <span className="text-[11px] font-medium text-gray-500">{formatarTelefoneExibicao(item.usuario.telefone)}</span>
-                                        )}
-                                        {selecionado && (
-                                          <span className="rounded-full bg-gray-950 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-white">
-                                            Selecionado
+                                  <div className="flex gap-3">
+                                    <p className="w-28 shrink-0 break-words text-xs font-bold uppercase tracking-[0.12em] text-gray-500">{equipeSelecionada.nome}</p>
+                                    <div className="min-w-0 flex-1">
+                                      <div className="flex items-start gap-2">
+                                        <UsuarioInfoButton usuario={item.usuario} onClick={setUsuarioModal} />
+                                        <div className="min-w-0">
+                                          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                                            <p className="text-sm font-bold text-gray-900">{item.usuario.nomeCompleto}</p>
+                                            {item.usuario.telefone && (
+                                              <span className="text-[11px] font-medium text-gray-500">{formatarTelefoneExibicao(item.usuario.telefone)}</span>
+                                            )}
+                                            {selecionado && (
+                                              <span className="rounded-full bg-gray-950 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-white">
+                                                Selecionado
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </div>
+                                      <div className="mt-2 flex flex-wrap gap-1.5">
+                                        <span className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] font-semibold ${config.className}`}>
+                                          <Icon size={11} />
+                                          {config.label}
+                                        </span>
+                                        {item.substituto && (
+                                          <span className="inline-flex rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[11px] font-semibold text-violet-700">
+                                            Substituto
                                           </span>
                                         )}
                                       </div>
                                     </div>
-                                  </div>
-                                  <div className="mt-2 flex flex-wrap gap-1.5">
-                                    <span className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] font-semibold ${config.className}`}>
-                                      <Icon size={11} />
-                                      {config.label}
-                                    </span>
-                                    {item.substituto && (
-                                      <span className="inline-flex rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[11px] font-semibold text-violet-700">
-                                        Substituto
-                                      </span>
-                                    )}
                                   </div>
                                 </div>
                               );
@@ -1666,27 +1671,32 @@ function ModalEscalaEquipe({
 
                     return (
                       <div key={item.id} className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3">
-                        <div className="flex items-start gap-2">
-                          <UsuarioInfoButton usuario={item.usuario} onClick={onAbrirUsuario} />
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                              <p className="text-sm font-bold text-gray-900">{item.usuario.nomeCompleto}</p>
-                              {item.usuario.telefone && (
-                                <span className="text-[11px] font-medium text-gray-500">{formatarTelefoneExibicao(item.usuario.telefone)}</span>
+                        <div className="flex gap-3">
+                          <p className="w-28 shrink-0 break-words text-xs font-bold uppercase tracking-[0.12em] text-gray-500">{equipe.nome}</p>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-start gap-2">
+                              <UsuarioInfoButton usuario={item.usuario} onClick={onAbrirUsuario} />
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                                  <p className="text-sm font-bold text-gray-900">{item.usuario.nomeCompleto}</p>
+                                  {item.usuario.telefone && (
+                                    <span className="text-[11px] font-medium text-gray-500">{formatarTelefoneExibicao(item.usuario.telefone)}</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              <span className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] font-semibold ${config.className}`}>
+                                <Icon size={11} />
+                                {config.label}
+                              </span>
+                              {item.substituto && (
+                                <span className="inline-flex rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[11px] font-semibold text-violet-700">
+                                  Substituto
+                                </span>
                               )}
                             </div>
                           </div>
-                        </div>
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          <span className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] font-semibold ${config.className}`}>
-                            <Icon size={11} />
-                            {config.label}
-                          </span>
-                          {item.substituto && (
-                            <span className="inline-flex rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[11px] font-semibold text-violet-700">
-                              Substituto
-                            </span>
-                          )}
                         </div>
                       </div>
                     );

@@ -3095,8 +3095,8 @@ function PainelEscalas({
                       <thead className="bg-gray-50 text-xs font-bold uppercase tracking-[0.14em] text-gray-400">
                         <tr>
                           <th className="px-3 py-3">Função</th>
-                          <th className="px-3 py-3">Data da escala</th>
                           <th className="px-3 py-3">Voluntário</th>
+                          <th className="px-3 py-3">Data da escala</th>
                           <th className="px-3 py-3">Status</th>
                           <th className="px-3 py-3 text-right">Ações</th>
                         </tr>
@@ -3112,7 +3112,6 @@ function PainelEscalas({
                             return (
                               <tr key={`${area.id}-${item.id}`} className="align-top">
                                 <td className="px-3 py-3 font-bold text-gray-900">{area.equipe?.nome || 'Sem equipe'}</td>
-                                <td className="whitespace-nowrap px-3 py-3 font-semibold text-gray-600">{formatarData(area.dataHora)}</td>
                                 <td className="px-3 py-3 text-gray-700">
                                   {item.usuario ? (
                                     <div className="flex items-start gap-2">
@@ -3128,6 +3127,7 @@ function PainelEscalas({
                                     <span className="text-gray-400">Nenhum voluntário atribuído</span>
                                   )}
                                 </td>
+                                <td className="whitespace-nowrap px-3 py-3 font-semibold text-gray-600">{formatarData(area.dataHora)}</td>
                                 <td className="px-3 py-3">
                                   <StatusEscalaAdmin item={item} />
                                 </td>
