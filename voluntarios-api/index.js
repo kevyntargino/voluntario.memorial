@@ -55,11 +55,51 @@ function protegerApi(req, res, next) {
   }
 }
 
+function responderPing(req, res) {
+  // Aceita a palavra pelo parâmetro de consulta (por exemplo, ?message=hello).
+  // Sem parâmetro, o endpoint continua útil como health check.
+  const palavra = req.params.palavra ?? req.query.message ?? req.query.word ?? req.query.input;
+  const informouHello = Object.prototype.hasOwnProperty.call(req.query, 'hello');
+
+  if ((palavra !== undefined && palavra !== 'hello') || (informouHello && req.query.hello !== '' && req.query.hello !== 'hello')) {
+    return res.status(400).send('expected hello');
+  }
+
+  return res.status(200).send('world');
+}
+
+async function consultarPingApi() {
+  const pingApiUrl = process.env.PING_API_URL?.trim();
+
+  if (!pingApiUrl) {
+    console.warn('[PING API] PING_API_URL não definida; consulta ignorada.');
+    return;
+  }
+
+  const url = `${pingApiUrl.replace(/\/$/, '')}/hello`;
+
+  try {
+    const resposta = await fetch(url, { method: 'GET' });
+    const resultado = await resposta.text();
+    console.log(`[PING API] GET ${url} (${resposta.status}): ${resultado}`);
+  } catch (erro) {
+    console.error(`[PING API] Falha ao consultar ${url}:`, erro.message);
+  }
+}
+
 // ==========================================
 // MIDDLEWARES GLOBAIS
 // ==========================================
 app.use(cors());
 app.use(express.json({ limit: '25mb' }));
+
+// Ping público para verificar a disponibilidade da API.
+app.get('/ping', responderPing);
+app.get('/ping/:palavra', responderPing);
+app.get('/hello', responderPing);
+app.get('/api/ping', responderPing);
+app.get('/api/ping/:palavra', responderPing);
+app.get('/api/hello', responderPing);
 
 // ==========================================
 // REGISTRO DE ROTAS
@@ -106,4 +146,6 @@ if (process.env.NODE_ENV !== 'test') {
       console.warn('[WARN] Falha ao gerar notificações automáticas:', erro.message);
     });
   }, 60 * 60 * 1000);
+
+  setInterval(consultarPingApi, 10 * 1000);
 }
