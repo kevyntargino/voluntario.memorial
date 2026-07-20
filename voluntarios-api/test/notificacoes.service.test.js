@@ -136,6 +136,20 @@ test('lembra o voluntário 1 dia antes da escala', async () => {
   assert.match(prisma.criadas[0].chave, /^lembrete-escala:1d:/);
 });
 
+test('informa o voluntário sobre a escala 6 dias antes', async () => {
+  const prisma = criarPrisma([criarParticipacao({ dataHora: '2026-07-22T18:00:00.000Z' })]);
+
+  const resultado = await gerarNotificacoesAutomaticas(
+    prisma,
+    new Date('2026-07-16T10:00:00.000Z'),
+  );
+
+  assert.equal(resultado.count, 1);
+  assert.equal(prisma.criadas[0].tipo, 'LEMBRETE_ESCALA');
+  assert.equal(prisma.criadas[0].titulo, 'Sua escala é daqui a 6 dias');
+  assert.match(prisma.criadas[0].chave, /^lembrete-escala:6d:/);
+});
+
 test('lembra o voluntário confirmado 1 dia antes da escala', async () => {
   const dataHora = '2026-07-17T18:00:00.000Z';
   const prisma = criarPrisma([criarParticipacao({

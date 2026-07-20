@@ -412,6 +412,17 @@ export async function gerarNotificacoesAutomaticas(prisma, agora = getAgoraNotif
       });
     }
 
+    if (dias === 6 && ['PENDENTE', 'CONFIRMADA'].includes(status)) {
+      notificacoes.push({
+        usuarioId: participacao.usuarioId,
+        tipo: 'LEMBRETE_ESCALA',
+        titulo: 'Sua escala é daqui a 6 dias',
+        mensagem: `Você está escalado em ${equipeNome} para ${dataTexto}.`,
+        link: getLinkModalProximaEscala(participacao, dataOcorrencia),
+        chave: `lembrete-escala:6d:${participacao.id}:${new Date(dataOcorrencia).toISOString()}`,
+      });
+    }
+
     if (dias === 1 && ['PENDENTE', 'CONFIRMADA'].includes(status)) {
       notificacoes.push({
         usuarioId: participacao.usuarioId,

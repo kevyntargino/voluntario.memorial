@@ -161,6 +161,7 @@ export default function MinhaEquipe({ pagina = 'dashboard' }) {
   const [tipoEscalas, setTipoEscalas] = useState('TODAS');
   const [statusEscalas, setStatusEscalas] = useState('TODOS');
   const [ordemEscalas, setOrdemEscalas] = useState('proximas');
+  const [periodoEscalasEquipe, setPeriodoEscalasEquipe] = useState('futuras');
   const [modoEscalasEquipe, setModoEscalasEquipe] = useState('calendario');
   const [filtrosEscalasAbertos, setFiltrosEscalasAbertos] = useState(false);
   const [mesEscalasEquipe, setMesEscalasEquipe] = useState(inicioMesAtual);
@@ -290,6 +291,12 @@ export default function MinhaEquipe({ pagina = 'dashboard' }) {
 
     const termo = normalizar(buscaEscalas);
     let base = equipeSelecionada.escalas || [];
+    const agora = agoraEscalas.getTime();
+
+    base = base.filter((escala) => {
+      const data = new Date(escala.dataHora || 0).getTime();
+      return periodoEscalasEquipe === 'passadas' ? data < agora : data >= agora;
+    });
 
     if (filtroEscala.startsWith('ESCALA:') || filtroEscala.startsWith('ESPORADICA:')) {
       const escalaId = getEscalaFiltroId(filtroEscala);
@@ -340,9 +347,10 @@ export default function MinhaEquipe({ pagina = 'dashboard' }) {
           return bPendentes - aPendentes || new Date(a.dataHora || 0).getTime() - new Date(b.dataHora || 0).getTime();
         }
 
-        return new Date(a.dataHora || 0).getTime() - new Date(b.dataHora || 0).getTime();
+        const diferenca = new Date(a.dataHora || 0).getTime() - new Date(b.dataHora || 0).getTime();
+        return periodoEscalasEquipe === 'passadas' ? -diferenca : diferenca;
       });
-  }, [buscaEscalas, equipeSelecionada, filtroEscala, ordemEscalas, statusEscalas, tipoEscalas]);
+  }, [agoraEscalas, buscaEscalas, equipeSelecionada, filtroEscala, ordemEscalas, periodoEscalasEquipe, statusEscalas, tipoEscalas]);
 
   useEffect(() => {
     if (!equipeSelecionada) {
@@ -943,8 +951,30 @@ export default function MinhaEquipe({ pagina = 'dashboard' }) {
               <Painel titulo="Escalas da equipe" icone={CalendarPlus}>
                 <div className="space-y-4">
                   <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                    <div className="grid gap-3 lg:grid-cols-[auto_minmax(220px,1fr)_minmax(170px,0.45fr)_auto] lg:items-end">
+                    <div className="grid gap-3 lg:grid-cols-[auto_auto_minmax(220px,1fr)_minmax(170px,0.45fr)_auto] lg:items-end">
                       <SeletorVisualizacaoEquipe value={modoEscalasEquipe} onChange={setModoEscalasEquipe} />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const proximoPeriodo = periodoEscalasEquipe === 'futuras' ? 'passadas' : 'futuras';
+                          setPeriodoEscalasEquipe(proximoPeriodo);
+                          if (proximoPeriodo === 'passadas') {
+                            setMesEscalasEquipe((atual) => (
+                              atual.getUTCFullYear() === inicioMesAtual().getUTCFullYear()
+                              && atual.getUTCMonth() === inicioMesAtual().getUTCMonth()
+                                ? new Date(Date.UTC(atual.getUTCFullYear(), atual.getUTCMonth() - 1, 1))
+                                : atual
+                            ));
+                          }
+                        }}
+                        className={`inline-flex min-h-10 items-center justify-center rounded-md border px-3 py-2 text-sm font-semibold transition ${
+                          periodoEscalasEquipe === 'passadas'
+                            ? 'border-gray-950 bg-gray-950 text-white hover:bg-gray-800'
+                            : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        {periodoEscalasEquipe === 'passadas' ? 'Ver futuras' : 'Ver passadas'}
+                      </button>
                       <label className="relative block">
                         <span className="mb-2 block text-xs font-bold uppercase tracking-[0.14em] text-gray-400">Pesquisar</span>
                         <Search className="pointer-events-none absolute left-3 top-[2.4rem] h-4 w-4 text-gray-400" />
