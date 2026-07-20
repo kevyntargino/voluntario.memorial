@@ -229,12 +229,56 @@ function eventoEstaAoVivo(dataHora, agora = getAgoraEscalas()) {
 function prepararEventoListaModal(evento) {
   return {
     ...evento,
-    areas: [...(evento.escalas || [])]
-      .map((area) => ({ ...area, ordemCulto: area.ordemCulto || evento.ordemCulto }))
-      .sort((a, b) => (
-        (a.equipe?.nome || '').localeCompare(b.equipe?.nome || '', 'pt-BR')
-      )),
+    areas: organizarAreasEventoModal(
+      (evento.escalas || []).map((area) => ({ ...area, ordemCulto: area.ordemCulto || evento.ordemCulto })),
+    ),
   };
+}
+
+function organizarAreasEventoModal(areas = []) {
+  const areasPorEquipe = new Map();
+
+  for (const area of areas) {
+    // Cada equipe deve aparecer uma única vez por evento/ocorrência. A API pode
+    // devolver a mesma área por mais de um caminho de listagem; consolida aqui.
+    const chaveArea = area.equipe?.id || area.equipeId || area.id;
+    const existente = areasPorEquipe.get(chaveArea);
+
+    if (!existente) {
+      areasPorEquipe.set(chaveArea, {
+        ...area,
+        voluntarios: [...(area.voluntarios || [])],
+      });
+      continue;
+    }
+
+    const voluntariosExistentes = new Set((existente.voluntarios || []).map((item) => (
+      item.usuario?.id || item.usuarioId || item.id
+    )));
+
+    for (const voluntario of area.voluntarios || []) {
+      const chaveVoluntario = voluntario.usuario?.id || voluntario.usuarioId || voluntario.id;
+      if (!voluntariosExistentes.has(chaveVoluntario)) {
+        existente.voluntarios.push(voluntario);
+        voluntariosExistentes.add(chaveVoluntario);
+      }
+    }
+  }
+
+  return Array.from(areasPorEquipe.values())
+    .map((area) => {
+      const voluntariosPorUsuario = new Map();
+      for (const voluntario of area.voluntarios || []) {
+        const chaveVoluntario = voluntario.usuario?.id || voluntario.usuarioId || voluntario.id;
+        if (!voluntariosPorUsuario.has(chaveVoluntario)) {
+          voluntariosPorUsuario.set(chaveVoluntario, voluntario);
+        }
+      }
+      return { ...area, voluntarios: Array.from(voluntariosPorUsuario.values()) };
+    })
+    .sort((a, b) => (
+      (a.equipe?.nome || '').localeCompare(b.equipe?.nome || '', 'pt-BR')
+    ));
 }
 
 function getChaveEventoLista(escala) {
@@ -1176,8 +1220,9 @@ function CalendarioEscalas({
 
 function ModalEvento({ evento, onClose, onAbrirOrdemCulto }) {
   const fecharRef = useRef(null);
-  const ordemCulto = evento.areas.find((area) => area.ordemCulto)?.ordemCulto || null;
-  const totalVoluntariosEvento = contarVoluntariosUnicos(evento.areas);
+  const areas = useMemo(() => organizarAreasEventoModal(evento.areas), [evento.areas]);
+  const ordemCulto = areas.find((area) => area.ordemCulto)?.ordemCulto || null;
+  const totalVoluntariosEvento = contarVoluntariosUnicos(areas);
 
   useEffect(() => {
     const fecharComEscape = (event) => {
@@ -1200,7 +1245,7 @@ function ModalEvento({ evento, onClose, onAbrirOrdemCulto }) {
       <div role="dialog" aria-modal="true" aria-labelledby="modal-evento-titulo" className="max-h-[92dvh] w-full max-w-2xl overflow-y-auto rounded-t-lg border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900 sm:rounded-lg">
         <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-gray-200 bg-white px-4 py-4 dark:border-gray-800 dark:bg-gray-900 sm:px-5">
           <div className="min-w-0">
-            <p className="text-xs font-bold uppercase text-gray-500 dark:text-gray-400">{evento.areas.length} função(ões) requisitada(s)</p>
+            <p className="text-xs font-bold uppercase text-gray-500 dark:text-gray-400">{areas.length} função(ões) requisitada(s)</p>
             <h2 id="modal-evento-titulo" className="mt-1 break-words text-xl font-bold text-gray-950 dark:text-white">
               {evento.titulo}
               <RecorrenciaOrdinal escala={evento} className="ml-2" />
@@ -1253,7 +1298,7 @@ function ModalEvento({ evento, onClose, onAbrirOrdemCulto }) {
               <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">{totalVoluntariosEvento} escalado(s)</span>
             </div>
             <div className="mt-3 divide-y divide-gray-200 border-y border-gray-200 dark:divide-gray-800 dark:border-gray-800">
-              {evento.areas.map((area) => (
+              {areas.map((area) => (
                 <section key={area.id} className="py-4 first:pt-3 last:pb-3">
                   <div className="flex items-center justify-between gap-3">
                     <h4 className="text-sm font-bold text-gray-900 dark:text-white">{area.equipe?.nome || 'Outras funções'}</h4>
